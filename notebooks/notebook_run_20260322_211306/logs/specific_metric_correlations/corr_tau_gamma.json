@@ -1,0 +1,168 @@
+{
+  "metadata": {
+    "target_metric": "tau_gamma",
+    "min_strength": 0.3,
+    "n_correlations": 19
+  },
+  "correlations": [
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "tau_S",
+      "correlation": 0.8688726696520946,
+      "abs_correlation": 0.8688726696520946,
+      "correlation_type": "positive",
+      "strength": "strong"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "decorrelation_time",
+      "correlation": 0.8688726696520944,
+      "abs_correlation": 0.8688726696520944,
+      "correlation_type": "positive",
+      "strength": "strong"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "autocorr_tau",
+      "correlation": 0.8517092293203331,
+      "abs_correlation": 0.8517092293203331,
+      "correlation_type": "positive",
+      "strength": "strong"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "best_pair_score",
+      "correlation": 0.7408894003637202,
+      "abs_correlation": 0.7408894003637202,
+      "correlation_type": "positive",
+      "strength": "strong"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "tau_f_mean",
+      "correlation": 0.7129919424960113,
+      "abs_correlation": 0.7129919424960113,
+      "correlation_type": "positive",
+      "strength": "strong"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "On_mean(t)",
+      "correlation": -0.6702671593539851,
+      "abs_correlation": 0.6702671593539851,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "E(t)",
+      "correlation": -0.6701422448460996,
+      "abs_correlation": 0.6701422448460996,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "tau_C",
+      "correlation": 0.6673072867165319,
+      "abs_correlation": 0.6673072867165319,
+      "correlation_type": "positive",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "An_mean(t)",
+      "correlation": -0.6597159152444216,
+      "abs_correlation": 0.6597159152444216,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "std_S",
+      "correlation": -0.6447853890895832,
+      "abs_correlation": 0.6447853890895832,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "En_mean(t)",
+      "correlation": -0.638552753529132,
+      "abs_correlation": 0.638552753529132,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "mean_high_effort",
+      "correlation": -0.6274705876929215,
+      "abs_correlation": 0.6274705876929215,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "mean_abs_error",
+      "correlation": -0.6228565452013491,
+      "abs_correlation": 0.6228565452013491,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "C(t)",
+      "correlation": -0.596673067175148,
+      "abs_correlation": 0.596673067175148,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "max_median_ratio",
+      "correlation": 0.5895845114303211,
+      "abs_correlation": 0.5895845114303211,
+      "correlation_type": "positive",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "variance_d2S",
+      "correlation": -0.5666375132835212,
+      "abs_correlation": 0.5666375132835212,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "gamma_mean(t)",
+      "correlation": -0.37527648232545874,
+      "abs_correlation": 0.37527648232545874,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "best_pair_gamma",
+      "correlation": -0.35924229700055044,
+      "abs_correlation": 0.35924229700055044,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "tau_gamma",
+      "correlated_with": "gamma",
+      "correlation": -0.34914044699159097,
+      "abs_correlation": 0.34914044699159097,
+      "correlation_type": "negative",
+      "strength": "weak"
+    }
+  ],
+  "summary": {
+    "very_strong": 0,
+    "strong": 5,
+    "moderate": 11,
+    "positive_count": 7,
+    "negative_count": 12
+  }
+}

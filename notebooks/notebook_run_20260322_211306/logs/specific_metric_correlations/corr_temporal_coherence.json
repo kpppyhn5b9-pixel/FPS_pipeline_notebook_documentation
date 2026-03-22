@@ -1,0 +1,96 @@
+{
+  "metadata": {
+    "target_metric": "temporal_coherence",
+    "min_strength": 0.3,
+    "n_correlations": 10
+  },
+  "correlations": [
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "continuous_resilience",
+      "correlation": -0.856051004718271,
+      "abs_correlation": 0.856051004718271,
+      "correlation_type": "negative",
+      "strength": "strong"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "tau_f_mean",
+      "correlation": 0.7097048019582418,
+      "abs_correlation": 0.7097048019582418,
+      "correlation_type": "positive",
+      "strength": "strong"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "En_mean(t)",
+      "correlation": -0.7028508268795098,
+      "abs_correlation": 0.7028508268795098,
+      "correlation_type": "negative",
+      "strength": "strong"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "mean_abs_error",
+      "correlation": -0.6493821554299872,
+      "abs_correlation": 0.6493821554299872,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "best_pair_score",
+      "correlation": -0.5657337189638609,
+      "abs_correlation": 0.5657337189638609,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "tau_A_mean",
+      "correlation": 0.43124983088583546,
+      "abs_correlation": 0.43124983088583546,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "autocorr_tau",
+      "correlation": 0.3699018315559768,
+      "abs_correlation": 0.3699018315559768,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "fluidity",
+      "correlation": -0.3406508660125977,
+      "abs_correlation": 0.3406508660125977,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "decorrelation_time",
+      "correlation": 0.3265544551845751,
+      "abs_correlation": 0.3265544551845751,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "temporal_coherence",
+      "correlated_with": "tau_S",
+      "correlation": 0.326554455184575,
+      "abs_correlation": 0.326554455184575,
+      "correlation_type": "positive",
+      "strength": "weak"
+    }
+  ],
+  "summary": {
+    "very_strong": 0,
+    "strong": 3,
+    "moderate": 2,
+    "positive_count": 5,
+    "negative_count": 5
+  }
+}

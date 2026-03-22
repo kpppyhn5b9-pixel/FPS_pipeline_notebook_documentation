@@ -1,0 +1,16 @@
+target_metric,correlated_with,correlation,abs_correlation,correlation_type,strength
+C(t),max_median_ratio,-0.9537009748146101,0.9537009748146101,negative,very_strong
+C(t),tau_C,-0.9488340303672121,0.9488340303672121,negative,very_strong
+C(t),mean_high_effort,0.6819688117568069,0.6819688117568069,positive,moderate
+C(t),tau_gamma,-0.596673067175148,0.596673067175148,negative,moderate
+C(t),E(t),0.5917752642985057,0.5917752642985057,positive,moderate
+C(t),An_mean(t),0.5873874433607105,0.5873874433607105,positive,moderate
+C(t),decorrelation_time,-0.5391646001490509,0.5391646001490509,negative,moderate
+C(t),tau_S,-0.5391646001490509,0.5391646001490509,negative,moderate
+C(t),std_S,0.5331126221976087,0.5331126221976087,positive,moderate
+C(t),autocorr_tau,-0.5203579733575782,0.5203579733575782,negative,moderate
+C(t),best_pair_score,-0.5198460107238329,0.5198460107238329,negative,moderate
+C(t),On_mean(t),0.46209215073289095,0.46209215073289095,positive,weak
+C(t),variance_d2S,0.42002128827278895,0.42002128827278895,positive,weak
+C(t),entropy_S,0.38864632027344886,0.38864632027344886,positive,weak
+C(t),tau_f_mean,-0.3417087290465981,0.3417087290465981,negative,weak

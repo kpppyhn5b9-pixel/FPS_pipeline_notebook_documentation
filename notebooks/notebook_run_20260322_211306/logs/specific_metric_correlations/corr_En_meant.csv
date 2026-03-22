@@ -1,0 +1,15 @@
+target_metric,correlated_with,correlation,abs_correlation,correlation_type,strength
+En_mean(t),mean_abs_error,0.9919105387212405,0.9919105387212405,positive,very_strong
+En_mean(t),tau_f_mean,-0.7286362470427155,0.7286362470427155,negative,strong
+En_mean(t),best_pair_score,-0.706402871780031,0.706402871780031,negative,strong
+En_mean(t),temporal_coherence,-0.7028508268795098,0.7028508268795098,negative,strong
+En_mean(t),fluidity,0.6800389098699868,0.6800389098699868,positive,moderate
+En_mean(t),tau_gamma,-0.638552753529132,0.638552753529132,negative,moderate
+En_mean(t),autocorr_tau,-0.6003142045664736,0.6003142045664736,negative,moderate
+En_mean(t),tau_S,-0.5868457665746961,0.5868457665746961,negative,moderate
+En_mean(t),decorrelation_time,-0.5868457665746961,0.5868457665746961,negative,moderate
+En_mean(t),continuous_resilience,0.4833358584990813,0.4833358584990813,positive,weak
+En_mean(t),adaptive_resilience,-0.43701227622554706,0.43701227622554706,negative,weak
+En_mean(t),tau_A_mean,-0.37595315348303565,0.37595315348303565,negative,weak
+En_mean(t),tau_C,-0.3427016669768247,0.3427016669768247,negative,weak
+En_mean(t),max_median_ratio,-0.3024114658919472,0.3024114658919472,negative,weak

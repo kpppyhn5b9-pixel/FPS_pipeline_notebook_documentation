@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "target_metric": "adaptive_resilience",
+    "min_strength": 0.3,
+    "n_correlations": 3
+  },
+  "correlations": [
+    {
+      "target_metric": "adaptive_resilience",
+      "correlated_with": "fluidity",
+      "correlation": -0.5761712058262308,
+      "abs_correlation": 0.5761712058262308,
+      "correlation_type": "negative",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "adaptive_resilience",
+      "correlated_with": "mean_abs_error",
+      "correlation": -0.4498950429423365,
+      "abs_correlation": 0.4498950429423365,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "adaptive_resilience",
+      "correlated_with": "En_mean(t)",
+      "correlation": -0.43701227622554706,
+      "abs_correlation": 0.43701227622554706,
+      "correlation_type": "negative",
+      "strength": "weak"
+    }
+  ],
+  "summary": {
+    "very_strong": 0,
+    "strong": 0,
+    "moderate": 1,
+    "positive_count": 0,
+    "negative_count": 3
+  }
+}

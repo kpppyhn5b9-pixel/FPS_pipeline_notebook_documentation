@@ -1,0 +1,15 @@
+target_metric,correlated_with,correlation,abs_correlation,correlation_type,strength
+gamma,gamma_mean(t),0.9979391768939428,0.9979391768939428,positive,very_strong
+gamma,best_pair_gamma,0.9737338111721767,0.9737338111721767,positive,very_strong
+gamma,best_pair_score,-0.6364155653217657,0.6364155653217657,negative,moderate
+gamma,S(t),-0.5385817556826719,0.5385817556826719,negative,moderate
+gamma,autocorr_tau,-0.4503456905736442,0.4503456905736442,negative,weak
+gamma,tau_S,-0.44481055000450664,0.44481055000450664,negative,weak
+gamma,decorrelation_time,-0.44481055000450664,0.44481055000450664,negative,weak
+gamma,tau_f_mean,-0.4414141373351213,0.4414141373351213,negative,weak
+gamma,fn_mean(t),0.4299426853998172,0.4299426853998172,positive,weak
+gamma,E(t),0.38871967898380455,0.38871967898380455,positive,weak
+gamma,variance_d2S,0.3869093672801143,0.3869093672801143,positive,weak
+gamma,An_mean(t),0.3855313609467126,0.3855313609467126,positive,weak
+gamma,tau_gamma,-0.34914044699159097,0.34914044699159097,negative,weak
+gamma,std_S,0.34361847383863525,0.34361847383863525,positive,weak

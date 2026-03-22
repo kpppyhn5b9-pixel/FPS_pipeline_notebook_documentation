@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "target_metric": "d_effort_dt",
+    "min_strength": 0.3,
+    "n_correlations": 1
+  },
+  "correlations": [
+    {
+      "target_metric": "d_effort_dt",
+      "correlated_with": "effort(t)",
+      "correlation": 0.670037125804586,
+      "abs_correlation": 0.670037125804586,
+      "correlation_type": "positive",
+      "strength": "moderate"
+    }
+  ],
+  "summary": {
+    "very_strong": 0,
+    "strong": 0,
+    "moderate": 1,
+    "positive_count": 1,
+    "negative_count": 0
+  }
+}

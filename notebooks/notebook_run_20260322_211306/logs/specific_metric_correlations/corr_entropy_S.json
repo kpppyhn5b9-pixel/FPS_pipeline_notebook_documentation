@@ -1,0 +1,120 @@
+{
+  "metadata": {
+    "target_metric": "entropy_S",
+    "min_strength": 0.3,
+    "n_correlations": 13
+  },
+  "correlations": [
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "mean_high_effort",
+      "correlation": 0.5264034722330112,
+      "abs_correlation": 0.5264034722330112,
+      "correlation_type": "positive",
+      "strength": "moderate"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "An_mean(t)",
+      "correlation": 0.4990109802114997,
+      "abs_correlation": 0.4990109802114997,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "E(t)",
+      "correlation": 0.49776196062267286,
+      "abs_correlation": 0.49776196062267286,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "std_S",
+      "correlation": 0.4815804495983693,
+      "abs_correlation": 0.4815804495983693,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "On_mean(t)",
+      "correlation": 0.42168426358604494,
+      "abs_correlation": 0.42168426358604494,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "variance_d2S",
+      "correlation": 0.41624159443482994,
+      "abs_correlation": 0.41624159443482994,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "best_pair_score",
+      "correlation": -0.3956176525390256,
+      "abs_correlation": 0.3956176525390256,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "tau_C",
+      "correlation": -0.38975162162040833,
+      "abs_correlation": 0.38975162162040833,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "C(t)",
+      "correlation": 0.38864632027344886,
+      "abs_correlation": 0.38864632027344886,
+      "correlation_type": "positive",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "max_median_ratio",
+      "correlation": -0.3501899628295768,
+      "abs_correlation": 0.3501899628295768,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "tau_S",
+      "correlation": -0.33505105054733936,
+      "abs_correlation": 0.33505105054733936,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "decorrelation_time",
+      "correlation": -0.33505105054733936,
+      "abs_correlation": 0.33505105054733936,
+      "correlation_type": "negative",
+      "strength": "weak"
+    },
+    {
+      "target_metric": "entropy_S",
+      "correlated_with": "autocorr_tau",
+      "correlation": -0.32668136628211747,
+      "abs_correlation": 0.32668136628211747,
+      "correlation_type": "negative",
+      "strength": "weak"
+    }
+  ],
+  "summary": {
+    "very_strong": 0,
+    "strong": 0,
+    "moderate": 1,
+    "positive_count": 7,
+    "negative_count": 6
+  }
+}

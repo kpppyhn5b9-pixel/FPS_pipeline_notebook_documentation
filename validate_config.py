@@ -11,10 +11,9 @@ METRIQUES_VALIDES = {
     "max_median_ratio", "A_spiral(t)", "continuous_resilience", "adaptive_resilience",
     "En_mean(t)", "On_mean(t)", "gamma", "gamma_mean(t)", "In_mean(t)",
     "An_mean(t)", "fn_mean(t)", "gamma_regime", "G_arch_used",
-    "spacing_gamma_bias", "spacing_G_hint", "spacing_planning_hint",
     "best_pair_gamma", "best_pair_G", "best_pair_score",
     "temporal_coherence", "autocorr_tau", "decorrelation_time",
-    "tau_S", "tau_gamma", "tau_A_mean", "tau_f_mean"
+    "tau_S", "tau_gamma", "tau_C",  "tau_A_mean", "tau_f_mean"
 }
 
 CRITERES_VALIDES = {
@@ -147,7 +146,11 @@ def validate_strates(strates, N, collector, coupling_type=None):
         collector.add_error("Impossible de valider strates : N non défini")
         return
     if len(strates) != N:
-        collector.add_error(f"strates doit contenir exactement N={N} éléments (actuellement {len(strates)})")
+        if len(strates) == 0:
+            collector.add_warning(f"strates vide — init_strates auto-génèrera {N} strates (generate_strates)")
+        else:
+            collector.add_warning(f"strates contient {len(strates)} éléments au lieu de N={N} — init_strates auto-génèrera")
+        return  # Skip per-strate validation, elles seront regénérées
     for i, s in enumerate(strates):
         if s.get("A0", -1) <= 0:
             collector.add_error(f"strate[{i}].A0 doit être > 0")

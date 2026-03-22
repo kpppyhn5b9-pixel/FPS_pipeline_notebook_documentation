@@ -1,0 +1,7 @@
+target_metric,correlated_with,correlation,abs_correlation,correlation_type,strength
+tau_A_mean,temporal_coherence,0.43124983088583546,0.43124983088583546,positive,weak
+tau_A_mean,En_mean(t),-0.37595315348303565,0.37595315348303565,negative,weak
+tau_A_mean,tau_f_mean,0.3632677604736776,0.3632677604736776,positive,weak
+tau_A_mean,mean_abs_error,-0.35019651233721205,0.35019651233721205,negative,weak
+tau_A_mean,continuous_resilience,-0.3179034899034719,0.3179034899034719,negative,weak
+tau_A_mean,autocorr_tau,0.30007395320784824,0.30007395320784824,positive,weak

@@ -1,0 +1,11 @@
+target_metric,correlated_with,correlation,abs_correlation,correlation_type,strength
+temporal_coherence,continuous_resilience,-0.856051004718271,0.856051004718271,negative,strong
+temporal_coherence,tau_f_mean,0.7097048019582418,0.7097048019582418,positive,strong
+temporal_coherence,En_mean(t),-0.7028508268795098,0.7028508268795098,negative,strong
+temporal_coherence,mean_abs_error,-0.6493821554299872,0.6493821554299872,negative,moderate
+temporal_coherence,best_pair_score,-0.5657337189638609,0.5657337189638609,negative,moderate
+temporal_coherence,tau_A_mean,0.43124983088583546,0.43124983088583546,positive,weak
+temporal_coherence,autocorr_tau,0.3699018315559768,0.3699018315559768,positive,weak
+temporal_coherence,fluidity,-0.3406508660125977,0.3406508660125977,negative,weak
+temporal_coherence,decorrelation_time,0.3265544551845751,0.3265544551845751,positive,weak
+temporal_coherence,tau_S,0.326554455184575,0.326554455184575,positive,weak

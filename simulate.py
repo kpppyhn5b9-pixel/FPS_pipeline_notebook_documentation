@@ -45,11 +45,7 @@ import validate_config
 import kuramoto
 import perturbations
 import utils
-from utils import deep_convert
-try:
-    import spacing_schedule
-except Exception:
-    spacing_schedule = None
+from utils import deep_convert, extract_best_pair_from_journal
 
 def safe_float_conversion(value, default=0.0):
     """Convertit une valeur en float sûr."""
@@ -61,6 +57,7 @@ def safe_float_conversion(value, default=0.0):
         return float(value)
     except:
         return default
+
 
 # --------- PIPELINE PRINCIPALE : RUN_SIMULATION() -----------
 
@@ -84,16 +81,6 @@ def run_simulation(config_path, mode="FPS", strict=False):
         print("Config validation avec avertissements:")
         for w in warnings: print("  -", w)
     print("Config validation: OK")
-
-    # ---- 0.1. Assurer la présence des colonnes de log spacing avant setup_logging ----
-    try:
-        log_metrics_order = config['system']['logging'].get('log_metrics', [])
-        for extra in ['spacing_planning_hint', 'spacing_gamma_bias', 'spacing_G_hint', 'G_arch_used', 'best_pair_gamma', 'best_pair_G', 'best_pair_score', 'temporal_coherence', 'autocorr_tau', 'decorrelation_time', 'tau_S', 'tau_gamma', 'tau_A_mean', 'tau_f_mean']:
-            if extra not in log_metrics_order:
-                log_metrics_order.append(extra)
-        config['system']['logging']['log_metrics'] = log_metrics_order
-    except Exception:
-        pass
 
     # ---- 1. SEED : reproductibilité, log dans seeds.txt ----
     SEED = config['system']['seed']
@@ -165,13 +152,19 @@ def run_fps_simulation(config, state, loggers, strict=False):
     run_id = loggers['run_id']
     t_array = np.arange(0, T, dt)
     backup_interval = 100
-    t_choc = config.get('perturbation', {}).get('t0', T/2)  # Pour t_retour - corriger le chemin
+    # Chercher t_choc depuis la config de perturbations
+    perturbations_cfg = config.get('system', {}).get('input', {}).get('perturbations', [])
+    choc_pert = [p for p in perturbations_cfg if p.get('type') == 'choc']
+    t_choc = choc_pert[0].get('t0', T/2) if choc_pert else None
+    # Initialiser les signaux de feedback à zéro
+    F_n_t_An = np.zeros(N)
+    F_n_t_fn = np.zeros(N)
 
     # Historiques avec limite de mémoire
     MAX_HISTORY_SIZE = config.get('system', {}).get('max_history_size', 10000)
     history, cpu_steps, effort_history, S_history = [], [], [], []
-    C_history = []  # 👉 Nouveau : suivi explicite de C(t) pour détection -90%
     # Historiques supplémentaires pour métriques avancées
+    C_history = []
     An_history = []  # Pour A_mean(t) et export individuel
     fn_history = []  # Pour f_mean(t) et export individuel
     En_history = []  # Pour mean_abs_error
@@ -187,35 +180,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'regulation_state': {}
     }
 
-    # Optional spacing-effect schedule for exploration of gamma and G
-    spacing_cfg = config.get('exploration', {}).get('spacing_effect', {})
-    use_spacing = bool(spacing_cfg.get('enabled', False)) and spacing_schedule is not None
-    schedule = {'gamma_peaks': [], 'G_switches': []}
-    schedule_steps = {'gamma_peaks': set(), 'G_switches': set()}
-    if use_spacing:
-        total_time = float(T)
-        start_interval = float(spacing_cfg.get('start_interval', 2.0))
-        growth = float(spacing_cfg.get('growth', 1.5))
-        num_blocks = int(spacing_cfg.get('num_blocks', 8))
-        order = spacing_cfg.get('order', ['gamma', 'G'])
-        try:
-            schedule = spacing_schedule.build_spacing_schedule(total_time, start_interval, growth, num_blocks, order)
-            print(f"⏱️ Spacing schedule: {schedule}")
-            # Convert times to step indices with tolerance handled in-loop
-            schedule_steps['gamma_peaks'] = set(int(max(0, round(ti / dt))) for ti in schedule.get('gamma_peaks', []))
-            schedule_steps['G_switches'] = set(int(max(0, round(ti / dt))) for ti in schedule.get('G_switches', []))
-        except Exception as e:
-            print(f"⚠️ Spacing schedule disabled: {e}")
-            schedule = {'gamma_peaks': [], 'G_switches': []}
-            use_spacing = False
-
-    # Ensure new flags are present in log order for CSV
-    log_metrics_order = config['system']['logging'].get('log_metrics', [])
-    for extra in ['spacing_planning_hint', 'spacing_gamma_bias', 'spacing_G_hint', 'G_arch_used']:
-        if extra not in log_metrics_order:
-            log_metrics_order.append(extra)
-    config['system']['logging']['log_metrics'] = log_metrics_order
-    
     # INITIALISER all_metrics ET t EN DEHORS DE LA BOUCLE
     all_metrics = {}
     t = 0
@@ -244,14 +208,20 @@ def run_fps_simulation(config, state, loggers, strict=False):
             fn_writer = csv.writer(fn_file)
             fn_writer.writerow(['t', f'f_{n}(t)'])
             individual_csv_writers[f'f_{n}'] = {'file': fn_file, 'writer': fn_writer}
+    
+    print(f"DIAG strates: betas={[s['beta'] for s in state]}")
+    print(f"DIAG strates: f0s={[s['f0'] for s in state]}")
+    print(f"DIAG strates: A0s={[s['A0'] for s in state]}")
 
     # -- BOUCLE PRINCIPALE --
     try:
         for step, t in enumerate(t_array):
             step_start = time.perf_counter()
-            spacing_planning_hint_flag = 0
-            spacing_gamma_bias_flag = 0
-            spacing_G_hint_flag = 0
+
+            if step == 1:
+                print(f"DIAG step1: F_n_t_An={F_n_t_An}")
+                print(f"DIAG step1: F_n_t_fn={F_n_t_fn}")
+                print(f"DIAG step1: In_t_before={In_t if 'In_t' in dir() else 'N/A'}")
             
             # ----------- 1. INPUTS ET PERTURBATIONS -----------
             # Nouvelle architecture In(t)
@@ -259,11 +229,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
             
             # Calculer In(t) avec la nouvelle architecture
             try:
-                # Calculer In pour chaque strate
-                In_t = np.zeros(N)
-                for n in range(N):
-                    # On peut avoir des configurations spécifiques par strate dans le futur
-                    In_t[n] = perturbations.compute_In(t, input_config, state, history, dt)
+                input_cfg_with_T = input_config.copy()
+                input_cfg_with_T['T'] = T
+                In_t = perturbations.compute_In(t, input_cfg_with_T, state, history, dt)
+                if np.isscalar(In_t):
+                    In_t = np.full(N, In_t)
                 
                 # Logger les valeurs significatives
                 if step % 100 == 0 and np.mean(In_t) > 0.01:
@@ -288,12 +258,13 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 # IMPORTANT: Ajouter l'historique à la config pour compute_An avec enveloppe dynamique
                 config_for_An = config.copy()
                 config_for_An['history'] = history
-                An_t = dynamics.compute_An(t, state, In_t, config_for_An)
-                
+                An_t = dynamics.compute_An(t, state, In_t, F_n_t_An, config_for_An)
+                An_history.append(An_t.copy())                
                 # Passer l'historique dans la config pour compute_fn
                 config_with_history = config.copy()
                 config_with_history['history'] = history
-                fn_t = dynamics.compute_fn(t, state, An_t, config_with_history)
+                fn_t = dynamics.compute_fn(t, state, An_t, F_n_t_fn, config_with_history)
+                fn_history.append(fn_t.copy())
                 # Calculer et stocker delta_fn pour l'historique
                 delta_fn_t = np.zeros(N)
                 for n in range(N):
@@ -318,6 +289,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 else:
                     # Modes classiques
                     gamma_t = dynamics.compute_gamma(t, gamma_mode, config.get('system', {}).get('T', 100), k, t0)
+                    gamma_regime = 'classic'
                 
                 # Latence expressive gamma par strate (utilise gamma_t calculé)
                 # NOUVEAU : Passer l'historique pour modulation locale basée sur t-1
@@ -325,52 +297,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
                                                    An_array=An_t,  # An_t est déjà calculé
                                                    fn_array=fn_t,  # fn_t est déjà calculé  
                                                    history=history)
-                
-                # Spacing effect: if a scheduled gamma peak is near, gently bias gamma upward
-                if use_spacing and (schedule_steps['gamma_peaks'] or schedule_steps['G_switches']):
-                    planned = (
-                        step in schedule_steps['gamma_peaks'] or (step-1) in schedule_steps['gamma_peaks'] or (step+1) in schedule_steps['gamma_peaks'] or
-                        step in schedule_steps['G_switches'] or (step-1) in schedule_steps['G_switches'] or (step+1) in schedule_steps['G_switches']
-                    )
-                    if planned:
-                        spacing_planning_hint_flag = 1
-                        # Impulsion d'exploration marquée sur gamma (pic net)
-                        try:
-                            se_cfg = config.get('exploration', {}).get('spacing_effect', {})
-                            impulse_mag = float(se_cfg.get('impulse_gamma_magnitude', 0.25))
-                        except Exception:
-                            impulse_mag = 0.25
-                        gamma_t = min(1.0, max(0.1, gamma_t + impulse_mag))
-                        spacing_gamma_bias_flag = 1
-                        # Recalculer gamma_n_t avec la nouvelle valeur
-                        gamma_n_t = dynamics.compute_gamma_n(t, state, config, gamma_t,
-                                                           An_array=An_t, fn_array=fn_t, history=history)
-                        # Guidance douce vers la meilleure paire connue si confiance élevée
-                        try:
-                            mem_top = adaptive_state.get('regulation_state', {}).get('regulation_memory', {})
-                            conf = float(mem_top.get('best_pair_confidence', 0.0))
-                            best_pair = mem_top.get('best_pair', {})
-                            if conf >= 0.6 and best_pair:
-                                target_gamma = float(best_pair.get('gamma', gamma_t))
-                                # Nudge gamma (10% vers la cible)
-                                gamma_t = 0.9 * gamma_t + 0.1 * target_gamma
-                                spacing_gamma_bias_flag = 1
-                                # Recalculer encore gamma_n_t
-                                gamma_n_t = dynamics.compute_gamma_n(t, state, config, gamma_t,
-                                                                   An_array=An_t, fn_array=fn_t, history=history)
-                                # Hint G vers la meilleure arch
-                                bpG = str(best_pair.get('G_arch', 'tanh'))
-                                mem_top['prefer_next_arch'] = bpG
-                                mem_top['prefer_hint_time'] = float(t)
-                                adaptive_state.setdefault('regulation_state', {})['regulation_memory'] = mem_top
-                                spacing_G_hint_flag = 1
-                        except Exception as e:
-                            # Erreur dans l'accès aux données d'apprentissage 
-                            pass
-                else:
-                    # Modes classiques
-                    gamma_t = dynamics.compute_gamma(t, gamma_mode, T, k, t0)
-                    gamma_regime = 'classic'  # Pour les modes non-adaptatifs
                     
             except Exception as e:
                 print(f"❌ ERREUR CRITIQUE calculs dynamiques à t={t}: {e}")
@@ -391,21 +317,40 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 phi_n_t = np.zeros(N)
                 gamma_n_t = np.ones(N)
             
-            # b) Sorties observée/attendue, feedback
+            # b) Calcul de phi adaptatif (alignement notebook)
             try:
-                On_t = dynamics.compute_On(t, state, An_t, fn_t, phi_n_t, gamma_n_t) if hasattr(dynamics, 'compute_On') else An_t
-                # MODIFIÉ S1: Passer history_align à compute_En
-                En_t = dynamics.compute_En(t, state, history, config, history_align) if hasattr(dynamics, 'compute_En') else An_t
+                phi_mode = config.get('regulation', {}).get('phi_mode', 'fixed')
+                
+                if phi_mode == 'adaptive':
+                    # Récupérer l'effort actuel depuis history
+                    if len(history) > 0 and 'effort(t)' in history[-1]:
+                        effort_current = history[-1].get('effort(t)', 0.0)
+                    else:
+                        effort_current = 0.0
+                    
+                    # Prendre les 20 derniers éléments pour phi_adaptive
+                    effort_for_phi = effort_history[-20:] if len(effort_history) > 0 else [0.0]
+                    
+                    # Calculer phi adaptatif
+                    phi_reg = dynamics.compute_phi_adaptive(effort_current, effort_for_phi, config)
+                else:
+                    # Mode fixe
+                    phi_reg = config.get('regulation', {}).get('phi_fixed_value', 1.618)
+            except Exception as e:
+                print(f"⚠️ Erreur calcul phi adaptatif à t={t}: {e}")
+                phi_reg = config.get('regulation', {}).get('phi_fixed_value', 1.618)
+            
+            # c) Sorties observée/attendue
+            try:
+                On_t = dynamics.compute_On(t, state, An_t, fn_t, phi_n_t, config) if hasattr(dynamics, 'compute_On') else An_t
+                En_t = dynamics.compute_En(t, state, history, config, phi_reg, history_align, effort_history) if hasattr(dynamics, 'compute_En') else An_t
             except Exception as e:
                 print(f"⚠️ Erreur compute On/En à t={t}: {e}")
                 On_t = An_t
                 En_t = An_t
             
-            # c) Régulation/adaptation feedback
-            try:
-                # Calcul correct de Fn(t) = βn·(On(t) - En(t))·γ(t)
-                F_n_t = np.zeros(N)
-                
+            # d) Régulation/adaptation feedback
+            try:                
                 # NOUVEAU : Logger détaillé pour diagnostic
                 debug_log_data = {
                     't': t,
@@ -448,40 +393,13 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 
                 for n in range(N):
                     beta_n = state[n]['beta']
-                    error_n = On_t[n] - En_t[n]
-                    
+                    error_n = En_t[n] - On_t[n]                    
                     # NOUVEAU : Calculer G selon le mode configuré
                     if G_arch_mode == 'adaptive_aware':
-                        # G adaptatif (peut fonctionner avec ou sans gamma adaptatif)
-                        planned = False
-                        if use_spacing and (schedule_steps['gamma_peaks'] or schedule_steps['G_switches']):
-                            planned = (
-                                step in schedule_steps['gamma_peaks'] or (step-1) in schedule_steps['gamma_peaks'] or (step+1) in schedule_steps['gamma_peaks'] or
-                                step in schedule_steps['G_switches'] or (step-1) in schedule_steps['G_switches'] or (step+1) in schedule_steps['G_switches']
-                            )
+                        # G adaptatif
                         G_value, G_arch_used, G_params = dynamics.compute_G_adaptive_aware(
-                            error_n, t, gamma_t, adaptive_state, history, config, True, planned
+                            error_n, t, gamma_t, adaptive_state['regulation_state'], history, config, True, False
                         )
-                        # Spacing effect: encourage G switch at scheduled times by nudging memory
-                        if use_spacing and (schedule_steps['gamma_peaks'] or schedule_steps['G_switches']):
-                            if planned:
-                                # set a soft preference for next G archetype
-                                mem = adaptive_state.get('regulation_state', {}).get('regulation_memory', {})
-                                if isinstance(mem, dict):
-                                    # rotate a suggested arch different from current
-                                    candidates = ['resonance', 'spiral_log', 'adaptive', 'tanh']
-                                    current = mem.get('current_G_arch', 'tanh')
-                                    try:
-                                        idx = (candidates.index(current) + 1) % len(candidates)
-                                    except Exception:
-                                        idx = 0
-                                    mem['prefer_next_arch'] = candidates[idx]
-                                    mem['prefer_hint_time'] = float(t)
-                                    mem['last_transition_time'] = max(0, t - 100)  # relax cool-down
-                                spacing_G_hint_flag = 1
-                            if adaptive_state.get('gamma_journal') is None:
-                                adaptive_state['gamma_journal'] = {}
-                            adaptive_state['gamma_journal'].setdefault('communication_signals', []).append({'t': float(t), 'step': int(step), 'planning': True, 'type': 'spacing_G_switch_hint'})
                         G_archs_used.append(G_arch_used)
                     else:
                         # G statique selon config
@@ -501,7 +419,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
                         G_archs_used.append(G_arch_used)
                     
                     # Calculer le feedback avec G_value déjà calculé
-                    F_n_t[n] = beta_n * G_value * gamma_t
+                    F_n_t_fn[n] = state[n]['beta'] * gamma_t
+                    F_n_t_An[n] = state[n]['beta'] * G_value
                     # Log G value per strate for analysis overlay
                     debug_log_data['G_values'].append(G_value)
                     debug_log_data['G_archs'].append(G_arch_used)
@@ -511,14 +430,17 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     G_arch_dominant = max(set(G_archs_used), key=G_archs_used.count)
                 else:
                     G_arch_dominant = G_arch_mode
+
+                if step == 0:
+                    print(f"DIAG step0 post-reg: F_n_t_An={F_n_t_An}")
+                    print(f"DIAG step0 post-reg: G_values={[debug_log_data['G_values']]}")
                 
             except Exception as e:
                 print(f"⚠️ Erreur régulation à t={t}: {e}")
-                F_n_t = np.zeros(N)
             
             # d) Update état complet du système
             try:
-                state = dynamics.update_state(state, An_t, fn_t, phi_n_t, gamma_n_t, F_n_t) if hasattr(dynamics, 'update_state') else state
+                state = dynamics.update_state(state, An_t, fn_t, phi_n_t, gamma_n_t, F_n_t_fn, F_n_t_An) if hasattr(dynamics, 'update_state') else state
                 # Mesurer le coût CPU « dynamique pur » (du core_start à la fin de update_state)
                 cpu_step = metrics.compute_cpu_step(core_start, time.perf_counter(), N) if hasattr(metrics, 'compute_cpu_step') else 0.0
             except Exception as e:
@@ -527,14 +449,12 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # ----------- 3. SIGNAUX GLOBAUX ET MÉTRIQUES -------------
             try:
                 # Préparer config enrichie pour mode étendu de S(t)
-                config_for_S = {
-                    'system': config['system'],
-                    'regulation': config['regulation'],
-                    'enveloppe': config.get('enveloppe', {}),
-                    'state': state,
-                    'history': history[-100:] if len(history) > 100 else history
-                }
-                S_t = dynamics.compute_S(t, An_t, fn_t, phi_n_t, config_for_S) if hasattr(dynamics, 'compute_S') else 0.0
+                # ALIGNEMENT NOTEBOOK: config complète + gamma_n_t pré-calculé
+                config_for_S = config.copy()
+                config_for_S['state'] = state
+                config_for_S['history'] = history
+                config_for_S['gamma'] = gamma_t
+                S_t = dynamics.compute_S(t, An_t, fn_t, phi_n_t, config_for_S, gamma_n_t=gamma_n_t) if hasattr(dynamics, 'compute_S') else 0.0
                 
                 # NOUVEAU : Ajouter S(t) au debug log
                 if 'debug_log_data' in locals():
@@ -555,43 +475,36 @@ def run_fps_simulation(config, state, loggers, strict=False):
                         
                         # Écrire les données
                         with open(debug_file, 'a') as f:
-                            row = [f"{debug_log_data['t']:.3f}", f"{debug_log_data['S_t']:.6f}", f"{debug_log_data['r_t']:.6f}"]
+                            row = [f"{debug_log_data['t']:.3f}", f"{debug_log_data['S_t']:.12g}", f"{debug_log_data['r_t']:.12g}"]
                             for n in range(N):
                                 row.extend([
-                                    f"{debug_log_data['In_t'][n] if hasattr(debug_log_data['In_t'], '__getitem__') else debug_log_data['In_t']:.6f}",
-                                    f"{debug_log_data['An_t'][n]:.6f}",
-                                    f"{debug_log_data['En_t'][n]:.6f}",
-                                    f"{debug_log_data['On_t'][n]:.6f}",
-                                    f"{debug_log_data['phi_n_t'][n]:.6f}",
-                                    f"{debug_log_data['fn_t'][n]:.6f}",
-                                    f"{debug_log_data['gamma_n_t'][n]:.6f}",
-                                    f"{debug_log_data['erreur_n'][n]:.6f}",
-                                    f"{debug_log_data['G_values'][n]:.6f}",
+                                    f"{debug_log_data['In_t'][n] if hasattr(debug_log_data['In_t'], '__getitem__') else debug_log_data['In_t']:.12g}",
+                                    f"{debug_log_data['An_t'][n]:.12g}",
+                                    f"{debug_log_data['En_t'][n]:.12g}",
+                                    f"{debug_log_data['On_t'][n]:.12g}",
+                                    f"{debug_log_data['phi_n_t'][n]:.12g}",
+                                    f"{debug_log_data['fn_t'][n]:.12g}",
+                                    f"{debug_log_data['gamma_n_t'][n]:.12g}",
+                                    f"{debug_log_data['erreur_n'][n]:.12g}",
+                                    f"{debug_log_data['G_values'][n]:.12g}",
                                     f"{debug_log_data['G_archs'][n]}"
                                 ])
                             f.write(','.join(row) + '\n')
                 
                 C_t = dynamics.compute_C(t, phi_n_t) if hasattr(dynamics, 'compute_C') else 0.0
-                # Extraire delta_fn depuis l'historique pour compute_A
-                if len(history) > 0 and 'delta_fn' in history[-1]:
-                    delta_fn_array = history[-1]['delta_fn']
-                else:
-                    # Calculer delta_fn si non disponible
-                    delta_fn_array = np.zeros(N)
-                    for n in range(N):
-                        S_i = dynamics.compute_S_i(t, n, history, state)
-                        delta_fn_array[n] = dynamics.compute_delta_fn(t, state[n]['alpha'], S_i)
+                delta_fn_array = np.zeros(N)
+                for n in range(N):
+                    S_i = dynamics.compute_S_i(t, n, history, state)
+                    delta_fn_array[n] = dynamics.compute_delta_fn(t, state[n]['alpha'], S_i)
                 
                 A_t = dynamics.compute_A(t, delta_fn_array) if hasattr(dynamics, 'compute_A') else 0.0
                 A_spiral_t = dynamics.compute_A_spiral(t, C_t, A_t) if hasattr(dynamics, 'compute_A_spiral') else 0.0
                 E_t = dynamics.compute_E(t, An_t) if hasattr(dynamics, 'compute_E') else 0.0
                 # L(t) selon FPS_Paper: argmaxₙ |dAₙ(t)/dt| - nécessite historique An
-                if hasattr(dynamics, 'compute_L') and len(An_history) >= 1:
-                    # Utiliser nouvelle signature FPS_Paper avec historique
-                    L_t = dynamics.compute_L(t, An_history + [An_t], dt)
+                if hasattr(dynamics, 'compute_L') and len(An_history) >= 2:
+                    L_t = dynamics.compute_L(t, An_history, dt)
                 else:
-                    # Fallback version legacy si pas d'historique
-                    L_t = dynamics.compute_L_legacy(t, An_t) if hasattr(dynamics, 'compute_L_legacy') else 0
+                    L_t = 0
             except Exception as e:
                 print(f"⚠️ Erreur signaux globaux à t={t}: {e}")
                 S_t = 0.0
@@ -605,97 +518,74 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Calcul des moyennes pour A_mean(t) et f_mean(t)
             A_mean_t = np.mean(An_t) if isinstance(An_t, np.ndarray) else An_t
             f_mean_t = np.mean(fn_t) if isinstance(fn_t, np.ndarray) else fn_t
-            
-            # Calcul de effort(t) avec deltas si historique disponible
-            if len(An_history) > 0 and len(fn_history) > 0:
-                delta_An = An_t - An_history[-1]
-                delta_fn = fn_t - fn_history[-1]
-                # Calcul correct de delta_gamma_n depuis l'historique
-                if len(history) > 0 and 'gamma_n' in history[-1]:
-                    gamma_n_prev = history[-1]['gamma_n']
-                    delta_gamma_n = gamma_n_t - gamma_n_prev if hasattr(gamma_n_prev, '__len__') and len(gamma_n_prev) == len(gamma_n_t) else np.zeros_like(gamma_n_t)
-                else:
-                    delta_gamma_n = np.zeros_like(gamma_n_t)  # Première itération = pas de variation
-                
-                # Utiliser les moyennes au lieu des max pour éviter l'explosion quand An → 0
-                An_mean_for_effort = np.mean(np.abs(An_t)) if isinstance(An_t, np.ndarray) else abs(An_t)
-                fn_mean_for_effort = np.mean(np.abs(fn_t)) if isinstance(fn_t, np.ndarray) else abs(fn_t)
-                gamma_mean_for_effort = np.mean(np.abs(gamma_n_t)) if isinstance(gamma_n_t, np.ndarray) else abs(gamma_n_t)
-                
-                effort_t = metrics.compute_effort(delta_An, delta_fn, delta_gamma_n, 
-                                                  An_mean_for_effort, fn_mean_for_effort, gamma_mean_for_effort) if hasattr(metrics, 'compute_effort') else 0.0
+            S_history.append(S_t)
+            C_history.append(C_t)
+
+            # Calcul de effort(t) avec deltas depuis history (aligné notebook)
+            if len(history) > 0:
+                delta_An = An_t - history[-1].get('An', An_t)
+                delta_fn = fn_t - history[-1].get('fn', fn_t)
+                delta_gamma_n = gamma_n_t - history[-1].get('gamma_n', gamma_n_t)
             else:
-                effort_t = 0.0  # Pas d'historique = pas d'effort calculable
+                delta_An = np.zeros(N)
+                delta_fn = np.zeros(N)
+                delta_gamma_n = np.zeros(N)
             
+            effort_t = metrics.compute_effort(delta_An, delta_fn, delta_gamma_n,
+                np.mean(An_t), np.mean(fn_t), gamma_t)
+
+            effort_history.append(effort_t)
             effort_status = metrics.compute_effort_status(effort_t, effort_history, config) if hasattr(metrics, 'compute_effort_status') else "stable"
             
-            # Calcul variance_d2S (fluidité) - nécessite au moins 3 points
-            if len(S_history) >= 3:
-                variance_d2S = metrics.compute_variance_d2S(S_history, dt) if hasattr(metrics, 'compute_variance_d2S') else 0.0
-                # Calcul de la fluidité avec la nouvelle formule sigmoïde inversée
-                fluidity = metrics.compute_fluidity(variance_d2S) if hasattr(metrics, 'compute_fluidity') else 1.0 / (1.0 + variance_d2S)
-            else:
-                variance_d2S = 0.0
-                fluidity = 1.0  # Pas assez de données = fluidité parfaite par défaut
+            # Calcul variance_d2S / fluidité (aligné notebook : pas de garde, compute_fluidity gère)
+            variance_d2S = metrics.compute_variance_d2S(S_history, dt) if len(S_history) >= 3 else 0
+            fluidity = metrics.compute_fluidity(variance_d2S)
             
-            # Calcul entropy_S (innovation) - utiliser l'historique S_history
+            # Calcul entropy_S (innovation)
             if len(S_history) >= 10:
-                # Utiliser une fenêtre glissante des 50 derniers points pour l'entropie
                 window_size = min(50, len(S_history))
                 S_window = S_history[-window_size:]
                 entropy_S = metrics.compute_entropy_S(S_window, 1.0/dt) if hasattr(metrics, 'compute_entropy_S') else 0.5
             else:
-                # Pas assez d'historique, utiliser la valeur actuelle
-                entropy_S = metrics.compute_entropy_S(S_t, 1.0/dt) if hasattr(metrics, 'compute_entropy_S') else 0.5
+                entropy_S = 0.1
             
-            # Calcul cohérence temporelle - mémoire douce du système
-            if len(S_history) >= 20:
-                temporal_coherence = metrics.compute_temporal_coherence(S_history, dt) if hasattr(metrics, 'compute_temporal_coherence') else 0.5
-                autocorr_tau = metrics.compute_autocorr_tau(S_history, dt) if hasattr(metrics, 'compute_autocorr_tau') else dt
-                decorrelation_time = autocorr_tau  # Alias pour cohérence
-            else:
-                temporal_coherence = 0.5
-                autocorr_tau = dt
-                decorrelation_time = dt
-            
-            # Calcul des tau multi-échelles - révéler l'architecture temporelle FPS
+            # === TAU MULTI-ÉCHELLES D'ABORD (tau_S requis par decorrelation après) ===
             if len(S_history) >= 20 and len(history) >= 20:
-                # Extraire les signaux depuis l'historique pour analyse multi-tau
                 try:
-                    # Signaux fondamentaux toujours disponibles
-                    signals_for_tau = {'S': S_history}
-                    
-                    # Extraire gamma depuis l'historique
-                    gamma_values = [h.get('gamma', gamma_t) for h in history if 'gamma' in h]
-                    if len(gamma_values) >= 20:
-                        signals_for_tau['gamma'] = gamma_values[-len(S_history):]  # Même longueur que S_history
-                    
-                    # Extraire A_mean et f_mean depuis les historiques dédiés
-                    if len(An_history) >= 20:
-                        # Convertir les arrays An en moyennes
-                        A_mean_values = [np.mean(An) if hasattr(An, '__len__') else An for An in An_history]
-                        signals_for_tau['A_mean'] = A_mean_values
-                    
-                    if len(fn_history) >= 20:
-                        # Convertir les arrays fn en moyennes
-                        f_mean_values = [np.mean(fn) if hasattr(fn, '__len__') else fn for fn in fn_history]
-                        signals_for_tau['f_mean'] = f_mean_values
-                    
-                    # Calculer tous les tau d'un coup
+                    # Signaux alignés notebook : S, gamma, C
+                    signals_for_tau = {
+                        'S': S_history,
+                        'gamma': [h.get('gamma', gamma_t) for h in history][-len(S_history):],
+                        'C': C_history
+                    }
                     if hasattr(metrics, 'compute_multiple_tau') and len(signals_for_tau) > 1:
                         multi_tau = metrics.compute_multiple_tau(signals_for_tau, dt)
                         tau_S = multi_tau.get('tau_S', dt)
                         tau_gamma = multi_tau.get('tau_gamma', dt)
-                        tau_A_mean = multi_tau.get('tau_A_mean', dt)
-                        tau_f_mean = multi_tau.get('tau_f_mean', dt)
+                        tau_C = multi_tau.get('tau_C', dt)
                     else:
-                        tau_S = tau_gamma = tau_A_mean = tau_f_mean = dt
-                        
+                        tau_S = tau_gamma = tau_C = dt
+                    
+                    # tau_A_mean et tau_f_mean via compute_tau_parameter (aligné notebook)
+                    tau_A_mean = metrics.compute_tau_parameter(history, 'An_mean(t)') if hasattr(metrics, 'compute_tau_parameter') else dt
+                    tau_f_mean = metrics.compute_tau_parameter(history, 'fn_mean(t)') if hasattr(metrics, 'compute_tau_parameter') else dt
+                    
                 except Exception:
-                    # Fallback en cas d'erreur
-                    tau_S = tau_gamma = tau_A_mean = tau_f_mean = dt
+                    tau_S = tau_gamma = tau_C = tau_A_mean = tau_f_mean = dt
             else:
-                tau_S = tau_gamma = tau_A_mean = tau_f_mean = dt
+                tau_S = tau_gamma = tau_C = tau_A_mean = tau_f_mean = dt
+            
+            # === COHÉRENCE TEMPORELLE + DÉCORRÉLATION (utilise tau_S calculé au-dessus) ===
+            if len(S_history) >= 20:
+                temporal_coherence = metrics.compute_temporal_coherence(S_history, dt) if hasattr(metrics, 'compute_temporal_coherence') else 0.5
+                if hasattr(metrics, 'extract_decorrelation_metrics'):
+                    decorrelation_time, autocorr_tau = metrics.extract_decorrelation_metrics(temporal_coherence, tau_S)
+                else:
+                    decorrelation_time = autocorr_tau = dt
+            else:
+                temporal_coherence = 0.5
+                autocorr_tau = dt
+                decorrelation_time = dt
             
             # Calcul mean_abs_error (régulation)
             mean_abs_error = metrics.compute_mean_abs_error(En_t, On_t) if hasattr(metrics, 'compute_mean_abs_error') else np.mean(np.abs(En_t - On_t))
@@ -706,9 +596,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 
                 # Calculer et logger lambda_dyn pour le debug
                 lambda_E = config.get('regulation', {}).get('lambda_E', 0.05)
-                k_spacing = config.get('regulation', {}).get('k_spacing', 0.0)
                 n_alignments = len(history_align)
-                lambda_dyn = lambda_E / (1 + k_spacing * n_alignments)
+                lambda_dyn = lambda_E
                 
                 if config.get('debug', {}).get('log_alignments', False):
                     print(f"[S1] Alignement #{n_alignments} à t={t:.2f}: |E-O|={mean_abs_error:.4f} < {epsilon_E}, λ_dyn={lambda_dyn:.4f}")
@@ -717,7 +606,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             if len(effort_history) >= 10:
                 mean_high_effort = metrics.compute_mean_high_effort(effort_history, 80) if hasattr(metrics, 'compute_mean_high_effort') else np.percentile(effort_history[-100:], 80)
             else:
-                mean_high_effort = effort_t
+                mean_high_effort = 0
             
             # Calcul d_effort_dt (effort transitoire)
             if len(effort_history) >= 2:
@@ -726,7 +615,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 d_effort_dt = 0.0
             
             # Calcul t_retour (résilience) - après perturbation
-            if t > t_choc and len(S_history) > int(t_choc/dt):
+            if t_choc is not None and t > t_choc and len(S_history) > int(t_choc/dt):
                 t_retour = metrics.compute_t_retour(S_history, int(t_choc/dt), dt, 0.95) if hasattr(metrics, 'compute_t_retour') else 0.0
             else:
                 t_retour = 0.0
@@ -737,7 +626,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             perturbation_active = len(perturbations_list) > 0 and any(p.get('type', 'none') != 'none' for p in perturbations_list)
             if len(C_history) >= 20 and len(S_history) >= 20:
                 continuous_resilience = metrics.compute_continuous_resilience(
-                    C_history, S_history, perturbation_active
+                    C_history, S_history, True
                 ) if hasattr(metrics, 'compute_continuous_resilience') else 1.0
             else:
                 continuous_resilience = 1.0
@@ -762,7 +651,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 # Calculer la résilience adaptative
                 resilience_result = metrics.compute_adaptive_resilience(
                     config, current_metrics, C_history, S_history, 
-                    int(t_choc/dt) if t > t_choc else None, dt
+                    int(t_choc/dt) if t_choc is not None and t > t_choc else None, dt
                 )
                 
                 adaptive_resilience = resilience_result.get('value', 0.0)
@@ -808,57 +697,47 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'On_mean(t)': On_mean_t,
                 'gamma': gamma_t,  # Ajouter gamma global
                 'gamma_mean(t)': gamma_mean_t,
+                'phi': phi_reg,  # Phi adaptatif de régulation (alignement notebook)
                 'In_mean(t)': In_mean_t,
                 'An_mean(t)': A_mean_t,
                 'fn_mean(t)': f_mean_t,
                 'G_arch_used': G_arch_dominant if 'G_arch_dominant' in locals() else 'tanh',
-                'spacing_planning_hint': int(spacing_planning_hint_flag),
-                'spacing_gamma_bias': int(spacing_gamma_bias_flag),
-                'spacing_G_hint': int(spacing_G_hint_flag)
             }
 
-            # Ajouter la meilleure paire connue depuis la mémoire de régulation
-            try:
-                mem = adaptive_state.get('regulation_state', {}).get('regulation_memory', {})
-                best_pair = mem.get('best_pair', {}) if isinstance(mem, dict) else {}
-                if best_pair:
-                    all_metrics['best_pair_gamma'] = float(best_pair.get('gamma', gamma_t))
-                    all_metrics['best_pair_G'] = str(best_pair.get('G_arch', 'tanh'))
-                    all_metrics['best_pair_score'] = float(best_pair.get('score', 0.0))
-                else:
-                    all_metrics['best_pair_gamma'] = float(gamma_t)
-                    all_metrics['best_pair_G'] = str(G_arch_dominant if 'G_arch_dominant' in locals() else 'tanh')
-                    all_metrics['best_pair_score'] = 0.0
-            except Exception:
-                all_metrics['best_pair_gamma'] = float(gamma_t)
-                all_metrics['best_pair_G'] = str(G_arch_dominant if 'G_arch_dominant' in locals() else 'tanh')
-                all_metrics['best_pair_score'] = 0.0
+            all_metrics['tau_C'] = tau_C
+            # Extraire la meilleure paire (γ, G) depuis le gamma_journal
+            # ALIGNEMENT NOTEBOOK: utilise gamma_journal au lieu de regulation_memory
+            best_gamma, best_G, best_score = extract_best_pair_from_journal(
+                adaptive_state.get('gamma_journal')
+            )
             
-            # NOUVEAU : Les métriques adaptatives sont sauvegardées dans les fichiers JSON
-            # Pas besoin de les ajouter au CSV car elles sont mal encodées
+            all_metrics['best_pair_gamma'] = float(best_gamma) if best_gamma is not None else float('nan')
+            all_metrics['best_pair_G'] = str(best_G) if best_G is not None else ''
+            all_metrics['best_pair_score'] = float(best_score) if best_score is not None else float('nan')
             
             # Appliquer safe_float_conversion à toutes les métriques
+            # SAUF les champs textuels et ceux où NaN est intentionnel
+            skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G', 
+                                 'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean'}
             for key in all_metrics:
-                # Ne pas convertir les champs textuels (ex: G_arch_used)
-                if key in ('effort_status', 'G_arch_used', 'best_pair_G'):
+                if key in skip_safe_convert:
                     continue
                 all_metrics[key] = safe_float_conversion(all_metrics[key])
             
             # ----------- 4. VÉRIFICATION NaN/Inf SYSTÉMATIQUE -------------
-            # Vérification NaN/Inf
+            # Champs où NaN est intentionnel (= pas de données disponibles)
+            nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
-                if metric_name == 't':
+                if metric_name == 't' or metric_name in nan_ok_fields:
                     continue
                 if isinstance(metric_value, (int, float)) and (np.isnan(metric_value) or np.isinf(metric_value)):
                     nan_inf_detected = True
-                    # Log l'alerte
                     alert_msg = f"ALERTE : NaN/Inf détecté à t={t} pour {metric_name}={metric_value}"
                     print(alert_msg)
                     os.makedirs(loggers['output_dir'], exist_ok=True)
                     with open(os.path.join(loggers['output_dir'], f"alerts_{run_id}.log"), "a") as alert_file:
                         alert_file.write(f"{alert_msg}\n")
-                    # Remplacer par une valeur par défaut pour continuer
                     if np.isnan(metric_value):
                         all_metrics[metric_name] = 0.0
                     elif np.isinf(metric_value):
@@ -882,7 +761,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     if isinstance(value, str):
                         row_data.append(value)
                     elif isinstance(value, (int, float)):
-                        row_data.append(f"{value:.6f}" if value != int(value) else str(int(value)))
+                        if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
+                            row_data.append('')  # NaN/Inf intentionnel → cellule vide dans le CSV
+                        else:
+                            row_data.append(f"{value:.12g}" if value != int(value) else str(int(value)))
                     else:
                         row_data.append(str(value))
                 else:
@@ -931,9 +813,18 @@ def run_fps_simulation(config, state, loggers, strict=False):
                         print(f"  💡 Découvertes sauvegardées: {discoveries_path}")
             
             # ----------- 8. HISTORIQUE POUR ANALYSE -------------------
+            # Calculer G_values_array et S_contrib_t pour la visualisation par strate
+            G_values_list = debug_log_data.get('G_values', [])
+            G_values_array = np.array(G_values_list, dtype=float) if len(G_values_list) == N else np.zeros(N)
+            # S_contrib_t = On_t * G_values_array (contribution de chaque strate au signal)
+            S_contrib_t = (On_t * G_values_array) if isinstance(On_t, np.ndarray) else np.zeros(N)
+
             history.append({
-                't': t, 'S': S_t, 'O': On_t, 'E': En_t, 'F': F_n_t,
-                'gamma_n': gamma_n_t, 'An': An_t, 'fn': fn_t,
+                't': t, 'S': S_t, 'O': On_t.copy(), 'E': En_t.copy(), 'F': F_n_t_An,
+                'gamma_n': gamma_n_t.copy(), 'An': An_t.copy(), 'fn': fn_t.copy(),
+                'phi_n_t': phi_n_t,  # AJOUT PR: phases par strate (requis par visualize_stratum_patterns)
+                'S_contrib': S_contrib_t,  # AJOUT PR: contribution de chaque strate à S(t)
+                'G_values_array': G_values_array,  # AJOUT PR: G par strate (array numpy)
                 'C': C_t, 'A_spiral': A_spiral_t, 'entropy_S': entropy_S,
                 'delta_fn': delta_fn_t, 'S(t)': S_t, 'C(t)': C_t,
                 'effort(t)': effort_t, 'cpu_step(t)': cpu_step,
@@ -952,21 +843,18 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'adaptive_resilience': adaptive_resilience,
                 'adaptive_resilience_score': adaptive_resilience_score,
                 'gamma': gamma_t,
+                'phi': phi_reg,  # Phi adaptatif de régulation
                 'G_arch_used': G_arch_dominant if 'G_arch_dominant' in locals() else 'tanh',
                 'gamma_regime': gamma_regime if 'gamma_regime' in locals() else 'unknown',
-                'spacing_planning_hint': int(spacing_planning_hint_flag),
-                'spacing_gamma_bias': int(spacing_gamma_bias_flag),
-                'spacing_G_hint': int(spacing_G_hint_flag),
-                'best_pair': mem.get('best_pair', {}) if 'mem' in locals() else {},
-                'G_values': debug_log_data.get('G_values', []),
-                'G_archs': debug_log_data.get('G_archs', [])
+                'best_pair': {'gamma': best_gamma, 'G_arch': best_G, 'score': best_score} if best_gamma is not None else {},
+                'best_pair_gamma': float(best_gamma) if best_gamma is not None else None,
+                'best_pair_G': str(best_G) if best_G is not None else None,
+                'best_pair_score': float(best_score) if best_score is not None else float('nan'),
+                'G_values': G_values_list,
+                'G_archs': debug_log_data.get('G_archs', []),
+                'tau_C': tau_C
             })
             cpu_steps.append(cpu_step)
-            effort_history.append(effort_t)
-            S_history.append(S_t)
-            C_history.append(C_t)
-            An_history.append(An_t.copy() if isinstance(An_t, np.ndarray) else An_t)
-            fn_history.append(fn_t.copy() if isinstance(fn_t, np.ndarray) else fn_t)
             En_history.append(En_t.copy() if isinstance(En_t, np.ndarray) else En_t)
             On_history.append(On_t.copy() if isinstance(On_t, np.ndarray) else On_t)
             
@@ -1114,7 +1002,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'An_history': An_history,
             'fn_history': fn_history,
             'En_history': En_history,
-            'On_history': On_history
+            'On_history': On_history,
+            'gamma_journal': adaptive_state.get('gamma_journal'),
         })
 
     except Exception as e:
@@ -1221,7 +1110,7 @@ def run_kuramoto_simulation(config, loggers):
                     if isinstance(value, str):
                         row_data.append(value)
                     else:
-                        row_data.append(f"{value:.6f}")
+                        row_data.append(f"{value:.12g}")
                 else:
                     row_data.append("0.0")
             
@@ -1314,7 +1203,7 @@ def run_neutral_simulation(config, loggers):
                 if isinstance(value, str):
                     row_data.append(value)
                 else:
-                    row_data.append(f"{value:.6f}")
+                    row_data.append(f"{value:.12g}")
             else:
                 row_data.append("0.0")
         
@@ -1349,34 +1238,8 @@ def run_neutral_simulation(config, loggers):
 def list_todos():
     print("\n--- TODO FPS PIPELINE ---")
     print("Compléter/raffiner tous les modules suivants pour une version 100% rigoureuse et falsifiable :")
-    print("- dynamics.py : TOUS les compute_X du dictionnaire FPS (amplitude, freq, phase, feedback, spiral, etc.)")
-    print("  * compute_In(t) avec tous les modes de perturbation")
-    print("  * compute_S_i(t) pour le signal des autres strates")
-    print("  * compute_En(t) et compute_On(t) avec les formules exploratoires")
-    print("- metrics.py : TOUS les critères/tableau structuré")
-    print("  * variance_d2S, entropy_S avec FFT")
-    print("  * t_retour avec analyse pré/post-choc")
-    print("  * effort normalisé avec dimensions cohérentes")
-    print("- regulation.py : G(x), G_n, env_n (toutes formes, statique/dynamique, archétypes)")
-    print("  * Les 4 archétypes de G(x)")
-    print("  * env_n avec gaussienne/sigmoïde")
-    print("  * G_temporal avec η(t) et θ(t)")
-    print("- perturbations.py : gestion complète choc/rampe/sinus/bruit/none")
-    print("- analyze.py : raffinements, analyse batch, MAJ changelog")
-    print("  * Tous les critères de raffinement")
-    print("  * Corrélation effort/CPU")
-    print("  * Export journal des seuils")
-    print("- explore.py : détection anomalies, motifs fractals, rapports exploration")
-    print("  * Recurrence plots")
-    print("  * Détection bifurcations spiralées")
-    print("  * Analyse harmonique émergente")
-    print("- visualize.py : tous plots, dashboard, grille empirique, rapport HTML, animation spiralée")
-    print("  * Grille empirique avec icônes/couleurs")
     print("  * Animation 3D de la spirale")
     print("  * Dashboard temps réel")
-    print("- utils.py : merge_logs, replay_logs, batch_runner, float_guard, compute_checksum, etc.")
-    print("- test_fps.py : tests unitaires/statique/dynamique pour chaque fonction, critère, pipeline")
-    print("- kuramoto.py : simulation contrôle complète avec équations exactes")
     print("- Documentation : README, matrice critère-terme, journal seuils\n")
 
 # --------- ARGPARSE POUR EXECUTION CLI -------------------------
