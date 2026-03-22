@@ -107,7 +107,7 @@
   },
   "spiral": {
     "phi": 1.618,
-    "epsilon": 0.1,
+    "epsilon": 0.15,
     "omega": 0.05,
     "theta": 0.0,
     "signature_mode": "individual"

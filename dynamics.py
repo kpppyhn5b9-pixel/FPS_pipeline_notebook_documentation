@@ -119,7 +119,7 @@ def compute_sigma(x: Union[float, np.ndarray], k: float, x0: float) -> Union[flo
     return 1.0 / (1.0 + np.exp(-k * (x - x0)))
 
 
-def compute_An(t: float, state: List[Dict], In_t: np.ndarray, config: Dict) -> np.ndarray:
+def compute_An(t: float, state: List[Dict], In_t: np.ndarray, F_n_t_An: np.ndarray, config: Dict) -> np.ndarray:
     """
     Calcule l'amplitude adaptative pour chaque strate selon FPS Paper.
     
@@ -200,7 +200,11 @@ def compute_An(t: float, state: List[Dict], In_t: np.ndarray, config: Dict) -> n
                 # Amplitude finale avec enveloppe SANS G(error)
                 # An = A0 * σ(In) * env(error)
                 # G(error) sera appliqué dans S(t) en mode extended
+                F_n_clamped = np.clip(F_n_t_An[n], -0.5, 0.5)
                 An_t[n] = base_amplitude * env_factor
+                An_t[n] = An_t[n] * (1 + F_n_clamped)
+                An_t[n] = max(An_t[n], 1e-6)
+
                 
             except Exception as e:
                 print(f"⚠️ Erreur enveloppe dynamique strate {n} à t={t}: {e}")
@@ -208,6 +212,16 @@ def compute_An(t: float, state: List[Dict], In_t: np.ndarray, config: Dict) -> n
         else:
             # Mode statique classique
             An_t[n] = base_amplitude
+        # DIAG compute_An
+        if 0.05 < t < 0.15:
+            print(f"DIAG An t={t:.2f}: An_t={An_t}")
+            print(f"DIAG An t={t:.2f}: env_mode={env_mode}")
+            if env_mode == 'dynamic':
+                print(f"DIAG An t={t:.2f}: En_inside={En_t}")
+                print(f"DIAG An t={t:.2f}: On_prev={On_t_prev}")
+                for n in range(min(3, len(An_t))):
+                    base = state[n]['A0'] * (1.0 / (1.0 + np.exp(-state[n]['k'] * (In_t[n] - state[n]['x0']))))
+                    print(f"DIAG An t={t:.2f} n={n}: base={base:.10f} F_clamped={np.clip(F_n_t_An[n], -0.5, 0.5):.10f}")
     
     return An_t
 
@@ -279,7 +293,7 @@ def compute_delta_fn(t: float, alpha_n: float, S_i: float) -> float:
     return alpha_n * S_i
 
 
-def compute_fn(t: float, state: List[Dict], An_t: np.ndarray, config: Dict) -> np.ndarray:
+def compute_fn(t: float, state: List[Dict], An_t: np.ndarray, F_n_t_fn: np.ndarray, config: Dict) -> np.ndarray:
     """
     Calcule la fréquence modulée pour chaque strate selon FPS Paper.
     
@@ -350,11 +364,12 @@ def compute_fn(t: float, state: List[Dict], An_t: np.ndarray, config: Dict) -> n
                 beta_n_t = beta_n * A_factor * t_factor  # Sans effort_factor
                 
                 # Fréquence de base avec plasticité dynamique
+
                 fn_t[n] = f0n + delta_fn * beta_n_t
                 
             except Exception as e:
                 print(f"⚠️ Erreur plasticité dynamique strate {n} à t={t}: {e}")
-                fn_t[n] = f0n + delta_fn * beta_n  # Fallback sur mode statique
+                fn_t[n] = f0n + delta_fn * beta_n # Fallback sur mode statique
         else:
             # Mode statique classique
             fn_t[n] = f0n + delta_fn * beta_n
@@ -372,6 +387,12 @@ def compute_fn(t: float, state: List[Dict], An_t: np.ndarray, config: Dict) -> n
                 # Ajustement vers le ratio cible
                 target_fn = r_t * fn_t[n]
                 fn_t[n + 1] = fn_t[n + 1] * (1 - relaxation_factor) + target_fn * relaxation_factor
+    for n in range(N):
+        if F_n_t_fn is not None and n < len(F_n_t_fn):
+            # Limiter F_n pour éviter instabilité
+            F_n_clamped = np.clip(F_n_t_fn[n], -0.5, 0.5)
+            fn_t[n] *= (1 + F_n_clamped)
+            fn_t[n] = max(fn_t[n], 1e-6)
     
     return fn_t
 
@@ -702,7 +723,7 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
     
     Combine :
     - Surveillance multi-critères (6 métriques)
-    - Détection du spacing effect
+    - Détection des patterns d'emergence
     - Conscience de l'archétype G actuel
     - Communication bidirectionnelle avec G(x)
     - Journal enrichi des découvertes couplées
@@ -723,11 +744,6 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
             'system_performance': [],  # AJOUT de system_performance
             'rest_phases': [],
             'optimal_gamma_patterns': {},
-            'spacing_analysis': {
-                'intervals': [],
-                'emerging': False,
-                'maturity_score': 0
-            },
             # NOUVEAU : Conscience de G
             'coupled_states': {},           # (γ, G_arch) → performances
             'G_transition_impacts': [],     # Impacts des changements
@@ -763,7 +779,7 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
     
     # 2. CALCULER LA PERFORMANCE SYSTÈME
     recent_history = history[-50:]
-    scores = metrics.calculate_all_scores(recent_history)
+    scores = metrics.calculate_all_scores(recent_history, config)
     current_scores = scores['current']
     system_performance_score = np.mean(list(current_scores.values()))
     
@@ -794,7 +810,7 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
             if state_key not in journal['gamma_G_synergies']:
                 journal['gamma_G_synergies'][state_key] = {
                     'discovered_at': t,
-                    'score': synergy_score,
+                    'synergy_score': synergy_score,
                     'note': f'Synergie parfaite découverte : γ={state_key[0]} + G={state_key[1]}'
                 }
                 journal['breakthrough_moments'].append({
@@ -882,7 +898,7 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
                 'performance': system_performance_score,
                 'interval_since_last': interval,
                 'scores': current_scores.copy(),
-                'G_arch': current_G_arch  # IMPORTANT pour spacing_by_G
+                'G_arch': current_G_arch
             }
             
             journal['gamma_peaks'].append(peak_info)
@@ -910,47 +926,6 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
             'start': t,
             'avg_performance': system_performance_score
         })
-    
-    # 8. ANALYSER LE SPACING EFFECT
-    if len(journal['gamma_peaks']) >= 3:
-        # Calculer les intervalles entre pics
-        intervals = []
-        for peak in journal['gamma_peaks'][-5:]:
-            if peak.get('interval_since_last') is not None:
-                intervals.append(peak['interval_since_last'])
-        
-        if len(intervals) >= 2:
-            # Vérifier si les intervalles augmentent
-            increasing_intervals = all(
-                intervals[i] <= intervals[i+1] 
-                for i in range(len(intervals)-1)
-            )
-            
-            # Vérifier si la performance moyenne augmente aussi
-            peak_performances = [
-                peak['performance'] 
-                for peak in journal['gamma_peaks'][-len(intervals)-1:]
-            ]
-            increasing_performance = np.polyfit(range(len(peak_performances)), 
-                                               peak_performances, 1)[0] > 0
-            
-            # Détecter l'émergence du spacing effect
-            if increasing_intervals and increasing_performance:
-                journal['spacing_analysis']['emerging'] = True
-                journal['spacing_analysis']['intervals'] = intervals
-                
-                # Calculer la maturité (0-1)
-                interval_growth = (intervals[-1] - intervals[0]) / intervals[0] if intervals[0] > 0 else 0
-                perf_growth = (peak_performances[-1] - peak_performances[0]) / peak_performances[0] if peak_performances[0] > 0 else 0
-                journal['spacing_analysis']['maturity_score'] = min(1.0, (interval_growth + perf_growth) / 2)
-                
-                # Enregistrer la découverte
-                if journal['spacing_analysis']['maturity_score'] > 0.5:
-                    journal['breakthrough_moments'].append({
-                        't': t,
-                        'type': 'spacing_effect',
-                        'note': f'Spacing effect émergent ! Intervalles: {intervals}, Maturité: {journal["spacing_analysis"]["maturity_score"]:.2f}'
-                    })
     
     # 9. TROUVER LE GAMMA OPTIMAL SELON L'HISTORIQUE
     best_gamma_for_performance = None
@@ -1016,46 +991,12 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
                     'signal_pattern': 'oscillation'
                 })
     
-    elif journal['spacing_analysis']['emerging']:
-        # MODE SPACING CONSCIENT DE G
-        
-        # Le spacing effect peut être différent selon G !
-        spacing_by_G = defaultdict(list)
-        for peak in journal['gamma_peaks']:
-            if 'G_arch' in peak and peak.get('interval_since_last') is not None:
-                spacing_by_G[peak['G_arch']].append(peak['interval_since_last'])
-        
-        # Adapter le spacing selon le G actuel
-        if current_G_arch in spacing_by_G and len(spacing_by_G[current_G_arch]) >= 2:
-            optimal_interval = np.mean(spacing_by_G[current_G_arch]) * 1.1
-        else:
-            optimal_interval = 150  # Défaut
-        
-        # Logique de spacing adaptée à G
-        if not journal['gamma_peaks']:
-            gamma = 0.6
-        else:
-            last_peak = journal['gamma_peaks'][-1]
-            time_since_peak = t - last_peak['t']
-            base_gamma = best_synergy[0] if best_synergy else 0.8
-            phase = time_since_peak / optimal_interval
-    
-            if phase < 0.2:
-                gamma = base_gamma * (1 - phase * 5)
-            elif phase < 0.8:
-                gamma = 0.3 + 0.05 * np.sin(4 * np.pi * phase)
-            elif phase < 1.0:
-                rise = (phase - 0.8) / 0.2
-                gamma = 0.3 + (base_gamma - 0.3) * rise
-            else:
-                gamma = base_gamma
-    
     else:
         # EXPLORATION CONSCIENTE
         
         # Explorer les combinaisons (γ, G) non testées
         all_gamma_values = set(round(g, 1) for g in np.linspace(0.1, 1.0, 10))
-        all_G_archs = {'tanh', 'resonance', 'spiral_log', 'adaptive'}
+        all_G_archs = {'tanh', 'resonance', 'spiral_log', 'adaptive', 'adaptive_aware'}
         
         tested_combinations = set(journal['coupled_states'].keys())
         untested = [(g, arch) for g in all_gamma_values for arch in all_G_archs 
@@ -1231,22 +1172,6 @@ def compute_G_adaptive_aware(error: float, t: float, gamma_current: float,
         else:  # tanh
             params = {"lambda": 0.5 + 0.5 * gamma_current}
     
-    # SOFT PREFERENCE: si une préférence douce est définie, orienter G_arch sans l'imposer
-    prefer_arch = reg_memory.get('prefer_next_arch')
-    prefer_time = reg_memory.get('prefer_hint_time', -1)
-    if prefer_arch and prefer_arch in ['tanh', 'resonance', 'spiral_log', 'adaptive']:
-        # Respecter un petit cooldown: si dernière transition très récente, ne pas switcher brutalement
-        cooldown = 5
-        if t - reg_memory.get('last_transition_time', -1e9) >= cooldown:
-            # Blending doux: 60% choix courant, 40% préférence
-            # Implémenté comme: si different, on bascule vers prefer_arch mais on laissera la transition douce gérer la continuité
-            if prefer_arch != G_arch:
-                G_arch = prefer_arch
-                params = regulation.adapt_params_for_archetype(G_arch, gamma_current, error_magnitude)
-        # Consommer la préférence une fois lue (éviter de forcer à chaque pas)
-        reg_memory.pop('prefer_next_arch', None)
-        reg_memory.pop('prefer_hint_time', None)
-    
     # 4. VÉRIFIER L'EFFICACITÉ HISTORIQUE
     error_bucket = 'low' if error_magnitude < 0.1 else 'medium' if error_magnitude < 0.5 else 'high'
     context_key = (G_arch, gamma_bucket, error_bucket)
@@ -1326,111 +1251,86 @@ def compute_G_adaptive_aware(error: float, t: float, gamma_current: float,
     
     # Incrémenter le compteur d'utilisation
     reg_memory['preferred_G_by_gamma'][gamma_bucket][actual_G_arch] += 1
-    
-    # Après avoir décidé de G_value et G_arch_used
-    # --- Nouveau: scoring de la paire (gamma, G_arch_used) + oubli spiralé ---
-    try:
-        mem = regulation_state.get('regulation_memory', {}) if isinstance(regulation_state, dict) else {}
-        # 1) Oubli spiralé/spacing: décroissance continue de la confiance
-        phi = config.get('spiral', {}).get('phi', 1.618)
-        base_tau = float(config.get('exploration', {}).get('spacing_effect', {}).get('base_tau', 20.0))
-        spacing_level = int(mem.get('spacing_level', 0))
-        tau = base_tau * (phi ** spacing_level)
-        last_decay_update = float(mem.get('last_decay_update', t))
-        dt = max(0.0, float(t) - last_decay_update)
-        if dt > 0:
-            decay = float(np.exp(-dt / max(1e-6, tau)))
-            mem['best_pair_confidence'] = float(mem.get('best_pair_confidence', 0.0)) * decay
-            mem['last_decay_update'] = float(t)
-        # 2) Évaluer et renforcer uniquement lors des pics planifiés
-        if score_pair_now and history:
-            best = mem.get('best_pair', None)
-            # Mémoïsation par t pour éviter N recalculs par step
-            if mem.get('last_scores_t', None) == float(t) and 'last_adaptive_scores' in mem:
-                adaptive_scores = mem['last_adaptive_scores']
-            else:
-                adaptive_scores = metrics.calculate_all_scores(history, config).get('current', {})
-                mem['last_scores_t'] = float(t)
-                mem['last_adaptive_scores'] = adaptive_scores
-            criteria = ['stability', 'regulation', 'fluidity', 'resilience', 'innovation', 'cpu_cost', 'effort']
-            gaps = []
-            for c in criteria:
-                s = float(adaptive_scores.get(c, 3.0))
-                gaps.append(max(0.0, 5.0 - s))
-            mean_gap = float(np.mean(gaps)) if gaps else 2.0
-            score = 5.0 - mean_gap
-            current_pair = {'gamma': float(gamma_current), 'G_arch': G_arch, 'score': float(score), 't': float(t)}
-            improved = (not best) or (score > best.get('score', -1e-9))
-            close_enough = best and (score >= best.get('score', 0.0) - 0.02)
-            if improved:
-                mem['best_pair'] = current_pair
-            # Renforcement (spacing): confiance augmente doucement, et spacing_level progresse
-            if improved or close_enough or mem.get('best_pair_confidence', 0.0) < 0.2:
-                conf = float(mem.get('best_pair_confidence', 0.0))
-                mem['best_pair_confidence'] = min(1.0, 0.7 * conf + 0.3)
-                mem['last_reinforce_time'] = float(t)
-                mem['spacing_level'] = spacing_level + 1
-            # Journal léger
-            pairs = mem.get('pairs_log', [])
-            if len(pairs) < 1000:
-                pairs.append(current_pair)
-            else:
-                pairs.pop(0); pairs.append(current_pair)
-            mem['pairs_log'] = pairs
-        regulation_state['regulation_memory'] = mem
-    except Exception:
-        pass
-    return G_value, G_arch, params
+
+    return G_value, actual_G_arch, params
 
 
 # ============== SORTIES OBSERVÉE ET ATTENDUE ==============
 
-def compute_On(t: float, state: List[Dict], An_t: np.ndarray, fn_t: np.ndarray, 
-               phi_n_t: np.ndarray, gamma_n_t: np.ndarray) -> np.ndarray:
+def compute_On(t: float, state: List[Dict], An_t: np.ndarray, fn_t: np.ndarray,
+               phi_n_t: np.ndarray, config: Dict) -> np.ndarray:
     """
     Calcule la sortie observée pour chaque strate.
-    
-    Oₙ(t) = Aₙ(t) · sin(2π·fₙ(t)·t + φₙ(t)) · γₙ(t)
-    
-    Args:
-        t: temps actuel
-        state: état des strates
-        An_t: amplitudes
-        fn_t: fréquences
-        phi_n_t: phases
-        gamma_n_t: latences
-    
-    Returns:
-        np.ndarray: sorties observées
-
-    Cette formule exploratoire est temporaire
+    O(t) = A(t) · sin(2π·cumsum(f(t)·dt) + φ(t))
+    Version notebook : sans gamma, avec intégration cumsum des fréquences.
     """
     N = len(state)
+    dt = config['system']['dt']
     On_t = np.zeros(N)
-    
+    theta = 2 * np.pi * np.cumsum(fn_t * dt) + phi_n_t
     for n in range(N):
-        # Contribution de la strate n au signal global
-        On_t[n] = An_t[n] * np.sin(2 * np.pi * fn_t[n] * t + phi_n_t[n]) * gamma_n_t[n]
-    
+        On_t[n] = An_t[n] * np.sin(theta[n])
     return On_t
 
+def compute_phi_adaptive(effort_current, effort_history, config):
+    """
+    Adapte φ selon l'effort du système
+    
+    Logique :
+    - effort bas → φ = 1.618 (encourage exploration/croissance)
+    - effort moyen → φ progressivement réduit
+    - effort haut → φ = 1.0 (En = On, pas de tension additionnelle)
+    - effort chronique → φ < 1.0 (En < On, encourage repos)
+    """
+    
+    # Seuils configurables
+    effort_low = config.get('regulation', {}).get('phi_adaptive', {}).get('effort_low', 0.5)
+    effort_high = config.get('regulation', {}).get('phi_adaptive', {}).get('effort_high', 5.0)
+    phi_min = config.get('regulation', {}).get('phi_adaptive', {}).get('phi_min', 0.9)
+    phi_max = config.get('regulation', {}).get('phi_adaptive', {}).get('phi_max', 1.618)
+    
+    # Détection effort chronique (moyenne récente > seuil)
+    if len(effort_history) > 10:
+        effort_mean_recent = np.mean(effort_history[-10:])
+        is_chronic = effort_mean_recent > effort_high
+    else:
+        is_chronic = False
+    
+    if is_chronic:
+        # Effort chronique → encourager repos
+        phi = phi_min - 0.1  # Ex: 0.8 (En < On)
+    elif effort_current < effort_low:
+        # Système en forme → encourage croissance
+        phi = phi_max  # 1.618
+    elif effort_current > effort_high:
+        # Effort ponctuel élevé → relaxe tension
+        phi = 1.0  # En = On (maintien)
+    else:
+        # Zone intermédiaire → interpolation linéaire
+        t = (effort_current - effort_low) / (effort_high - effort_low)
+        phi = phi_max * (1 - t) + 1.0 * t
+    
+    return phi
 
-def compute_En(t: float, state: List[Dict], history: List[Dict], config: Dict, 
-               history_align: List[float] = None) -> np.ndarray:
+def compute_En(t: float, state: List[Dict], history: List[Dict], config: Dict,
+               phi: float = None, history_align: List[float] = None, 
+               effort_history: List[float] = None) -> np.ndarray:
     """
     Calcule la sortie attendue (harmonique cible) pour chaque strate.
     
-    NOUVEAU S1: Attracteur inertiel avec lambda_E adaptatif
-    Eₙ(t) = (1-λ) * Eₙ(t-dt) + λ * φ * Oₙ(t-τ)
+    Attracteur inertiel : Eₙ(t) = (1-λ) * Eₙ(t-dt) + λ * φ * Oₙ(t-τ)
     
-    où λ peut être modulé par k_spacing selon le nombre d'alignements
-    
+    φ peut être fourni en argument (depuis la boucle) ou calculé en interne
+    selon phi_mode (adaptive/fixed).
+
     Args:
         t: temps actuel
         state: état des strates
         history: historique
         config: configuration
-        history_align: historique des alignements En≈On (nouveau S1)
+        phi: valeur de phi pré-calculée (si None, calculé en interne)
+        history_align: historique des alignements En≈On
+        effort_history: historique de l'effort (pour phi adaptatif)
     
     Returns:
         np.ndarray: sorties attendues
@@ -1441,10 +1341,35 @@ def compute_En(t: float, state: List[Dict], history: List[Dict], config: Dict,
     # Paramètres de l'attracteur inertiel
     lambda_E = config.get('regulation', {}).get('lambda_E', 0.05)
     k_spacing = config.get('regulation', {}).get('k_spacing', 0.0)
-    phi = config.get('spiral', {}).get('phi', 1.618)
     dt = config.get('system', {}).get('dt', 0.1)
     
-    # Adapter lambda selon le nombre d'alignements (spacing effect)
+    # CALCUL DE PHI (alignement notebook)
+    if phi is None:
+        phi_mode = config.get('regulation', {}).get('phi_mode', 'fixed')
+        
+        if phi_mode == 'adaptive':
+            if len(history) > 0 and 'effort(t)' in history[-1]:
+                effort_current = history[-1].get('effort(t)', 0.0)
+            elif len(history) > 0 and 'effort(t)' in history[-1]:
+                effort_current = history[-1].get('effort(t)', 0.0)
+            else:
+                effort_current = 0.0
+            
+            if effort_history is not None and len(effort_history) > 0:
+                effort_for_phi = effort_history[-20:]
+            else:
+                effort_for_phi = [
+                    h.get('effort(t)', 0.0) for h in history[-20:]
+                    if 'effort(t)' in h
+                ]
+                if len(effort_for_phi) == 0:
+                    effort_for_phi = [0.0]
+            
+            phi = compute_phi_adaptive(effort_current, effort_for_phi, config)
+        else:
+            phi = config.get('regulation', {}).get('phi_fixed_value', 1.618)
+    
+    # Adapter lambda selon le nombre d'alignements (si k_spacing > 0)
     if history_align is not None and k_spacing > 0:
         n_alignments = len(history_align)
         lambda_dyn = lambda_E / (1 + k_spacing * n_alignments)
@@ -1645,7 +1570,7 @@ def compute_Fn(t: float, beta_n: float, On_t: float, En_t: float, gamma_t: float
 # ============== SIGNAL GLOBAL ==============
 
 def compute_S(t: float, An_array: np.ndarray, fn_array: np.ndarray, 
-              phi_n_array: np.ndarray, config: Dict) -> float:
+              phi_n_array: np.ndarray, config: Dict, gamma_n_t: np.ndarray = None) -> float:
     """
     Calcule le signal global du système selon FPS Paper.
     
@@ -1655,6 +1580,7 @@ def compute_S(t: float, An_array: np.ndarray, fn_array: np.ndarray,
         fn_array: fréquences
         phi_n_array: phases
         config: configuration (pour modes avancés)
+        gamma_n_t: latence par strate pré-calculée (si None, recalculé en interne)
     
     Returns:
         float: signal global S(t)
@@ -1666,11 +1592,13 @@ def compute_S(t: float, An_array: np.ndarray, fn_array: np.ndarray,
     mode = config.get('system', {}).get('signal_mode', 'simple')
     N = len(An_array)
     
+    dt = config['system']['dt']
+    theta = 2 * np.pi * np.cumsum(fn_array * dt) + phi_n_array
+
     if mode == "simple":
-        # Somme simple des contributions
         S_t = 0.0
         for n in range(N):
-            S_t += An_array[n] * np.sin(2 * np.pi * fn_array[n] * t + phi_n_array[n])
+            S_t += An_array[n] * np.sin(theta[n])
         return S_t
     
     elif mode == "extended":
@@ -1685,17 +1613,17 @@ def compute_S(t: float, An_array: np.ndarray, fn_array: np.ndarray,
             # Fallback sur mode simple si pas d'état complet
             return compute_S(t, An_array, fn_array, phi_n_array, {'system': {'signal_mode': 'simple'}})
         
-        # Calculer les composants nécessaires
-        # Passer l'historique pour la modulation locale
-        gamma_n_t = compute_gamma_n(t, state, config, history=history,
-                                   An_array=An_array, fn_array=fn_array)
+        # Utiliser gamma_n_t pré-calculé si fourni, sinon recalculer
+        if gamma_n_t is None:
+            gamma_n_t = compute_gamma_n(t, state, config, history=history,
+                                       An_array=An_array, fn_array=fn_array)
         En_t = compute_En(t, state, history, config)
-        On_t = compute_On(t, state, An_array, fn_array, phi_n_array, gamma_n_t)
+        On_t = compute_On(t, state, An_array, fn_array, phi_n_array, config)
         
         S_t = 0.0
         for n in range(N):
             # Contribution de base avec latence selon FPS Paper
-            sin_component = np.sin(2 * np.pi * fn_array[n] * t + phi_n_array[n])
+            sin_component = np.sin(theta[n])
             base_contribution = An_array[n] * sin_component * gamma_n_t[n]
             
             # Calcul de G(Eₙ - Oₙ) selon FPS Paper
@@ -1813,8 +1741,8 @@ def compute_L_legacy(t: float, signal_array: Union[np.ndarray, List[float]]) -> 
 
 # ============== FONCTIONS UTILITAIRES ==============
 
-def update_state(state: List[Dict], An_t: np.ndarray, fn_t: np.ndarray, 
-                 phi_n_t: np.ndarray, gamma_n_t: np.ndarray, F_n_t: np.ndarray) -> List[Dict]:
+def update_state(state: List[Dict], An_t: np.ndarray, fn_t: np.ndarray,
+                 phi_n_t: np.ndarray, gamma_n_t: np.ndarray, F_n_t_fn: np.ndarray, F_n_t_An: np.ndarray) -> List[Dict]:
     """
     Met à jour l'état complet du système.
     
@@ -1837,23 +1765,21 @@ def update_state(state: List[Dict], An_t: np.ndarray, fn_t: np.ndarray,
         state[n]['current_fn'] = fn_t[n] if n < len(fn_t) else state[n].get('f0', 1.0)
         state[n]['current_phi'] = phi_n_t[n] if n < len(phi_n_t) else state[n].get('phi', 0.0)
         state[n]['current_gamma'] = gamma_n_t[n] if n < len(gamma_n_t) else 1.0
-        state[n]['current_Fn'] = F_n_t[n] if n < len(F_n_t) else 0.0
+        state[n]['current_Fn_fn'] = F_n_t_fn[n] if n < len(F_n_t_fn) else 0.0
+        state[n]['current_Fn_An'] = F_n_t_An[n] if n < len(F_n_t_An) else 0.0
         
         # NOUVEAU : Mise à jour des valeurs de base pour la prochaine itération
         # Ceci permet l'évolution temporelle du système
-        # if 'current_An' in state[n] and state[n]['current_An'] != 0:
-            # Evolution progressive de A0 vers la valeur courante
-            # Taux réduit pour éviter l'extinction du signal
-            # adaptation_rate = 0.01  # Réduit de 0.1 à 0.01
-            # Conserver une amplitude minimale pour éviter l'extinction
-            # min_amplitude = 0.1
-            # new_A0 = state[n]['A0'] * (1 - adaptation_rate) + state[n]['current_An'] * adaptation_rate
-            # state[n]['A0'] = max(min_amplitude, new_A0)
+        # Adaptation progressive de A0 (activée — alignement notebook)
+        adaptation_rate = 0.01
+        min_amplitude = 0.1
+        if 'current_An' in state[n] and state[n]['current_An'] != 0:
+            new_A0 = state[n]['A0'] * (1 - adaptation_rate) + state[n]['current_An'] * adaptation_rate
+            state[n]['A0'] = max(min_amplitude, new_A0)
         
-        # if 'current_fn' in state[n]:
-            # Evolution progressive de f0 vers la valeur courante
-            # adaptation_rate = 0.005  # Réduit de 0.05 à 0.005
-            # state[n]['f0'] = state[n]['f0'] * (1 - adaptation_rate) + state[n]['current_fn'] * adaptation_rate
+        # Adaptation de f0 désactivée (volontaire — alignement notebook)
+        # adaptation_rate = 0.005
+        # state[n]['f0'] = state[n]['f0'] * (1 - adaptation_rate) + state[n]['current_fn'] * adaptation_rate
         
         # NOUVEAU : Mise à jour des phases si mode dynamique
         # if 'current_phi' in state[n]:
