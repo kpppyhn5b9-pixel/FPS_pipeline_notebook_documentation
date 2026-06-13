@@ -1,0 +1,9 @@
+# Caches Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Artefacts de run générés localement (logs/seeds/traçabilité au niveau racine)
+/logs/
+/runs_completed.txt
+/seeds.txt
