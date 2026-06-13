@@ -33,6 +33,7 @@ from scipy.stats import pearsonr
 import warnings
 from collections import defaultdict
 import utils
+import metrics
 
 # Configuration matplotlib pour de beaux graphiques
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -667,6 +668,208 @@ def calculate_empirical_scores_notebook(history, config) :
         scores['Effort interne'] = 1
     
     return scores
+
+
+# ============== SCORES SUR LE SIGNAL BRUT O(t) ==============
+# Les trois scores DÉRIVÉS DU SIGNAL (Stabilité, Fluidité, Innovation) sont
+# normalement calculés sur S(t) — le signal PERÇU (pondéré par l'attention).
+# Ici on calcule EXACTEMENT les mêmes scores, mais sur O(t) — le signal BRUT,
+# non pondéré (Σ Oₙ). Comparer les deux montre ce que la pondération de S(t)
+# change réellement à la qualité perçue du système.
+
+def reconstruct_O_signal(history: List[Dict], config: Dict = None) -> List[float]:
+    """
+    Reconstruit la série O(t) globale = Σₙ Oₙ(t), analogue NON pondéré de S(t).
+
+    S(t) en mode simple vaut exactement Σ Oₙ ; en mode extended c'est
+    Σ Oₙ·echelle_n avec moyenne(echelle_n)=1 (énergie conservée). O(t) global
+    est donc la bonne série à comparer à S(t), à la même échelle.
+
+    On log 'On_mean(t)' (moyenne par strate), donc Σ Oₙ = N · On_mean(t).
+
+    Args:
+        history: liste de dicts de métriques par pas (doit contenir 'On_mean(t)')
+        config: pour récupérer N (sinon, on retombe sur On_mean brut)
+
+    Returns:
+        list[float] : série O(t) globale
+    """
+    N = None
+    if config is not None:
+        N = config.get('system', {}).get('N')
+
+    O_series = []
+    for h in history:
+        if 'O' in h and isinstance(h['O'], np.ndarray):
+            # Cas idéal : tableau par strate disponible → somme exacte
+            O_series.append(float(np.sum(h['O'])))
+        elif 'On_mean(t)' in h:
+            on_mean = h['On_mean(t)']
+            O_series.append(float(on_mean * N) if N else float(on_mean))
+    return O_series
+
+
+def compute_signal_quality_scores(signal_series: List[float], dt: float) -> Dict:
+    """
+    Scores 1-5 dérivés d'UN signal (S(t) ou O(t)), barèmes identiques au notebook.
+
+    Trois axes que l'on peut lire directement sur la forme du signal :
+      - Stabilité  ← écart-type           (seuils 0.5 / 0.7 / 1.0 / 1.3)
+      - Fluidité   ← fluidity(variance_d2) (seuils 0.9 / 0.7 / 0.5 / 0.3)
+      - Innovation ← entropie spectrale    (seuils 0.8 / 0.6 / 0.4 / 0.3)
+
+    Mêmes fonctions metrics que le moteur (compute_variance_d2S / compute_fluidity
+    / compute_entropy_S), pour une comparaison S(t) vs O(t) à méthode constante.
+
+    Returns:
+        dict {std, variance_d2S, fluidity, entropy, scores:{Stabilité, Fluidité, Innovation}}
+    """
+    series = np.asarray([s for s in signal_series if np.isfinite(s)], dtype=float)
+    out = {
+        'std': float('nan'), 'variance_d2S': float('nan'),
+        'fluidity': float('nan'), 'entropy': float('nan'),
+        'scores': {'Stabilité': 3, 'Fluidité': 3, 'Innovation': 3},
+    }
+    if len(series) < 3:
+        return out
+
+    # On reproduit la fenêtre "derniers 20%" de calculate_empirical_scores_notebook
+    last_20 = max(3, int(len(series) * 0.2))
+    window = series[-last_20:]
+    sampling_rate = 1.0 / dt if dt else 1.0
+
+    std_v = float(np.std(window))
+    var_d2 = float(metrics.compute_variance_d2S(window.tolist(), dt))
+    fluid = float(metrics.compute_fluidity(var_d2))
+    entropy = float(metrics.compute_entropy_S(window.tolist(), sampling_rate))
+
+    out['std'], out['variance_d2S'] = std_v, var_d2
+    out['fluidity'], out['entropy'] = fluid, entropy
+
+    # Stabilité (std faible = stable)
+    if std_v < 0.5:   out['scores']['Stabilité'] = 5
+    elif std_v < 0.7: out['scores']['Stabilité'] = 4
+    elif std_v < 1.0: out['scores']['Stabilité'] = 3
+    elif std_v < 1.3: out['scores']['Stabilité'] = 2
+    else:             out['scores']['Stabilité'] = 1
+
+    # Fluidité (fluidity élevée = fluide)
+    if fluid >= 0.9:   out['scores']['Fluidité'] = 5
+    elif fluid >= 0.7: out['scores']['Fluidité'] = 4
+    elif fluid >= 0.5: out['scores']['Fluidité'] = 3
+    elif fluid >= 0.3: out['scores']['Fluidité'] = 2
+    else:              out['scores']['Fluidité'] = 1
+
+    # Innovation (entropie élevée = innovante)
+    if entropy > 0.8:   out['scores']['Innovation'] = 5
+    elif entropy > 0.6: out['scores']['Innovation'] = 4
+    elif entropy > 0.4: out['scores']['Innovation'] = 3
+    elif entropy > 0.3: out['scores']['Innovation'] = 2
+    else:               out['scores']['Innovation'] = 1
+
+    return out
+
+
+def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
+                              save_path: Optional[str] = None) -> Optional[plt.Figure]:
+    """
+    Compare les scores dérivés du signal calculés sur S(t) (perçu, pondéré)
+    et sur O(t) (brut, non pondéré).
+
+    4 panneaux :
+      1. S(t) et O(t) superposés dans le temps
+      2. Barres comparées des 3 scores (Stabilité / Fluidité / Innovation)
+      3. Métriques brutes comparées (std, fluidity, entropy)
+      4. Diagnostic textuel chiffré
+
+    Args:
+        history: liste de dicts de métriques par pas
+        config: configuration (N, dt)
+        save_path: si fourni, sauvegarde la figure
+
+    Returns:
+        plt.Figure (ou None si données insuffisantes)
+    """
+    if not history or len(history) < 3:
+        print("⚠️ Pas assez de données pour comparer les scores S(t) vs O(t)")
+        return None
+
+    dt = (config or {}).get('system', {}).get('dt', 0.1)
+
+    S_series = [h.get('S(t)', np.nan) for h in history]
+    O_series = reconstruct_O_signal(history, config)
+
+    if len(O_series) < 3:
+        print("⚠️ Série O(t) indisponible (ni 'O' ni 'On_mean(t)' dans l'historique)")
+        return None
+
+    S_scores = compute_signal_quality_scores(S_series, dt)
+    O_scores = compute_signal_quality_scores(O_series, dt)
+
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    fig.suptitle("Scores dérivés du signal — S(t) perçu vs O(t) brut",
+                 fontsize=15, fontweight='bold')
+
+    # 1. Signaux superposés
+    ax = axes[0, 0]
+    ax.plot(S_series, color=FPS_COLORS['primary'], linewidth=1.6, label='S(t) (perçu)')
+    ax.plot(O_series, color=FPS_COLORS['secondary'], linewidth=1.2,
+            alpha=0.8, label='O(t) = Σ Oₙ (brut)')
+    ax.set_title('Signal global : S(t) vs O(t)', fontweight='bold')
+    ax.set_xlabel('t index'); ax.set_ylabel('amplitude')
+    ax.legend(); ax.grid(True, alpha=0.3)
+
+    # 2. Barres des 3 scores
+    ax = axes[0, 1]
+    criteria = ['Stabilité', 'Fluidité', 'Innovation']
+    x = np.arange(len(criteria)); w = 0.38
+    s_vals = [S_scores['scores'][c] for c in criteria]
+    o_vals = [O_scores['scores'][c] for c in criteria]
+    ax.bar(x - w/2, s_vals, w, label='S(t)', color=FPS_COLORS['primary'])
+    ax.bar(x + w/2, o_vals, w, label='O(t)', color=FPS_COLORS['secondary'])
+    ax.set_xticks(x); ax.set_xticklabels(criteria)
+    ax.set_ylim(0, 5.5); ax.set_ylabel('Score (1-5)')
+    ax.set_title('Scores 1-5 comparés', fontweight='bold')
+    ax.legend(); ax.grid(True, alpha=0.3, axis='y')
+
+    # 3. Métriques brutes comparées
+    ax = axes[1, 0]
+    raw = ['std', 'fluidity', 'entropy']
+    x = np.arange(len(raw))
+    s_raw = [S_scores[m] for m in raw]
+    o_raw = [O_scores[m] for m in raw]
+    ax.bar(x - w/2, s_raw, w, label='S(t)', color=FPS_COLORS['primary'])
+    ax.bar(x + w/2, o_raw, w, label='O(t)', color=FPS_COLORS['secondary'])
+    ax.set_xticks(x); ax.set_xticklabels(['écart-type', 'fluidity', 'entropy'])
+    ax.set_title('Métriques brutes comparées', fontweight='bold')
+    ax.legend(); ax.grid(True, alpha=0.3, axis='y')
+
+    # 4. Diagnostic textuel
+    ax = axes[1, 1]; ax.axis('off')
+    txt = (
+        "Diagnostic S(t) (perçu) vs O(t) (brut)\n"
+        "──────────────────────────────────────\n"
+        f"{'':12s}{'S(t)':>10s}{'O(t)':>10s}\n"
+        f"{'std':12s}{S_scores['std']:>10.4f}{O_scores['std']:>10.4f}\n"
+        f"{'var d²':12s}{S_scores['variance_d2S']:>10.4f}{O_scores['variance_d2S']:>10.4f}\n"
+        f"{'fluidity':12s}{S_scores['fluidity']:>10.4f}{O_scores['fluidity']:>10.4f}\n"
+        f"{'entropy':12s}{S_scores['entropy']:>10.4f}{O_scores['entropy']:>10.4f}\n"
+        "──────────────────────────────────────\n"
+        f"{'Stabilité':12s}{S_scores['scores']['Stabilité']:>10d}{O_scores['scores']['Stabilité']:>10d}\n"
+        f"{'Fluidité':12s}{S_scores['scores']['Fluidité']:>10d}{O_scores['scores']['Fluidité']:>10d}\n"
+        f"{'Innovation':12s}{S_scores['scores']['Innovation']:>10d}{O_scores['scores']['Innovation']:>10d}\n"
+    )
+    ax.text(0.02, 0.98, txt, transform=ax.transAxes, va='top', ha='left',
+            family='monospace', fontsize=11)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"✅ Comparaison scores S(t) vs O(t) sauvegardée: {save_path}")
+
+    plt.close(fig)
+    return fig
 
 
 def create_empirical_grid(scores_dict) -> plt.Figure:
@@ -2941,8 +3144,10 @@ def kuramoto_local2(theta: np.ndarray, state: list,
 
     Returns:
         Rloc: (T, N)
-        k_neighbors: int (nombre de voisins considérés)
-        Rloc_smooth: (T,) lissé pour la dernière strate (compat notebook)
+        n_neighbors_all: int — nombre de voisins retenus = N. Ce n'est PAS un
+            « K local » réglable : on garde TOUS les voisins de poids non nul
+            (la troncature order[:n_neighbors_all] est donc un no-op ici).
+        Rloc_smooth: (T, N) — Rloc lissé temporellement, strate par strate.
         incoh: (T, N) = 1 - Rloc
         mu_t: (T,) moyenne spatiale
         sigma_t: (T,) std spatiale
@@ -2953,10 +3158,11 @@ def kuramoto_local2(theta: np.ndarray, state: list,
 
     # Matrice de poids (N, N)
     W = np.array([s['w'] for s in state], dtype=float) if state else np.ones((N, N))
-    k_neighbors = N
+    # « Tous les voisins non nuls » — pas un K local paramétrable.
+    n_neighbors_all = N
 
     Rloc = np.zeros((T, N), dtype=float)
-    Rloc_smooth = np.zeros(T, dtype=float)
+    Rloc_smooth = np.zeros((T, N), dtype=float)
     neigh_idx = []
 
     for n in range(N):
@@ -2974,7 +3180,7 @@ def kuramoto_local2(theta: np.ndarray, state: list,
         order = order[order != n]
         order = order[np.abs(w_row[order]) > 0]
 
-        idx = order[:k_neighbors] if len(order) > k_neighbors else order
+        idx = order[:n_neighbors_all] if len(order) > n_neighbors_all else order
         if len(idx) == 0:
             Rloc[:, n] = 1.0
             neigh_idx.append(idx)
@@ -2991,16 +3197,19 @@ def kuramoto_local2(theta: np.ndarray, state: list,
 
         Rloc[:, n] = np.abs(m)
 
-    # Lissage temporel de la dernière strate (compat notebook)
-    if N > 0:
-        kernel = np.ones(min(25, max(1, T // 4))) / min(25, max(1, T // 4))
-        Rloc_smooth = np.convolve(Rloc[:, -1], kernel, mode='same')
+    # Lissage temporel par strate : carte complète (T, N), pas seulement le
+    # dernier nœud. Chaque colonne n est lissée indépendamment.
+    if T > 0 and N > 0:
+        kernel_size = min(25, max(1, T // 4))
+        kernel = np.ones(kernel_size) / kernel_size
+        for n in range(N):
+            Rloc_smooth[:, n] = np.convolve(Rloc[:, n], kernel, mode='same')
 
     incoh = 1.0 - Rloc
     mu_t = Rloc.mean(axis=1)
     sigma_t = Rloc.std(axis=1)
 
-    return Rloc, k_neighbors, Rloc_smooth, incoh, mu_t, sigma_t, neigh_idx
+    return Rloc, n_neighbors_all, Rloc_smooth, incoh, mu_t, sigma_t, neigh_idx
 
 
 def plot_chimera_analysis(history: List[Dict], config: Dict,

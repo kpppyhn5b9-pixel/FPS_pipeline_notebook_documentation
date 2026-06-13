@@ -209,20 +209,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
             fn_writer.writerow(['t', f'f_{n}(t)'])
             individual_csv_writers[f'f_{n}'] = {'file': fn_file, 'writer': fn_writer}
     
-    print(f"DIAG strates: betas={[s['beta'] for s in state]}")
-    print(f"DIAG strates: f0s={[s['f0'] for s in state]}")
-    print(f"DIAG strates: A0s={[s['A0'] for s in state]}")
-
     # -- BOUCLE PRINCIPALE --
     try:
         for step, t in enumerate(t_array):
             step_start = time.perf_counter()
 
-            if step == 1:
-                print(f"DIAG step1: F_n_t_An={F_n_t_An}")
-                print(f"DIAG step1: F_n_t_fn={F_n_t_fn}")
-                print(f"DIAG step1: In_t_before={In_t if 'In_t' in dir() else 'N/A'}")
-            
             # ----------- 1. INPUTS ET PERTURBATIONS -----------
             # Nouvelle architecture In(t)
             input_config = config.get('system', {}).get('input', {})
@@ -448,10 +439,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 else:
                     G_arch_dominant = G_arch_mode
 
-                if step == 0:
-                    print(f"DIAG step0 post-reg: F_n_t_An={F_n_t_An}")
-                    print(f"DIAG step0 post-reg: G_values={[debug_log_data['G_values']]}")
-                
             except Exception as e:
                 print(f"⚠️ Erreur régulation à t={t}: {e}")
             
