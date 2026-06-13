@@ -958,7 +958,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
             v = h.get('continuous_resilience')
             if v is not None:  # un verdict suspendu (None) ne compte pas
                 continuous_resilience_values.append(v)
-        continuous_resilience_mean = np.mean(continuous_resilience_values) if continuous_resilience_values else float(continuous_resilience) if continuous_resilience is not None else 1.0
+        continuous_resilience_mean = (np.mean(continuous_resilience_values) if continuous_resilience_values
+                                       else float(continuous_resilience) if continuous_resilience is not None
+                                       else float('nan'))
         
         # Calculer moyennes sur l'historique pour cohérence avec système adaptatif
         entropy_history = [h.get('entropy_S', 0.5) for h in history if 'entropy_S' in h]
@@ -977,9 +979,13 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'final_mean_abs_error': float(mean_abs_error) if mean_abs_error is not None else 0.0,
             'mean_C': float(np.mean(C_history)) if C_history else float('nan'),
             'resilience_t_retour': float(t_retour) if t_retour is not None else 0.0,
-            'continuous_resilience': float(continuous_resilience) if continuous_resilience is not None else 1.0,
+            'continuous_resilience': float(continuous_resilience) if continuous_resilience is not None else float('nan'),
             'continuous_resilience_mean': float(continuous_resilience_mean),
-            'adaptive_resilience': float(adaptive_resilience) if 'adaptive_resilience' in locals() else 0.0,
+            # None = verdict suspendu (run trop court sous perturbation) → NaN,
+            # jamais float(None) qui crasherait, ni un 0.0/1.0 trompeur.
+            'adaptive_resilience': (float(adaptive_resilience)
+                                    if 'adaptive_resilience' in locals() and adaptive_resilience is not None
+                                    else float('nan')),
             'adaptive_resilience_score': int(adaptive_resilience_score) if 'adaptive_resilience_score' in locals() else 3,
             'stability_ratio': float(max_median_ratio) if max_median_ratio is not None else 1.0,
             'total_steps': len(t_array),
