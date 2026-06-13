@@ -36,21 +36,58 @@ from utils import deep_convert
 
 def compute_cpu_step(start_time: float, end_time: float, N: int) -> float:
     """
-    Calcule le temps CPU normalisé par pas et par strate.
-    
+    Temps MUR mesuré par pas et par strate — PROFILAGE UNIQUEMENT.
+
     cpu_step = (end_time - start_time) / N
-    
+
+    ⚠️ Non reproductible et dépendant de la machine (time.perf_counter()).
+    Ne DOIT PAS piloter le contrôle : pour le score cpu_cost qui alimente γ,
+    utiliser compute_cpu_step_deterministic(N), sinon le temps mur fuit dans
+    la sélection de γ et casse la parité bit-à-bit avec l'oracle.
+
     Args:
         start_time: temps début (time.perf_counter())
         end_time: temps fin
         N: nombre de strates
-    
+
     Returns:
-        float: temps CPU moyen par strate en secondes
+        float: temps mur moyen par strate en secondes (info de profilage)
     """
     if N <= 0:
         return 0.0
     return (end_time - start_time) / N
+
+
+# Coût nominal d'une opération de couplage (secondes "modèle", indépendant de
+# la machine). Calibré pour que les tailles N usuelles tombent dans une bande
+# de score réaliste (N≈100 → ~1e-4 → cpu_cost 5), comme le temps mur observé.
+CPU_NOMINAL_OP_COST = 1e-6
+
+
+def compute_cpu_step_deterministic(N: int, op_cost: float = CPU_NOMINAL_OP_COST) -> float:
+    """
+    Coût CPU par strate, DÉTERMINISTE et reproductible.
+
+    Remplace le temps mur pour tout ce qui pilote le contrôle (score cpu_cost
+    → performance système → synergie → γ), afin que deux runs identiques
+    produisent exactement les mêmes décisions, sur n'importe quelle machine.
+
+    Modèle : le travail par strate est dominé par la somme de couplage sur les
+    N strates → O(N) opérations par strate. On renvoie op_cost * N : une
+    estimation RELATIVE, machine-indépendante, identique d'un run à l'autre.
+    Le temps mur réel reste mesuré et loggé à part (cf. compute_cpu_step), mais
+    ne nourrit plus aucune décision.
+
+    Args:
+        N: nombre de strates
+        op_cost: coût nominal d'une opération de couplage (s "modèle")
+
+    Returns:
+        float: coût CPU par strate déterministe
+    """
+    if N <= 0:
+        return 0.0
+    return op_cost * N
 
 
 # ============== MÉTRIQUES D'EFFORT ==============
@@ -331,31 +368,23 @@ def compute_entropy_S(S_t: Union[float, List[float], np.ndarray],
     Returns:
         float: entropie spectrale entre 0 et 1
     """
-    # Buffer persistant pour accumuler les valeurs scalaires
-    if not hasattr(compute_entropy_S, '_buffer'):
-        compute_entropy_S._buffer = []
-    
-    # Si on n'a qu'une valeur scalaire, l'ajouter au buffer
+    # PAS de buffer persistant : un état caché attaché à la fonction survivrait
+    # d'un appel et d'un run à l'autre dans le même process (fuite de
+    # reproductibilité, et doublon de S_history). La fenêtre doit être passée
+    # explicitement par l'appelant (cf. simulate.py qui fournit S_window).
+    #
+    # Une valeur scalaire isolée ne porte pas de spectre : on renvoie une
+    # approximation locale fondée sur la magnitude, sans aucun état.
     if np.isscalar(S_t):
-        compute_entropy_S._buffer.append(float(S_t))
-        # Garder seulement les 5 dernières valeurs
-        if len(compute_entropy_S._buffer) > 5:
-            compute_entropy_S._buffer.pop(0)
-        
-        # Si on a au moins 3 valeurs dans le buffer, les utiliser
-        if len(compute_entropy_S._buffer) >= 3:
-            S_t = compute_entropy_S._buffer
+        magnitude = abs(S_t)
+        if magnitude < 0.1:
+            return 0.1  # Très peu d'information
+        elif magnitude > 10:
+            return 0.9  # Beaucoup d'information
         else:
-            # Sinon, approximation basée sur la magnitude
-            magnitude = abs(S_t)
-            if magnitude < 0.1:
-                return 0.1  # Très peu d'information
-            elif magnitude > 10:
-                return 0.9  # Beaucoup d'information
-            else:
-                # Fonction sigmoïde pour mapper [0.1, 10] -> [0.1, 0.9]
-                return 0.1 + 0.8 / (1 + np.exp(-0.5 * (magnitude - 5)))
-    
+            # Fonction sigmoïde pour mapper [0.1, 10] -> [0.1, 0.9]
+            return 0.1 + 0.8 / (1 + np.exp(-0.5 * (magnitude - 5)))
+
     # Si on a moins de 10 points, calculer une entropie approximative
     if len(S_t) < 10:
         # Entropie basée sur la variance du signal court

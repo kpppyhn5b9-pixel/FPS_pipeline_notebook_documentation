@@ -209,20 +209,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
             fn_writer.writerow(['t', f'f_{n}(t)'])
             individual_csv_writers[f'f_{n}'] = {'file': fn_file, 'writer': fn_writer}
     
-    print(f"DIAG strates: betas={[s['beta'] for s in state]}")
-    print(f"DIAG strates: f0s={[s['f0'] for s in state]}")
-    print(f"DIAG strates: A0s={[s['A0'] for s in state]}")
-
     # -- BOUCLE PRINCIPALE --
     try:
         for step, t in enumerate(t_array):
             step_start = time.perf_counter()
 
-            if step == 1:
-                print(f"DIAG step1: F_n_t_An={F_n_t_An}")
-                print(f"DIAG step1: F_n_t_fn={F_n_t_fn}")
-                print(f"DIAG step1: In_t_before={In_t if 'In_t' in dir() else 'N/A'}")
-            
             # ----------- 1. INPUTS ET PERTURBATIONS -----------
             # Nouvelle architecture In(t)
             input_config = config.get('system', {}).get('input', {})
@@ -448,18 +439,17 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 else:
                     G_arch_dominant = G_arch_mode
 
-                if step == 0:
-                    print(f"DIAG step0 post-reg: F_n_t_An={F_n_t_An}")
-                    print(f"DIAG step0 post-reg: G_values={[debug_log_data['G_values']]}")
-                
             except Exception as e:
                 print(f"⚠️ Erreur régulation à t={t}: {e}")
             
             # d) Update état complet du système
             try:
                 state = dynamics.update_state(state, An_t, fn_t, phi_n_t, gamma_n_t, F_n_t_fn, F_n_t_An) if hasattr(dynamics, 'update_state') else state
-                # Mesurer le coût CPU « dynamique pur » (du core_start à la fin de update_state)
-                cpu_step = metrics.compute_cpu_step(core_start, time.perf_counter(), N) if hasattr(metrics, 'compute_cpu_step') else 0.0
+                # Temps mur « dynamique pur » : profilage uniquement, ne pilote RIEN.
+                wall_time_step = metrics.compute_cpu_step(core_start, time.perf_counter(), N) if hasattr(metrics, 'compute_cpu_step') else 0.0
+                # Coût CPU DÉTERMINISTE : c'est lui qui alimente cpu_cost → γ, pour
+                # une parité bit-à-bit indépendante de la machine.
+                cpu_step = metrics.compute_cpu_step_deterministic(N) if hasattr(metrics, 'compute_cpu_step_deterministic') else 0.0
             except Exception as e:
                 print(f"⚠️ Erreur update state à t={t}: {e}")
             
@@ -682,6 +672,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'E(t)': E_t,
                 'L(t)': L_t,
                 'cpu_step(t)': cpu_step,
+                'wall_time_step(t)': wall_time_step if 'wall_time_step' in locals() else 0.0,
                 'effort(t)': effort_t,
                 'A_mean(t)': A_mean_t,
                 'f_mean(t)': f_mean_t,
@@ -838,6 +829,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'C': C_t, 'A_spiral': A_spiral_t, 'entropy_S': entropy_S,
                 'delta_fn': delta_fn_t, 'S(t)': S_t, 'C(t)': C_t,
                 'effort(t)': effort_t, 'cpu_step(t)': cpu_step,
+                'wall_time_step(t)': wall_time_step if 'wall_time_step' in locals() else 0.0,
                 'A_mean(t)': A_mean_t, 'f_mean(t)': f_mean_t,
                 'variance_d2S': variance_d2S, 'fluidity': fluidity,
                 'mean_abs_error': mean_abs_error,
@@ -1094,9 +1086,11 @@ def run_kuramoto_simulation(config, loggers):
             
             # Signal global (somme des oscillateurs)
             S_t = np.sum(np.sin(phases))
-            
-            cpu_step = (time.perf_counter() - step_start) / N
-            
+
+            # Temps mur (profilage) vs coût déterministe (reproductible)
+            wall_time_step = (time.perf_counter() - step_start) / N
+            cpu_step = metrics.compute_cpu_step_deterministic(N) if hasattr(metrics, 'compute_cpu_step_deterministic') else 0.0
+
             # Log
             metrics_dict = {
                 't': t,
@@ -1105,6 +1099,7 @@ def run_kuramoto_simulation(config, loggers):
                 'E(t)': order_param,
                 'L(t)': 0,
                 'cpu_step(t)': cpu_step,
+                'wall_time_step(t)': wall_time_step,
                 'effort(t)': 0.0,
                 'A_mean(t)': 1.0,
                 'f_mean(t)': np.mean(frequencies),
@@ -1185,8 +1180,10 @@ def run_neutral_simulation(config, loggers):
         E_t = np.max(amplitudes)
         L_t = 0
         
-        cpu_step = (time.perf_counter() - step_start) / N
-        
+        # Temps mur (profilage) vs coût déterministe (reproductible)
+        wall_time_step = (time.perf_counter() - step_start) / N
+        cpu_step = metrics.compute_cpu_step_deterministic(N) if hasattr(metrics, 'compute_cpu_step_deterministic') else 0.0
+
         # Log
         metrics_dict = {
             't': t,
@@ -1195,6 +1192,7 @@ def run_neutral_simulation(config, loggers):
             'E(t)': E_t,
             'L(t)': L_t,
             'cpu_step(t)': cpu_step,
+            'wall_time_step(t)': wall_time_step,
             'effort(t)': 0.0,
             'A_mean(t)': 1.0,
             'f_mean(t)': np.mean(frequencies),

@@ -212,17 +212,7 @@ def compute_An(t: float, state: List[Dict], In_t: np.ndarray, F_n_t_An: np.ndarr
         else:
             # Mode statique classique
             An_t[n] = base_amplitude
-        # DIAG compute_An
-        if 0.05 < t < 0.15:
-            print(f"DIAG An t={t:.2f}: An_t={An_t}")
-            print(f"DIAG An t={t:.2f}: env_mode={env_mode}")
-            if env_mode == 'dynamic':
-                print(f"DIAG An t={t:.2f}: En_inside={En_t}")
-                print(f"DIAG An t={t:.2f}: On_prev={On_t_prev}")
-                for n in range(min(3, len(An_t))):
-                    base = state[n]['A0'] * (1.0 / (1.0 + np.exp(-state[n]['k'] * (In_t[n] - state[n]['x0']))))
-                    print(f"DIAG An t={t:.2f} n={n}: base={base:.10f} F_clamped={np.clip(F_n_t_An[n], -0.5, 0.5):.10f}")
-    
+
     return An_t
 
 
@@ -1017,7 +1007,11 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
         
         # Explorer les combinaisons (γ, G) non testées
         all_gamma_values = set(round(g, 1) for g in np.linspace(0.1, 1.0, 10))
-        all_G_archs = {'tanh', 'resonance', 'spiral_log', 'adaptive', 'adaptive_aware'}
+        # Seulement les 4 vrais archétypes effectivement émis comme G_arch_used.
+        # 'adaptive_aware' est un alias-secours qui n'apparaît jamais comme
+        # G_arch réel : l'inclure ici rendait 'untested' jamais vide, donc la
+        # branche du mode quantique (create_quantum_gamma) restait dormante.
+        all_G_archs = {'tanh', 'resonance', 'spiral_log', 'adaptive'}
         
         tested_combinations = set(journal['coupled_states'].keys())
         untested = [(g, arch) for g in all_gamma_values for arch in all_G_archs 
@@ -1564,6 +1558,39 @@ def _saturante(x):
     x = np.asarray(x, dtype=float)
     return x / (1.0 + x)
 
+
+def _echelle_attention(err: np.ndarray, eps: float = 1e-9) -> np.ndarray:
+    """
+    Échelle d'attention recentrée à partir d'une erreur relative par strate.
+
+    Gabarit PERCEPTION réutilisable : c'est la mécanique commune à tous les
+    filtres FPS (S(t) aujourd'hui ; innovation, résilience, fluidité… demain).
+    Seul change ce qui entre dans `err` — l'inverse du score de la métrique
+    concernée, par strate. La fonction, elle, ne change pas.
+
+    Deux couches :
+      2. Poids BORNÉ [0.1, 1] : poids_n = 0.1 + 0.9·saturante(err_n / échelle),
+         échelle = max(médiane(err), eps) — seuil ADAPTATIF robuste ("combien
+         de fois plus loin que la norme du groupe à cet instant"). Le plafond 1
+         empêche une strate très éloignée de manger toute la lumière ; le
+         plancher 0.1 garantit que personne n'est jamais réduit au silence.
+      3. Recentrage sur 1 : echelle_n = poids_n / moyenne(poids). La moyenne
+         des poids devient exactement 1 → REDISTRIBUTION d'attention à énergie
+         conservée, ni amplification ni atténuation.
+
+    Args:
+        err: erreur relative par strate (≥ 0), shape (N,)
+        eps: plancher numérique (évite la division par une médiane ~0)
+
+    Returns:
+        np.ndarray (N,) : échelle d'attention, de moyenne 1.
+    """
+    err = np.asarray(err, dtype=float)
+    echelle = max(float(np.median(err)), eps)
+    poids = 0.1 + 0.9 * _saturante(err / echelle)
+    return poids / np.mean(poids)
+
+
 # ============== SIGNAL GLOBAL ==============
 
 def compute_S(t: float, An_array: np.ndarray, fn_array: np.ndarray, 
@@ -1655,12 +1682,8 @@ def compute_S(t: float, An_array: np.ndarray, fn_array: np.ndarray,
         amp = np.maximum(np.abs(np.asarray(An_array, float)), eps)
         err = np.abs(np.asarray(En_t, float) - np.asarray(On_t, float)) / amp
 
-        # 2. poids BORNÉ [0.1,1], seuil adaptatif (médiane robuste)
-        echelle = max(float(np.median(err)), eps)
-        poids   = 0.1 + 0.9 * _saturante(err / echelle)
-
-        # 3. recentrage sur 1 → mean(poids)=1, énergie conservée
-        echelle_n = poids / np.mean(poids)
+        # 2-3. poids borné [0.1,1] + recentrage sur 1 (gabarit réutilisable)
+        echelle_n = _echelle_attention(err, eps)
 
         return float(np.sum(np.asarray(On_t, float) * echelle_n))
     
