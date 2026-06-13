@@ -620,14 +620,17 @@ def run_fps_simulation(config, state, loggers, strict=False):
             else:
                 t_retour = 0.0
             
-            # Calcul résilience continue - pour perturbations non-ponctuelles
-            # Check for perturbations in the new structure
+            # Résilience continue — pour perturbations non-ponctuelles.
             perturbations_list = config.get('system', {}).get('input', {}).get('perturbations', [])
             perturbation_active = len(perturbations_list) > 0 and any(p.get('type', 'none') != 'none' for p in perturbations_list)
-            if len(C_history) >= 20 and len(S_history) >= 20:
+            # On passe le VRAI perturbation_active (avant : True forcé, alors que
+            # la variable était calculée puis ignorée). La fonction décide :
+            # pas de perturbation → 1.0 (maintien optimal) ; sous perturbation
+            # mais < 20 pts → None (verdict suspendu, humilité de démarrage).
+            if hasattr(metrics, 'compute_continuous_resilience'):
                 continuous_resilience = metrics.compute_continuous_resilience(
-                    C_history, S_history, True
-                ) if hasattr(metrics, 'compute_continuous_resilience') else 1.0
+                    C_history, S_history, perturbation_active
+                )
             else:
                 continuous_resilience = 1.0
             
@@ -641,11 +644,14 @@ def run_fps_simulation(config, state, loggers, strict=False):
             adaptive_resilience = 0.0
             adaptive_resilience_score = 3
             if hasattr(metrics, 'compute_adaptive_resilience'):
-                # Créer un dict temporaire avec les métriques actuelles
+                # Créer un dict temporaire avec les métriques actuelles.
+                # Moyenne None-safe : un verdict suspendu (None) ne compte pas.
+                cont_vals = [v for v in (h.get('continuous_resilience') for h in history[-100:]) if v is not None]
+                cont_mean = float(np.mean(cont_vals)) if cont_vals else None
                 current_metrics = {
                     't_retour': t_retour,
                     'continuous_resilience': continuous_resilience,
-                    'continuous_resilience_mean': np.mean([h.get('continuous_resilience', 1.0) for h in history[-100:] if 'continuous_resilience' in h]) if len(history) > 0 else continuous_resilience
+                    'continuous_resilience_mean': cont_mean
                 }
                 
                 # Calculer la résilience adaptative
@@ -716,10 +722,18 @@ def run_fps_simulation(config, state, loggers, strict=False):
             all_metrics['best_pair_G'] = str(best_G) if best_G is not None else ''
             all_metrics['best_pair_score'] = float(best_score) if best_score is not None else float('nan')
             
+            # Résilience : None = verdict suspendu (humilité, sous perturbation
+            # mais pas assez vécu). On le garde comme "donnée absente" (cellule
+            # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
+            for _rk in ('adaptive_resilience', 'continuous_resilience'):
+                if all_metrics.get(_rk) is None:
+                    all_metrics[_rk] = float('nan')
+
             # Appliquer safe_float_conversion à toutes les métriques
             # SAUF les champs textuels et ceux où NaN est intentionnel
-            skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G', 
-                                 'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean'}
+            skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
+                                 'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
+                                 'adaptive_resilience', 'continuous_resilience'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -727,7 +741,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             
             # ----------- 4. VÉRIFICATION NaN/Inf SYSTÉMATIQUE -------------
             # Champs où NaN est intentionnel (= pas de données disponibles)
-            nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean'}
+            nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
+                             'adaptive_resilience', 'continuous_resilience'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -940,8 +955,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
         # Calculer la moyenne de continuous_resilience depuis l'historique
         continuous_resilience_values = []
         for h in history:
-            if 'continuous_resilience' in h:
-                continuous_resilience_values.append(h['continuous_resilience'])
+            v = h.get('continuous_resilience')
+            if v is not None:  # un verdict suspendu (None) ne compte pas
+                continuous_resilience_values.append(v)
         continuous_resilience_mean = np.mean(continuous_resilience_values) if continuous_resilience_values else float(continuous_resilience) if continuous_resilience is not None else 1.0
         
         # Calculer moyennes sur l'historique pour cohérence avec système adaptatif

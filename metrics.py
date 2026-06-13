@@ -530,29 +530,38 @@ def compute_t_retour(S_history: List[float], t_choc: int, dt: float,
     return (len(S_history) - t_choc) * dt
 
 
-def compute_continuous_resilience(C_history: List[float], S_history: List[float], 
-                                 perturbation_active: bool = True) -> float:
+def compute_continuous_resilience(C_history: List[float], S_history: List[float],
+                                 perturbation_active: bool = True) -> Optional[float]:
     """
     Calcule la résilience sous perturbation continue.
-    
+
     Pour une perturbation continue (ex: sinusoïdale), mesure la capacité
     du système à maintenir sa cohérence et stabilité.
-    
+
     Args:
         C_history: historique de la cohérence C(t)
         S_history: historique du signal S(t)
         perturbation_active: si une perturbation est active
-    
+
     Returns:
         float: score de résilience continue [0, 1]
         - 1.0 = excellente résilience (maintien de cohérence)
         - 0.0 = mauvaise résilience (perte de cohérence)
-    
+        None = verdict suspendu (sous perturbation mais pas encore assez vécu)
+
     Note:
-        Métrique complémentaire à t_retour pour perturbations non-ponctuelles
+        Métrique complémentaire à t_retour pour perturbations non-ponctuelles.
+        Distinction volontaire : sans perturbation, le système se maintient de
+        lui-même → résilience optimale (1.0). Sous perturbation mais avec moins
+        de 20 points, on ne sait PAS encore juger → verdict suspendu (None,
+        humilité de démarrage), jamais un optimisme par défaut.
     """
-    if not perturbation_active or len(C_history) < 20:
-        return 1.0  # Pas de perturbation ou pas assez de données
+    if not perturbation_active:
+        # Pas de perturbation : le système se maintient seul → état optimal.
+        return 1.0
+    if len(C_history) < 20:
+        # Sous perturbation mais pas assez vécu pour juger : verdict suspendu.
+        return None
     
     # Utiliser une fenêtre récente
     window_size = min(100, len(C_history))
@@ -602,10 +611,10 @@ def compute_continuous_resilience(C_history: List[float], S_history: List[float]
     return float(np.clip(continuous_resilience, 0.0, 1.0))
 
 
-def compute_adaptive_resilience(config: Dict, metrics: Dict, 
-                               C_history: List[float] = None, 
+def compute_adaptive_resilience(config: Dict, metrics: Dict,
+                               C_history: List[float] = None,
                                S_history: List[float] = None,
-                               t_choc: int = None, dt: float = 0.05) -> Dict[str, Any]:
+                               t_choc: int = None, dt: float = None) -> Dict[str, Any]:
     """
     Calcule la résilience adaptative selon le type de perturbation.
     
@@ -627,6 +636,12 @@ def compute_adaptive_resilience(config: Dict, metrics: Dict,
         - 'score': score normalisé [1-5]
         - 'metric_used': 't_retour' ou 'continuous_resilience'
     """
+    # dt : utiliser l'horloge réelle de la config, jamais un défaut fantôme.
+    # (L'ancien défaut 0.05 ≠ dt=0.1 de la config faussait t_retour si un
+    # appelant oubliait de passer dt.)
+    if dt is None:
+        dt = config.get('system', {}).get('dt', 0.1) if config else 0.1
+
     # Déterminer le type de perturbation
     has_continuous_perturbation = False
     perturbation_type = 'none'
@@ -1046,10 +1061,8 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
     recent_cpu = [h.get('cpu_step(t)', 0) for h in history_slice]
     recent_entropy = [h.get('entropy_S', 0.5) for h in history_slice]
     recent_fluidity = [h.get('fluidity', 1.0) for h in history_slice]
-    recent_C = [h.get('C(t)', 1.0) for h in history_slice]
     recent_adaptive_resilience = [h.get('adaptive_resilience', None) for h in history_slice]
-    recent_continuous_resilience = [h.get('continuous_resilience', None) for h in history_slice]
-    
+
     scores = {}
     
     # Stabilité : basée sur std(S) et variations de C(t)
@@ -1067,43 +1080,22 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
     fluidity_score = 5 if mean_fluidity > 0.9 else 4 if mean_fluidity > 0.7 else 3 if mean_fluidity > 0.5 else 2 if mean_fluidity > 0.3 else 1
     scores['fluidity'] = float(fluidity_score)
     
-    # Résilience : utiliser adaptive_resilience en priorité
-    resilience_score = 3  # Par défaut
-    
-    # D'abord essayer adaptive_resilience
+    # Résilience : UN SEUL miroir honnête — le verdict d'adaptive_resilience,
+    # qui encode déjà le switch ponctuel/continu (t_retour vs continuous).
+    # Plus de cascade par disponibilité (qui ferait scorer deux runs par des
+    # chemins différents), plus de proxy C(t) (qui confondrait cohésion de
+    # chaîne et résilience). Sans verdict (p. ex. sous perturbation mais pas
+    # assez vécu) → neutre 3, jamais une note inventée.
     valid_adaptive_resilience = [r for r in recent_adaptive_resilience if r is not None]
     if valid_adaptive_resilience:
         mean_adaptive_resilience = np.mean(valid_adaptive_resilience)
-        if mean_adaptive_resilience >= 0.90:
-            resilience_score = 5
-        elif mean_adaptive_resilience >= 0.75:
-            resilience_score = 4
-        elif mean_adaptive_resilience >= 0.60:
-            resilience_score = 3
-        elif mean_adaptive_resilience >= 0.40:
-            resilience_score = 2
-        else:
-            resilience_score = 1
-    # Sinon essayer continuous_resilience
-    elif recent_continuous_resilience:
-        valid_continuous_resilience = [r for r in recent_continuous_resilience if r is not None]
-        if valid_continuous_resilience:
-            mean_continuous_resilience = np.mean(valid_continuous_resilience)
-            if mean_continuous_resilience >= 0.90:
-                resilience_score = 5
-            elif mean_continuous_resilience >= 0.75:
-                resilience_score = 4
-            elif mean_continuous_resilience >= 0.60:
-                resilience_score = 3
-            elif mean_continuous_resilience >= 0.40:
-                resilience_score = 2
-            else:
-                resilience_score = 1
-    # En dernier recours, utiliser C(t) comme proxy
+        resilience_score = (5 if mean_adaptive_resilience >= 0.90 else
+                            4 if mean_adaptive_resilience >= 0.75 else
+                            3 if mean_adaptive_resilience >= 0.60 else
+                            2 if mean_adaptive_resilience >= 0.40 else 1)
     else:
-        C_recovery = np.mean(recent_C[-5:]) if len(recent_C) >= 5 else 0.5
-        resilience_score = 5 if C_recovery > 0.9 else 4 if C_recovery > 0.7 else 3 if C_recovery > 0.5 else 2 if C_recovery > 0.3 else 1
-    
+        resilience_score = 3  # Aucun verdict disponible : neutre.
+
     scores['resilience'] = float(resilience_score)
     
     # Innovation : basée sur l'entropie
