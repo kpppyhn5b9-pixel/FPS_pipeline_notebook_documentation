@@ -212,22 +212,22 @@ class TestDynamics(unittest.TestCase):
         On_t = 0.8
         En_t = 0.6
         gamma_t = 0.9
-        error = On_t - En_t
+        error = En_t - On_t  # convention production/catalogue : errorₙ = Eₙ − Oₙ
 
         # Canal AMPLITUDE : βₙ · G(erreur), ici archétype tanh (λ=1).
         G_value = regulation.compute_G(error, 'tanh', {'lambda': 1.0})
         F_A = beta_n * G_value
         self.assertAlmostEqual(F_A, beta_n * np.tanh(error), places=6,
-                               msg="F_Aₙ(t) doit être βₙ·G(On−En)")
+                               msg="F_Aₙ(t) doit être βₙ·G(Eₙ−Oₙ)")
 
         # Canal FRÉQUENCE : βₙ · γ(t).
         F_f = beta_n * gamma_t
         self.assertAlmostEqual(F_f, beta_n * gamma_t, places=6,
                                msg="F_fₙ(t) doit être βₙ·γ(t)")
 
-        # Le design a quitté l'ancienne formule unique βₙ·(On−En)·γ.
+        # Le design a quitté l'ancienne formule unique βₙ·(Eₙ−Oₙ)·γ.
         self.assertNotAlmostEqual(F_A, beta_n * error * gamma_t, places=3,
-                                  msg="Le feedback amplitude n'est plus βₙ·(On−En)·γ")
+                                  msg="Le feedback amplitude n'est plus βₙ·(Eₙ−Oₙ)·γ")
 
 
 class TestRegulation(unittest.TestCase):
@@ -294,7 +294,7 @@ class TestRegulation(unittest.TestCase):
         On_t = 0.8
         En_t = 0.6
         gamma_t = 0.9
-        error = On_t - En_t
+        error = En_t - On_t  # convention production/catalogue : errorₙ = Eₙ − Oₙ
 
         # AMPLITUDE : dépend de l'archétype G.
         F_A_tanh = beta_n * regulation.compute_G(error, 'tanh', {'lambda': 1.0})

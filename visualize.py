@@ -700,13 +700,26 @@ def reconstruct_O_signal(history: List[Dict], config: Dict = None) -> List[float
     if config is not None:
         N = config.get('system', {}).get('N')
 
+    # N peut aussi s'inférer de la longueur d'un 'O' par strate présent dans
+    # l'historique (utile pour le repli On_mean quand config=None).
+    if N is None:
+        for h in history:
+            O_val = h.get('O')
+            if O_val is not None and np.ndim(O_val) > 0:
+                N = len(O_val)
+                break
+
     O_series = []
     for h in history:
-        if 'O' in h and isinstance(h['O'], np.ndarray):
-            # Cas idéal : tableau par strate disponible → somme exacte
-            O_series.append(float(np.sum(h['O'])))
+        O_val = h.get('O')
+        # 'O' par strate : np.ndarray OU liste (deep_convert transforme les
+        # arrays en listes) → somme exacte ΣOₙ. np.ndim gère les deux.
+        if O_val is not None and np.ndim(O_val) > 0:
+            O_series.append(float(np.sum(O_val)))
         elif 'On_mean(t)' in h:
             on_mean = h['On_mean(t)']
+            # ΣOₙ = N · moyenne ; sans N connu, on garde la moyenne (échelle
+            # réduite) faute de mieux.
             O_series.append(float(on_mean * N) if N else float(on_mean))
     return O_series
 
