@@ -612,8 +612,10 @@ def calculate_empirical_scores_notebook(history, config) :
         scores['Fluidité'] = 1
     
     # 4. RÉSILIENCE - basée sur adaptive_resilience
-    resilience_values = [h.get('adaptive_resilience', 0.5) for h in recent_history]
-    mean_resilience = np.mean(resilience_values)
+    # None = verdict suspendu (humilité) → traité comme neutre 0.5, jamais 0.
+    resilience_values = [v if (v := h.get('adaptive_resilience')) is not None else 0.5
+                         for h in recent_history]
+    mean_resilience = np.mean(resilience_values) if resilience_values else 0.5
     if mean_resilience >= 0.9:
         scores['Résilience'] = 5
     elif mean_resilience >= 0.7:
