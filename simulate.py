@@ -159,6 +159,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
     # Initialiser les signaux de feedback à zéro
     F_n_t_An = np.zeros(N)
     F_n_t_fn = np.zeros(N)
+    phase_acc = np.zeros(N)
 
     # Historiques avec limite de mémoire
     MAX_HISTORY_SIZE = config.get('system', {}).get('max_history_size', 10000)
@@ -170,8 +171,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
     En_history = []  # Pour mean_abs_error
     On_history = []  # Pour mean_abs_error
     
-    # NOUVEAU S1: Historique des alignements En ≈ On
-    history_align = []  # Stocke les timestamps où |E-O| < epsilon_E
+    # NOUVEAU S1: Seuil d'alignement En ≈ On (pour log de debug)
     epsilon_E = config.get('regulation', {}).get('epsilon_E', 0.01)  # Seuil d'alignement
     
     # NOUVEAU : État adaptatif pour gamma et G
@@ -340,10 +340,13 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 print(f"⚠️ Erreur calcul phi adaptatif à t={t}: {e}")
                 phi_reg = config.get('regulation', {}).get('phi_fixed_value', 1.618)
             
+            phase_acc += 2 * np.pi * fn_t * dt
+            phase_inst = phase_acc + phi_n_t 
+
             # c) Sorties observée/attendue
             try:
-                On_t = dynamics.compute_On(t, state, An_t, fn_t, phi_n_t, config) if hasattr(dynamics, 'compute_On') else An_t
-                En_t = dynamics.compute_En(t, state, history, config, phi_reg, history_align, effort_history) if hasattr(dynamics, 'compute_En') else An_t
+                On_t = dynamics.compute_On(t, state, An_t, fn_t, phi_n_t, phase_inst, config) if hasattr(dynamics, 'compute_On') else An_t
+                En_t = dynamics.compute_En(t, state, history, config, phi_reg, effort_history) if hasattr(dynamics, 'compute_En') else An_t
             except Exception as e:
                 print(f"⚠️ Erreur compute On/En à t={t}: {e}")
                 On_t = An_t
@@ -391,15 +394,25 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     'beta': regulation_config.get('beta', 2.0)
                 }
                 
+                # « Un style par instant » : la décision de régulation se prend
+                # UNE fois par pas, sur la médiane des erreurs (robuste aux
+                # strates aberrantes), AVANT d'écouter qui que ce soit.
+                G_plan = None
+                if G_arch_mode == 'adaptive_aware':
+                    error_summary = float(np.median(np.abs(En_t - On_t)))
+                    G_plan = dynamics.decide_G_adaptive_aware(
+                        t, gamma_t, adaptive_state['regulation_state'], history, config, error_summary
+                    )
+                
                 for n in range(N):
                     beta_n = state[n]['beta']
                     error_n = En_t[n] - On_t[n]                    
                     # NOUVEAU : Calculer G selon le mode configuré
                     if G_arch_mode == 'adaptive_aware':
-                        # G adaptatif
-                        G_value, G_arch_used, G_params = dynamics.compute_G_adaptive_aware(
-                            error_n, t, gamma_t, adaptive_state['regulation_state'], history, config, True, False
-                        )
+                        # « Une écoute par voix » : G évalué sur l'erreur de CETTE
+                        # strate, params modulés par CETTE erreur (loi unique).
+                        G_value = dynamics.evaluate_G_adaptive_aware(error_n, gamma_t, G_plan)
+                        G_arch_used = G_plan['G_arch_used']
                         G_archs_used.append(G_arch_used)
                     else:
                         # G statique selon config
@@ -426,8 +439,12 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     debug_log_data['G_archs'].append(G_arch_used)
                 
                 # Archétype dominant pour le logging
+                # sorted() : ordre d'itération déterministe — l'ordre d'un set de
+                # strings dépend de PYTHONHASHSEED, donc en cas d'égalité de votes
+                # le tie-break variait d'un process à l'autre (non-reproductible).
+                # Égalité résolue par ordre alphabétique, stable et documenté.
                 if G_archs_used:
-                    G_arch_dominant = max(set(G_archs_used), key=G_archs_used.count)
+                    G_arch_dominant = max(sorted(set(G_archs_used)), key=G_archs_used.count)
                 else:
                     G_arch_dominant = G_arch_mode
 
@@ -454,7 +471,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 config_for_S['state'] = state
                 config_for_S['history'] = history
                 config_for_S['gamma'] = gamma_t
-                S_t = dynamics.compute_S(t, An_t, fn_t, phi_n_t, config_for_S, gamma_n_t=gamma_n_t) if hasattr(dynamics, 'compute_S') else 0.0
+                S_t = dynamics.compute_S(t, An_t, fn_t, phi_n_t, phase_inst, config_for_S, gamma_n_t=gamma_n_t) if hasattr(dynamics, 'compute_S') else 0.0
                 
                 # NOUVEAU : Ajouter S(t) au debug log
                 if 'debug_log_data' in locals():
@@ -590,17 +607,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Calcul mean_abs_error (régulation)
             mean_abs_error = metrics.compute_mean_abs_error(En_t, On_t) if hasattr(metrics, 'compute_mean_abs_error') else np.mean(np.abs(En_t - On_t))
             
-            # NOUVEAU S1: Détecter alignement En ≈ On
+            # NOUVEAU S1: Détecter alignement En ≈ On (log de debug uniquement)
             if mean_abs_error < epsilon_E:
-                history_align.append(t)
-                
-                # Calculer et logger lambda_dyn pour le debug
-                lambda_E = config.get('regulation', {}).get('lambda_E', 0.05)
-                n_alignments = len(history_align)
-                lambda_dyn = lambda_E
-                
                 if config.get('debug', {}).get('log_alignments', False):
-                    print(f"[S1] Alignement #{n_alignments} à t={t:.2f}: |E-O|={mean_abs_error:.4f} < {epsilon_E}, λ_dyn={lambda_dyn:.4f}")
+                    print(f"[S1] Alignement à t={t:.2f}: |E-O|={mean_abs_error:.4f} < {epsilon_E}")
             
             # Calcul mean_high_effort (effort chronique) - nécessite historique
             if len(effort_history) >= 10:
