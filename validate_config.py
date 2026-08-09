@@ -8,7 +8,7 @@ METRIQUES_VALIDES = {
     "t", "S(t)", "A_mean(t)", "f_mean(t)", "effort(t)", "cpu_step(t)",
     "C(t)", "E(t)", "L(t)", "variance_d2S", "fluidity", "entropy_S", "effort_status",
     "mean_abs_error", "mean_high_effort", "d_effort_dt", "t_retour",
-    "max_median_ratio", "A_spiral(t)", "continuous_resilience", "adaptive_resilience",
+    "max_median_ratio", "A_spiral(t)", "continuous_resilience", "mu_Rloc(t)", "resilience_env(t)", "D_excursion(t)", "D_mean(t)", "D_max(t)", "D_rms(t)", "resilience_metric_used", "perception_filter", "adaptive_resilience",
     "En_mean(t)", "On_mean(t)", "gamma", "gamma_mean(t)", "In_mean(t)",
     "An_mean(t)", "fn_mean(t)", "gamma_regime", "G_arch_used",
     "best_pair_gamma", "best_pair_G", "best_pair_score",

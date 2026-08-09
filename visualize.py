@@ -265,7 +265,8 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
         ax4_twin.set_ylabel('Fluidité', color=FPS_COLORS['secondary'])
         ax4_twin.set_ylim(0, 1.1)  # Fluidité entre 0 et 1
     elif 'variance_d2S' in history_dict:
-        # Fallback : calculer fluidity depuis variance_d2S
+        # Fallback LEGACY (anciens CSV sans colonne fluidity) : formule
+        # variance/175 d'avant v3 — ne reflète PAS la fluidité spectrale.
         variance_data = np.array(history_dict['variance_d2S'])
         x = variance_data / 175.0  # Reference variance
         fluidity_data = 1 / (1 + np.exp(5.0 * (x - 1)))
@@ -551,6 +552,8 @@ def plot_amp_freq(history, config) -> plt.Figure :
 # ============== GRILLE EMPIRIQUE ==============
 
 def calculate_empirical_scores_notebook(history, config) :
+    # SOURCE UNIQUE (ré-appliqué 15/07) : barèmes depuis metrics.SCORE_BRACKETS.
+    from metrics import score_from_brackets as _sfb
     """
     Version notebook de calculate_empirical_scores.
     
@@ -572,102 +575,44 @@ def calculate_empirical_scores_notebook(history, config) :
     # 1. STABILITÉ - basée sur la variation du signal
     S_values = [h.get('S(t)', 0) for h in recent_history]
     std_s = np.std(S_values)
-    if std_s < 0.5:
-        scores['Stabilité'] = 5
-    elif std_s < 0.7:
-        scores['Stabilité'] = 4
-    elif std_s < 1.0:
-        scores['Stabilité'] = 3
-    elif std_s < 1.3:
-        scores['Stabilité'] = 2
-    else:
-        scores['Stabilité'] = 1
+    scores['Stabilité'] = _sfb(std_s, 'stability')
     
     # 2. RÉGULATION - basée sur l'erreur moyenne
     errors = [h.get('mean_abs_error', 1.0) for h in recent_history]
     mean_error = np.mean(errors)
-    if mean_error < 0.1:
-        scores['Régulation'] = 5
-    elif mean_error < 0.5:
-        scores['Régulation'] = 4
-    elif mean_error < 1.0:
-        scores['Régulation'] = 3
-    elif mean_error < 1.5:
-        scores['Régulation'] = 2
-    else:
-        scores['Régulation'] = 1
+    scores['Régulation'] = _sfb(mean_error, 'regulation')
     
     # 3. FLUIDITÉ - basée sur la métrique de fluidité
-    fluidity_values = [h.get('fluidity', 0.5) for h in recent_history]
+    # BARÈMES SYNCHRONISÉS avec metrics.compute_scores (lot v3, 14/07/2026).
+    # DETTE CONNUE : ce scoreur est un DUPLICAT de compute_scores — toute
+    # modification de barème doit être faite AUX DEUX endroits (unification
+    # de la source au catalogue, section dettes).
+    fluidity_values = [h.get('fluidity', 0.15) for h in recent_history]
     mean_fluidity = np.mean(fluidity_values)
-    if mean_fluidity >= 0.9:
-        scores['Fluidité'] = 5
-    elif mean_fluidity >= 0.7:
-        scores['Fluidité'] = 4
-    elif mean_fluidity >= 0.5:
-        scores['Fluidité'] = 3
-    elif mean_fluidity >= 0.3:
-        scores['Fluidité'] = 2
-    else:
-        scores['Fluidité'] = 1
+    scores['Fluidité'] = _sfb(mean_fluidity, 'fluidity')
     
     # 4. RÉSILIENCE - basée sur adaptive_resilience
     # None = verdict suspendu (humilité) → traité comme neutre 0.5, jamais 0.
     resilience_values = [v if (v := h.get('adaptive_resilience')) is not None else 0.5
                          for h in recent_history]
     mean_resilience = np.mean(resilience_values) if resilience_values else 0.5
-    if mean_resilience >= 0.9:
-        scores['Résilience'] = 5
-    elif mean_resilience >= 0.7:
-        scores['Résilience'] = 4
-    elif mean_resilience >= 0.5:
-        scores['Résilience'] = 3
-    elif mean_resilience >= 0.3:
-        scores['Résilience'] = 2
-    else:
-        scores['Résilience'] = 1
+    scores['Résilience'] = _sfb(mean_resilience, 'resilience')
     
     # 5. INNOVATION - basée sur l'entropie
     entropy_values = [h.get('entropy_S', 0) for h in recent_history]
     mean_entropy = np.mean(entropy_values)
-    if mean_entropy > 0.8:
-        scores['Innovation'] = 5
-    elif mean_entropy > 0.6:
-        scores['Innovation'] = 4
-    elif mean_entropy > 0.4:
-        scores['Innovation'] = 3
-    elif mean_entropy > 0.3:
-        scores['Innovation'] = 2
-    else:
-        scores['Innovation'] = 1
+    scores['Innovation'] = _sfb(mean_entropy, 'innovation')
     
     # 6. COÛT CPU - basé sur cpu_step
     cpu_values = [h.get('cpu_step(t)', 0.001) for h in recent_history]
     mean_cpu = np.mean(cpu_values)
-    if mean_cpu < 0.001:
-        scores['Coût CPU'] = 5
-    elif mean_cpu < 0.005:
-        scores['Coût CPU'] = 4
-    elif mean_cpu < 0.01:
-        scores['Coût CPU'] = 3
-    elif mean_cpu < 0.05:
-        scores['Coût CPU'] = 2
-    else:
-        scores['Coût CPU'] = 1
+    scores['Coût CPU'] = _sfb(mean_cpu, 'cpu_cost')
     
     # 7. EFFORT INTERNE - basé sur effort(t)
-    effort_values = [h.get('effort(t)', 1.0) for h in recent_history]
+    effort_values = [h.get('effort(t)', 10.0) for h in recent_history]
     mean_effort = np.mean(effort_values)
-    if mean_effort < 0.5:
-        scores['Effort interne'] = 5
-    elif mean_effort < 1.0:
-        scores['Effort interne'] = 4
-    elif mean_effort < 2.0:
-        scores['Effort interne'] = 3
-    elif mean_effort < 5.0:
-        scores['Effort interne'] = 2
-    else:
-        scores['Effort interne'] = 1
+    # Effort = TAUX depuis v3 : seuils x10.
+    scores['Effort interne'] = _sfb(mean_effort, 'effort')
     
     return scores
 
@@ -785,6 +730,47 @@ def compute_signal_quality_scores(signal_series: List[float], dt: float) -> Dict
     return out
 
 
+def build_O_based_history(history: List[Dict], config: Dict = None) -> List[Dict]:
+    """
+    Construit un historique-miroir où les trois métriques dérivées du signal
+    (S(t), variance_d2S/fluidity, entropy_S) sont recalculées sur O(t) brut,
+    avec les MÊMES fenêtres que simulate.py :
+      - variance_d2S : sur tout l'historique O disponible à chaque pas
+      - fluidity     : compute_fluidity(variance_d2S)
+      - entropy_S    : fenêtre des min(50, len) derniers points si len >= 10, sinon 0.1
+
+    Les 4 autres scores (effort, coût CPU, régulation, résilience) sont
+    indépendants du signal observé : leurs colonnes sont conservées telles quelles.
+
+    Permet de produire sur O(t) les mêmes visualisations de scores que sur S(t)
+    (plot_scores_evolution, empirical_grid) — item catalogue.
+    """
+    import metrics as _metrics
+
+    O_series = reconstruct_O_signal(history, config)
+    if len(O_series) < 3:
+        print("⚠️ build_O_based_history : série O(t) indisponible")
+        return []
+
+    dt = (config or {}).get('system', {}).get('dt', 0.1)
+    shadow = []
+    O_running = []
+    for i, h in enumerate(history):
+        h2 = dict(h)
+        O_running.append(O_series[i])
+        h2['S(t)'] = O_series[i]
+        var_d2 = _metrics.compute_variance_d2S(O_running, dt) if len(O_running) >= 3 else 0
+        h2['variance_d2S'] = var_d2
+        h2['fluidity'] = _metrics.compute_fluidity(var_d2)
+        if len(O_running) >= 10:
+            window = O_running[-min(50, len(O_running)):]
+            h2['entropy_S'] = _metrics.compute_entropy_S(window, 1.0 / dt)
+        else:
+            h2['entropy_S'] = 0.1
+        shadow.append(h2)
+    return shadow
+
+
 def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
                               save_path: Optional[str] = None) -> Optional[plt.Figure]:
     """
@@ -873,6 +859,12 @@ def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
         f"{'Stabilité':12s}{S_scores['scores']['Stabilité']:>10d}{O_scores['scores']['Stabilité']:>10d}\n"
         f"{'Fluidité':12s}{S_scores['scores']['Fluidité']:>10d}{O_scores['scores']['Fluidité']:>10d}\n"
         f"{'Innovation':12s}{S_scores['scores']['Innovation']:>10d}{O_scores['scores']['Innovation']:>10d}\n"
+        "──────────────────────────────────────\n"
+        "Seuls ces 3 scores dérivent du signal\n"
+        "observé. Les 4 autres (effort, coût\n"
+        "CPU, régulation, résilience) sont des\n"
+        "métriques système, identiques pour\n"
+        "S(t) et O(t).\n"
     )
     ax.text(0.02, 0.98, txt, transform=ax.transAxes, va='top', ha='left',
             family='monospace', fontsize=11)
@@ -2136,14 +2128,22 @@ Le 0 n'est pas le silence, mais l'équilibre des possibles.
 def visualize_stratum_patterns(history, config, output_dir=None, show=True):
     """
     Crée une visualisation complète des patterns par strate.
-    
+
+    Attend l'history VIVANT d'un run (chaque pas contient les tableaux par
+    strate : 'An', 'O', 'fn', 'phi_n_t', 'S_contrib'). Fonctionne tel quel
+    dans le pipeline. Pour une analyse post-hoc depuis les fichiers disque
+    (qui n'ont que A_n et f_n), utiliser visualize_stratum_patterns_from_csvs.
+    (Docstring corrigée 14/07/2026 : l'ancienne mentionnait un csv_path
+    disparu, trace de la migration depuis le notebook.)
+
     Args:
-        csv_path: Chemin vers le CSV stratum_details
+        history: history vivant du run (liste de dicts par pas)
+        config: configuration du run
         output_dir: Dossier de sortie pour les figures (optionnel)
         show: Afficher les plots (True) ou juste sauvegarder (False)
-    
+
     Returns:
-        dict avec les données analysées
+        dict avec les données analysées, ou None si données par strate absentes
     """
     # 2. Extraire N et créer les arrays
     N = config['system']['N']
@@ -2155,6 +2155,14 @@ def visualize_stratum_patterns(history, config, output_dir=None, show=True):
     S_contrib_data = []
 
     # 3. Remplir depuis history
+    # GARDE (item catalogue, 14/07/2026) : cette fonction exige les données
+    # PAR STRATE ('An', 'O', 'fn'…), présentes dans l'history vivant d'un run
+    # mais PAS dans le CSV global rechargé. Sortie propre plutôt qu'un crash.
+    if not history or not any(len(h.get('An', []) if h.get('An') is not None else []) > 0 for h in history[:5]):
+        print("⚠️ visualize_stratum_patterns : données par strate absentes de l'history "
+              "(history rechargé depuis le CSV global ?). Figure sautée — utiliser "
+              "l'history vivant d'un run, ou reconstruire depuis les fichiers A_n/f_n.")
+        return None
     for h in history:
         t_vals.append(h['t'])
         An_data.append(h.get('An', []))
@@ -2752,7 +2760,11 @@ def export_html_report(all_data: Dict[str, Any], output_path: str) -> None:
         for metric, value in all_data['metrics_summary'].items():
             if isinstance(value, (int, float)):
                 # Formater intelligemment selon la valeur
-                if abs(value) < 0.001 and value != 0:
+                if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
+                    # Verdict non applicable (ex: continuous_resilience au repos,
+                    # par design v2) : affichage honnête, jamais un crash int(NaN).
+                    formatted_value = "n/a"
+                elif abs(value) < 0.001 and value != 0:
                     # Notation scientifique pour les très petites valeurs
                     formatted_value = f"{value:.2e}"
                 elif abs(value) >= 1000000:
@@ -2946,6 +2958,10 @@ def plot_adaptive_resilience(metrics_history: Union[Dict[str, List], List[Dict]]
     if 'adaptive_resilience' in history_dict:
         data = history_dict['adaptive_resilience']
         scores = history_dict.get('adaptive_resilience_score', [3] * len(data))
+        # None = verdict suspendu (humilité de démarrage, v2) -> NaN : matplotlib
+        # trace un trou, et plus aucune arithmétique ne rencontre un None.
+        data = [np.nan if v is None else float(v) for v in data]
+        scores = [3 if v is None else v for v in scores]
         metric_name = "Résilience Adaptative"
         ylabel = "Score unifié [0-1]"
         description = "Métrique unifiée selon le type de perturbation"
@@ -3382,3 +3398,70 @@ def plot_chimera_analysis(history: List[Dict], config: Dict,
 
 
 # Gepetto & Claude & Andréa Gadal 🌀
+
+def visualize_stratum_patterns_from_csvs(logs_dir: str = 'logs', config: Dict = None,
+                                         output_dir: str = None, show: bool = False):
+    """
+    Compagne CSV de visualize_stratum_patterns (item catalogue, 14/07/2026).
+
+    Reconstruit les patterns par strate depuis les fichiers individuels
+    A_n_*.csv et f_n_*.csv écrits par le run. Périmètre honnête : amplitudes
+    et fréquences seulement (O_n, phi_n et S_contrib ne sont pas écrits par
+    strate sur disque — extension possible en config au prix de ~2x le disque).
+
+    Returns:
+        matplotlib figure ou None si les fichiers par strate sont absents.
+    """
+    import glob as _glob
+
+    def _load(prefix):
+        files = sorted(_glob.glob(os.path.join(logs_dir, f'{prefix}_*_run_*.csv')),
+                       key=lambda p: int(os.path.basename(p).split(f'{prefix}_')[1].split('_run')[0]))
+        if not files:
+            return None, None
+        cols = [pd.read_csv(f).iloc[:, 1].values for f in files]
+        t = pd.read_csv(files[0]).iloc[:, 0].values
+        return t, np.column_stack(cols)
+
+    t, A = _load('A_n')
+    _, F = _load('f_n')
+    if A is None or F is None:
+        print(f"⚠️ visualize_stratum_patterns_from_csvs : pas de fichiers A_n/f_n dans {logs_dir}")
+        return None
+
+    N = A.shape[1]
+    sample = list(range(0, N, max(1, N // 6)))[:6]
+    fig, axes = plt.subplots(2, 3, figsize=(16, 8))
+
+    im = axes[0, 0].imshow(A.T, aspect='auto', origin='lower', cmap='viridis',
+                           extent=[t[0], t[-1], 0, N])
+    axes[0, 0].set(title='Aₙ(t) — amplitudes par strate', xlabel='t', ylabel='strate n')
+    plt.colorbar(im, ax=axes[0, 0])
+    for n in sample:
+        axes[0, 1].plot(t, A[:, n], lw=0.8, label=f'n={n}')
+    axes[0, 1].set(title='Aₙ(t) — trajectoires échantillonnées', xlabel='t')
+    axes[0, 1].legend(fontsize=7)
+    axes[0, 2].plot(A[-max(1, len(t)//5):].mean(axis=0), 'o-', ms=3, lw=0.8)
+    axes[0, 2].set(title='profil final Āₙ (dernier cinquième)', xlabel='strate n')
+
+    im = axes[1, 0].imshow(F.T, aspect='auto', origin='lower', cmap='viridis',
+                           extent=[t[0], t[-1], 0, N])
+    axes[1, 0].set(title='fₙ(t) — fréquences par strate', xlabel='t', ylabel='strate n')
+    plt.colorbar(im, ax=axes[1, 0])
+    for n in sample:
+        axes[1, 1].plot(t, F[:, n], lw=0.8, label=f'n={n}')
+    axes[1, 1].set(title='fₙ(t) — trajectoires échantillonnées', xlabel='t')
+    axes[1, 1].legend(fontsize=7)
+    axes[1, 2].plot(F[-max(1, len(t)//5):].mean(axis=0), 'o-', ms=3, lw=0.8)
+    axes[1, 2].set(title='profil final f̄ₙ (dernier cinquième)', xlabel='strate n')
+
+    fig.suptitle('Patterns par strate (reconstruit depuis les CSV A_n / f_n — '
+                 'O_n, φₙ, S_contrib non disponibles sur disque)', fontsize=11)
+    plt.tight_layout()
+    if output_dir:
+        path = os.path.join(output_dir, 'stratum_patterns_from_csvs.png')
+        fig.savefig(path, dpi=130, bbox_inches='tight')
+        print(f"✅ Patterns par strate (CSV) sauvegardés : {path}")
+    if not show:
+        plt.close(fig)
+    return fig
