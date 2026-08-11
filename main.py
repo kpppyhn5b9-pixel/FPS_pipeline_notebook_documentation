@@ -897,13 +897,13 @@ def calculate_empirical_scores(metrics: Dict, config: Dict = None, history: List
                     # Garde NaN (14/07/2026) : un score non calculable (fenêtre
                     # vide, verdict suspendu propagé) tombe sur le neutre 3 au
                     # lieu de faire planter le rapport (int(NaN) -> crash).
-                    'Stabilité': _safe_score(current_scores.get('stability', 3)),
+                    'Dispersion': _safe_score(current_scores.get('dispersion', 3)),
                     'Régulation': _safe_score(current_scores.get('regulation', 3)),
                     'Fluidité': _safe_score(current_scores.get('fluidity', 3)),
                     'Résilience': _safe_score(current_scores.get('resilience', 3)),
                     'Innovation': _safe_score(current_scores.get('innovation', 3)),
                     'Coût CPU': _safe_score(current_scores.get('cpu_cost', 3)),
-                    'Effort interne': _safe_score(current_scores.get('effort', 3))
+                    'Activité': _safe_score(current_scores.get('activite', 3))
                 }
         except Exception as e:
             print(f"  ⚠️ Erreur système adaptatif, fallback : {e}")

@@ -1084,15 +1084,14 @@ def compute_adaptive_window(total_steps: int, target_percentage: float,
 # Consommée par metrics.compute_scores, visualize.calculate_empirical_scores_
 # notebook ET le switch de perception. Toute calibration se fait ICI, une fois.
 # ============================================================================
-# NOMS HONNÊTES (audit de validité, cf. cahier) — clés internes conservées pour
-# ne pas fragiliser 5 fichiers pour zéro changement de comportement :
-#   'stability'  ≡ DISPERSION : écart-type de S = AMPLITUDE des variations, PAS
-#                  la structure. Aveugle à l'ordre. Confirmé DORMANT comme score
-#                  (constant → inoffensif). Le vrai axe "structure" reste ouvert.
-#   'effort'     ≡ ACTIVITÉ : churn des paramètres (taux de changement), PAS du
-#                  stress. Compteur d'activité, pas de souffrance.
+# NOMS HONNÊTES (audit de validité, cf. cahier) — clés RENOMMÉES :
+#   'dispersion' (ex-'stability') : écart-type de S = AMPLITUDE des variations,
+#                  PAS la structure. Aveugle à l'ordre. Score DORMANT (constant →
+#                  inoffensif). Le vrai axe "structure" reste ouvert (cahier).
+#   'activite'   (ex-'effort') : churn des paramètres (taux de changement), PAS
+#                  du stress. Compteur d'activité, pas de souffrance.
 SCORE_BRACKETS = {
-    'stability':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},  # ≡ dispersion (amplitude)
+    'dispersion':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},  # amplitude, pas structure
     'regulation': {'direction': 'lower',  'thresholds': [0.1, 0.3, 0.5, 1.0]},
     # fluidity : mesurée par le JERK de l'enveloppe fₙ (cf. cahier de validation).
     # Seuils calibrés in-situ par balayage d'intensité (repos 0,94 → bruit fort
@@ -1107,7 +1106,7 @@ SCORE_BRACKETS = {
     # permanent des anciens seuils était connu faux ; ceux-ci notent la
     # croisière 3 EN ATTENDANT la certification sur-effort des campagnes
     # (question OUVERTE : l'effort est un compteur d'activité, pas de stress).
-    'effort':     {'direction': 'lower',  'thresholds': [30.0, 45.0, 75.0, 150.0]},
+    'activite':   {'direction': 'lower',  'thresholds': [30.0, 45.0, 75.0, 150.0]},  # ex-'effort' : churn, pas stress
 }
 
 
@@ -1134,13 +1133,13 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
     """
     if len(history_slice) < 3:
         return {
-            'stability': 3.0,
+            'dispersion': 3.0,
             'regulation': 3.0,
             'fluidity': 3.0,
             'resilience': 3.0,
             'innovation': 3.0,
             'cpu_cost': 3.0,
-            'effort': 3.0
+            'activite': 3.0
         }
     
     # Extraire les métriques
@@ -1154,12 +1153,12 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
 
     scores = {}
     
-    # 'stability' ≡ DISPERSION : écart-type de S = AMPLITUDE, pas structure
+    # 'dispersion' ≡ DISPERSION : écart-type de S = AMPLITUDE, pas structure
     # (audit de validité). Score dormant (constant) → inoffensif ; à désactiver
-    # proprement plus tard. La clé reste 'stability' (rename = 5 fichiers, 0 gain).
+    # proprement plus tard. La clé reste 'dispersion' (rename = 5 fichiers, 0 gain).
     std_S = np.std(recent_S) if recent_S else 1.0
-    stability_score = score_from_brackets(std_S, 'stability')
-    scores['stability'] = float(stability_score)  # = dispersion
+    stability_score = score_from_brackets(std_S, 'dispersion')
+    scores['dispersion'] = float(stability_score)  # = dispersion
     
     # Régulation : basée sur l'erreur moyenne
     mean_error = np.mean(recent_errors) if recent_errors else 1.0
@@ -1200,13 +1199,13 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
     cpu_score = score_from_brackets(mean_cpu, 'cpu_cost')
     scores['cpu_cost'] = float(cpu_score)
     
-    # 'effort' ≡ ACTIVITÉ : churn des paramètres (taux de changement), PAS du
-    # stress (audit de validité). Barèmes v3 : taux par unité de temps.
-    # Clé conservée 'effort' (≠ 'effort(t)', le champ de données) pour éviter
-    # la confusion à un caractère près dans un rename multi-fichiers.
+    # 'activite' (ex-'effort') : churn des paramètres (taux de changement), PAS
+    # du stress (audit de validité). Barèmes v3 : taux par unité de temps.
+    # NB : la clé de SCORE est 'activite' ; le champ de DONNÉES loggé reste
+    # 'effort(t)' (lu ci-dessus dans recent_efforts) — deux choses distinctes.
     mean_effort = np.mean(recent_efforts) if recent_efforts else 1.0
-    effort_score = score_from_brackets(mean_effort, 'effort')
-    scores['effort'] = float(effort_score)  # = activité
+    activite_score = score_from_brackets(mean_effort, 'activite')
+    scores['activite'] = float(activite_score)
     
     return scores
 
@@ -1224,13 +1223,13 @@ def weighted_average(scores_by_window: Dict[str, Dict[str, float]], weights: Dic
     """
     if not scores_by_window:
         return {
-            'stability': 3.0,
+            'dispersion': 3.0,
             'regulation': 3.0,
             'fluidity': 3.0,
             'resilience': 3.0,
             'innovation': 3.0,
             'cpu_cost': 3.0,
-            'effort': 3.0
+            'activite': 3.0
         }
     
     # Normaliser les poids pour qu'ils somment à 1
@@ -1241,7 +1240,7 @@ def weighted_average(scores_by_window: Dict[str, Dict[str, float]], weights: Dic
     final_scores = {}
     
     # Pour chaque métrique, calculer la moyenne pondérée
-    metric_names = ['stability', 'regulation', 'fluidity', 'resilience', 'innovation', 'cpu_cost', 'effort']
+    metric_names = ['dispersion', 'regulation', 'fluidity', 'resilience', 'innovation', 'cpu_cost', 'activite']
     
     for metric in metric_names:
         weighted_sum = 0.0
@@ -1274,13 +1273,13 @@ def calculate_all_scores(recent_history: List[Dict], config: Optional[Dict] = No
         # Pas assez d'historique, scores neutres
         return {
             'current': {
-                'stability': 3.0,
+                'dispersion': 3.0,
                 'regulation': 3.0,
                 'fluidity': 3.0,
                 'resilience': 3.0,
                 'innovation': 3.0,
                 'cpu_cost': 3.0,
-                'effort': 3.0
+                'activite': 3.0
             }
         }
     
