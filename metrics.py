@@ -1084,8 +1084,15 @@ def compute_adaptive_window(total_steps: int, target_percentage: float,
 # Consommée par metrics.compute_scores, visualize.calculate_empirical_scores_
 # notebook ET le switch de perception. Toute calibration se fait ICI, une fois.
 # ============================================================================
+# NOMS HONNÊTES (audit de validité, cf. cahier) — clés internes conservées pour
+# ne pas fragiliser 5 fichiers pour zéro changement de comportement :
+#   'stability'  ≡ DISPERSION : écart-type de S = AMPLITUDE des variations, PAS
+#                  la structure. Aveugle à l'ordre. Confirmé DORMANT comme score
+#                  (constant → inoffensif). Le vrai axe "structure" reste ouvert.
+#   'effort'     ≡ ACTIVITÉ : churn des paramètres (taux de changement), PAS du
+#                  stress. Compteur d'activité, pas de souffrance.
 SCORE_BRACKETS = {
-    'stability':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},
+    'stability':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},  # ≡ dispersion (amplitude)
     'regulation': {'direction': 'lower',  'thresholds': [0.1, 0.3, 0.5, 1.0]},
     # fluidity : mesurée par le JERK de l'enveloppe fₙ (cf. cahier de validation).
     # Seuils calibrés in-situ par balayage d'intensité (repos 0,94 → bruit fort
@@ -1147,10 +1154,12 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
 
     scores = {}
     
-    # Stabilité : basée sur std(S) et variations de C(t)
+    # 'stability' ≡ DISPERSION : écart-type de S = AMPLITUDE, pas structure
+    # (audit de validité). Score dormant (constant) → inoffensif ; à désactiver
+    # proprement plus tard. La clé reste 'stability' (rename = 5 fichiers, 0 gain).
     std_S = np.std(recent_S) if recent_S else 1.0
     stability_score = score_from_brackets(std_S, 'stability')
-    scores['stability'] = float(stability_score)
+    scores['stability'] = float(stability_score)  # = dispersion
     
     # Régulation : basée sur l'erreur moyenne
     mean_error = np.mean(recent_errors) if recent_errors else 1.0
@@ -1191,12 +1200,13 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
     cpu_score = score_from_brackets(mean_cpu, 'cpu_cost')
     scores['cpu_cost'] = float(cpu_score)
     
-    # Effort interne
+    # 'effort' ≡ ACTIVITÉ : churn des paramètres (taux de changement), PAS du
+    # stress (audit de validité). Barèmes v3 : taux par unité de temps.
+    # Clé conservée 'effort' (≠ 'effort(t)', le champ de données) pour éviter
+    # la confusion à un caractère près dans un rename multi-fichiers.
     mean_effort = np.mean(recent_efforts) if recent_efforts else 1.0
-    # Barèmes v3 : l'effort est désormais un TAUX (par unité de temps) ;
-    # anciens seuils x10 (équivalence stricte à dt=0.1).
     effort_score = score_from_brackets(mean_effort, 'effort')
-    scores['effort'] = float(effort_score)
+    scores['effort'] = float(effort_score)  # = activité
     
     return scores
 
