@@ -767,7 +767,17 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # FLUIDITÉ SPECTRALE (lot v3) — variance_d2S reste calculée et loggée
             # en diagnostic (legacy, dt-liée), mais ne pilote plus la fluidité.
             _fl_win = max(10, int(round(5.0 / dt)))  # fenêtre de 5 unités de temps
-            fluidity = metrics.compute_fluidity_spectral(S_history[-_fl_win:], dt)
+            # FLUIDITÉ (jerk de l'enveloppe de fréquence fₙ) — validée sur banc de
+            # signaux de référence + calibrée in-situ (cf. cahier de validation).
+            # Mesure la douceur du TEMPO du système (variable lente porteuse de
+            # structure) : O(t) et l'amplitude sont trop nerveux pour ça. Remplace
+            # la fluidité spectrale (qui notait les à-coups « fluides »).
+            if len(fn_history) >= 4:
+                _fmean = np.array([float(np.mean(f)) for f in fn_history[-_fl_win:]], dtype=float)
+                _d1, _d2 = np.diff(_fmean), np.diff(_fmean, 2)
+                fluidity = 1.0 / (1.0 + float(np.std(_d2) / (np.std(_d1) + 1e-12)))
+            else:
+                fluidity = 1.0  # démarrage (<4 pas) : rien de saccadé encore
             
             # Calcul entropy_S (innovation)
             if len(S_history) >= 10:

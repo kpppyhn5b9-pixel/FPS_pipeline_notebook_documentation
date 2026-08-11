@@ -1094,11 +1094,11 @@ def compute_adaptive_window(total_steps: int, target_percentage: float,
 SCORE_BRACKETS = {
     'stability':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},
     'regulation': {'direction': 'lower',  'thresholds': [0.1, 0.3, 0.5, 1.0]},
-    # fluidity : borne du 3 recalibrée EN CAMPAGNE (16/07, 4 seeds : régime
-    # naturel 0.072 ± 0.021, l'ancienne borne 0.08 coupait la distribution en
-    # deux -> papillonnement 2/3 selon la graine). Ancres de Pareto (4 et 5)
-    # inchangées. Le 2 marque désormais une dégradation réelle (< 0.035).
-    'fluidity':   {'direction': 'higher', 'thresholds': [0.55, 0.30, 0.035, 0.015], 'ge': False},
+    # fluidity : mesurée par le JERK de l'enveloppe fₙ (cf. cahier de validation).
+    # Seuils calibrés in-situ par balayage d'intensité (repos 0,94 → bruit fort
+    # 0,78, monotone) pour que toute l'échelle 1-5 soit atteignable :
+    #   repos→5 · bruit1→4 · bruit2→3 · bruit4→2 · bruit≥8→1.
+    'fluidity':   {'direction': 'higher', 'thresholds': [0.91, 0.87, 0.83, 0.80], 'ge': False},
     'resilience': {'direction': 'higher', 'thresholds': [0.90, 0.75, 0.60, 0.40], 'ge': True},
     'innovation': {'direction': 'higher', 'thresholds': [0.8, 0.6, 0.4, 0.2], 'ge': False},
     'cpu_cost':   {'direction': 'lower',  'thresholds': [0.001, 0.01, 0.1, 1.0]},
