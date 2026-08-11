@@ -425,7 +425,7 @@ class TestMetrics(unittest.TestCase):
         
         self.assertEqual(result_punct['type'], 'punctual')
         self.assertEqual(result_punct['metric_used'], 't_retour')
-        self.assertEqual(result_punct['score'], 4)  # t_retour 1.5 → score 4
+        self.assertEqual(result_punct['score'], 5)  # t_retour 1.5 → score 5 (barèmes v2 settling-time : <2.5 → 5)
         
         # Test sans perturbation
         config_none = {'system': {'input': {'perturbations': []}}}

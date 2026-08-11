@@ -531,41 +531,33 @@ def compute_t_retour(S_history: List[float], t_choc: int, dt: float,
     Returns:
         float: temps de retour en unités de temps
     
-    Note:
-        État pré-choc = moyenne de |S(t)| sur fenêtre [t_choc-10*dt, t_choc]
+    Note (v2, settling-time) : on mesure le retour de l'ENVELOPPE (|S| lissé, le
+    NIVEAU) vers la bande pré-choc, et non le |S| INSTANTANÉ vers sa moyenne — un
+    signal oscillant ne se pose jamais sur sa moyenne, l'ancienne version ratait
+    donc le retour (validé sur signaux fabriqués : un retour rapide était noté au
+    pire). Le lissage ajoute ~1 u.t. de latence, intégrée dans les barèmes.
     """
     if t_choc >= len(S_history) or t_choc < 10:
         return 0.0
-    
-    # État pré-choc : moyenne sur EXACTEMENT 10 pas avant le choc
-    pre_shock_window = S_history[max(0, t_choc-10):t_choc]
-    if len(pre_shock_window) == 0:
-        return 0.0
-    
-    # Valeur de référence avant le choc
-    etat_pre_choc = np.mean(np.abs(pre_shock_window))
 
-    # Cas dégénéré : fenêtre quasi nulle (p. ex. S passe par 0)
-    if etat_pre_choc < 1e-6:
-        # Repli : prendre plutôt le max absolu de la même fenêtre
-        etat_pre_choc = np.max(np.abs(pre_shock_window))
+    S_abs = np.abs(np.asarray(S_history, dtype=float))
+    # Enveloppe causale = |S| lissé sur ~une période (le niveau, pas l'oscillation).
+    w = max(5, int(round(1.2 / dt)))
+    env = np.array([float(np.mean(S_abs[max(0, i-w):i+1])) for i in range(len(S_abs))])
 
-    # Si c'est toujours ≈0, on considère que le système n'est pas revenu ;
-    # on renverra la durée totale restante (pénalité maximale)
-    if etat_pre_choc < 1e-6:
+    # Niveau de référence pré-choc (sur la même fenêtre de lissage).
+    base = float(np.mean(env[max(0, t_choc-w):t_choc]))
+    if base < 1e-6:
+        base = float(np.max(env[max(0, t_choc-w):t_choc]))
+    if base < 1e-6:
+        # Signal quasi nul avant le choc : pas de retour mesurable → pénalité max.
         return (len(S_history) - t_choc) * dt
 
-    # Chercher quand |S(t)| revient à ±5 % de l'état pré-choc
-    tolerance = (1 - threshold) * etat_pre_choc
-    
-    for i in range(t_choc + 1, len(S_history)):
-        # Valeur instantanée, pas de moyenne glissante
-        current_value = abs(S_history[i])
-        
-        # Vérifier si on est revenu dans la tolérance
-        if abs(current_value - etat_pre_choc) <= tolerance:
+    tolerance = (1 - threshold) * base
+    for i in range(t_choc + 1, len(env)):
+        if abs(env[i] - base) <= tolerance:
             return (i - t_choc) * dt
-    
+
     # Pas encore revenu à l'équilibre
     return (len(S_history) - t_choc) * dt
 
@@ -776,14 +768,15 @@ def compute_adaptive_resilience(config: Dict, metrics: Dict,
             else:
                 result['value'] = 1.0 / (1.0 + t_retour)
             
-            # Calculer le score 1-5
-            if t_retour < 1.0:
+            # Calculer le score 1-5 — barèmes calibrés pour le t_retour v2
+            # (settling-time : plancher ~2 dû au lissage, cf. balayage tau).
+            if t_retour < 2.5:
                 result['score'] = 5  # Récupération très rapide
-            elif t_retour < 2.0:
+            elif t_retour < 4.0:
                 result['score'] = 4  # Récupération rapide
-            elif t_retour < 5.0:
+            elif t_retour < 7.0:
                 result['score'] = 3  # Récupération modérée
-            elif t_retour < 10.0:
+            elif t_retour < 11.0:
                 result['score'] = 2  # Récupération lente
             else:
                 result['score'] = 1  # Très lente
