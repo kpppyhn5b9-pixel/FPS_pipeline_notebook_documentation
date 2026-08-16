@@ -601,15 +601,22 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     if len(history) >= _Wf:
                         _O_agg = np.array([np.sum(h['O']) for h in history[-_Wf:]])
                         _o_scores = {}
-                        _o_scores['stabilite'] = metrics.score_from_brackets(float(np.std(_O_agg)), 'stability')
-                        _o_scores['fluidite'] = metrics.score_from_brackets(
-                            metrics.compute_fluidity_spectral(_O_agg, dt), 'fluidity')
+                        _o_scores['stabilite'] = metrics.score_from_brackets(float(np.std(_O_agg)), 'dispersion')
+                        # fluidité du switch = MÊME métrique que le score : jerk de
+                        # l'enveloppe fₙ (avant : spectrale sur O, cassée + incohérente).
+                        _fmean_w = np.array([float(np.mean(h['fn'])) for h in history[-_Wf:]])
+                        if len(_fmean_w) >= 4:
+                            _d1w, _d2w = np.diff(_fmean_w), np.diff(_fmean_w, 2)
+                            _flu = 1.0 / (1.0 + float(np.std(_d2w) / (np.std(_d1w) + 1e-12)))
+                        else:
+                            _flu = 1.0
+                        _o_scores['fluidite'] = metrics.score_from_brackets(_flu, 'fluidity')
                         _o_scores['innovation'] = metrics.score_from_brackets(
                             float(metrics.compute_entropy_S(_O_agg, 1.0/dt)), 'innovation')
                         _errs_abs = [np.mean(np.abs(np.asarray(h['E']) - np.asarray(h['O']))) for h in history[-_Wf:]]
                         _o_scores['erreur'] = metrics.score_from_brackets(float(np.mean(_errs_abs)), 'regulation')
                         _o_scores['effort'] = metrics.score_from_brackets(
-                            float(np.mean(effort_history[-_Wf:])) if effort_history else 0.0, 'effort')
+                            float(np.mean(effort_history[-_Wf:])) if effort_history else 0.0, 'activite')
                         # RÉSILIENCE (déverrouillée par Andréa, 15/07 nuit) : son score
                         # EXISTE déjà et est le seul nativement non-contaminé par S —
                         # l'enveloppe lit μ_Rloc/effort/erreur, jamais la perception.
@@ -767,7 +774,17 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # FLUIDITÉ SPECTRALE (lot v3) — variance_d2S reste calculée et loggée
             # en diagnostic (legacy, dt-liée), mais ne pilote plus la fluidité.
             _fl_win = max(10, int(round(5.0 / dt)))  # fenêtre de 5 unités de temps
-            fluidity = metrics.compute_fluidity_spectral(S_history[-_fl_win:], dt)
+            # FLUIDITÉ (jerk de l'enveloppe de fréquence fₙ) — validée sur banc de
+            # signaux de référence + calibrée in-situ (cf. cahier de validation).
+            # Mesure la douceur du TEMPO du système (variable lente porteuse de
+            # structure) : O(t) et l'amplitude sont trop nerveux pour ça. Remplace
+            # la fluidité spectrale (qui notait les à-coups « fluides »).
+            if len(fn_history) >= 4:
+                _fmean = np.array([float(np.mean(f)) for f in fn_history[-_fl_win:]], dtype=float)
+                _d1, _d2 = np.diff(_fmean), np.diff(_fmean, 2)
+                fluidity = 1.0 / (1.0 + float(np.std(_d2) / (np.std(_d1) + 1e-12)))
+            else:
+                fluidity = 1.0  # démarrage (<4 pas) : rien de saccadé encore
             
             # Calcul entropy_S (innovation)
             if len(S_history) >= 10:

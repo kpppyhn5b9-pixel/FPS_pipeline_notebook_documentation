@@ -531,41 +531,33 @@ def compute_t_retour(S_history: List[float], t_choc: int, dt: float,
     Returns:
         float: temps de retour en unités de temps
     
-    Note:
-        État pré-choc = moyenne de |S(t)| sur fenêtre [t_choc-10*dt, t_choc]
+    Note (v2, settling-time) : on mesure le retour de l'ENVELOPPE (|S| lissé, le
+    NIVEAU) vers la bande pré-choc, et non le |S| INSTANTANÉ vers sa moyenne — un
+    signal oscillant ne se pose jamais sur sa moyenne, l'ancienne version ratait
+    donc le retour (validé sur signaux fabriqués : un retour rapide était noté au
+    pire). Le lissage ajoute ~1 u.t. de latence, intégrée dans les barèmes.
     """
     if t_choc >= len(S_history) or t_choc < 10:
         return 0.0
-    
-    # État pré-choc : moyenne sur EXACTEMENT 10 pas avant le choc
-    pre_shock_window = S_history[max(0, t_choc-10):t_choc]
-    if len(pre_shock_window) == 0:
-        return 0.0
-    
-    # Valeur de référence avant le choc
-    etat_pre_choc = np.mean(np.abs(pre_shock_window))
 
-    # Cas dégénéré : fenêtre quasi nulle (p. ex. S passe par 0)
-    if etat_pre_choc < 1e-6:
-        # Repli : prendre plutôt le max absolu de la même fenêtre
-        etat_pre_choc = np.max(np.abs(pre_shock_window))
+    S_abs = np.abs(np.asarray(S_history, dtype=float))
+    # Enveloppe causale = |S| lissé sur ~une période (le niveau, pas l'oscillation).
+    w = max(5, int(round(1.2 / dt)))
+    env = np.array([float(np.mean(S_abs[max(0, i-w):i+1])) for i in range(len(S_abs))])
 
-    # Si c'est toujours ≈0, on considère que le système n'est pas revenu ;
-    # on renverra la durée totale restante (pénalité maximale)
-    if etat_pre_choc < 1e-6:
+    # Niveau de référence pré-choc (sur la même fenêtre de lissage).
+    base = float(np.mean(env[max(0, t_choc-w):t_choc]))
+    if base < 1e-6:
+        base = float(np.max(env[max(0, t_choc-w):t_choc]))
+    if base < 1e-6:
+        # Signal quasi nul avant le choc : pas de retour mesurable → pénalité max.
         return (len(S_history) - t_choc) * dt
 
-    # Chercher quand |S(t)| revient à ±5 % de l'état pré-choc
-    tolerance = (1 - threshold) * etat_pre_choc
-    
-    for i in range(t_choc + 1, len(S_history)):
-        # Valeur instantanée, pas de moyenne glissante
-        current_value = abs(S_history[i])
-        
-        # Vérifier si on est revenu dans la tolérance
-        if abs(current_value - etat_pre_choc) <= tolerance:
+    tolerance = (1 - threshold) * base
+    for i in range(t_choc + 1, len(env)):
+        if abs(env[i] - base) <= tolerance:
             return (i - t_choc) * dt
-    
+
     # Pas encore revenu à l'équilibre
     return (len(S_history) - t_choc) * dt
 
@@ -776,14 +768,15 @@ def compute_adaptive_resilience(config: Dict, metrics: Dict,
             else:
                 result['value'] = 1.0 / (1.0 + t_retour)
             
-            # Calculer le score 1-5
-            if t_retour < 1.0:
+            # Calculer le score 1-5 — barèmes calibrés pour le t_retour v2
+            # (settling-time : plancher ~2 dû au lissage, cf. balayage tau).
+            if t_retour < 2.5:
                 result['score'] = 5  # Récupération très rapide
-            elif t_retour < 2.0:
+            elif t_retour < 4.0:
                 result['score'] = 4  # Récupération rapide
-            elif t_retour < 5.0:
+            elif t_retour < 7.0:
                 result['score'] = 3  # Récupération modérée
-            elif t_retour < 10.0:
+            elif t_retour < 11.0:
                 result['score'] = 2  # Récupération lente
             else:
                 result['score'] = 1  # Très lente
@@ -1091,14 +1084,20 @@ def compute_adaptive_window(total_steps: int, target_percentage: float,
 # Consommée par metrics.compute_scores, visualize.calculate_empirical_scores_
 # notebook ET le switch de perception. Toute calibration se fait ICI, une fois.
 # ============================================================================
+# NOMS HONNÊTES (audit de validité, cf. cahier) — clés RENOMMÉES :
+#   'dispersion' (ex-'stability') : écart-type de S = AMPLITUDE des variations,
+#                  PAS la structure. Aveugle à l'ordre. Score DORMANT (constant →
+#                  inoffensif). Le vrai axe "structure" reste ouvert (cahier).
+#   'activite'   (ex-'effort') : churn des paramètres (taux de changement), PAS
+#                  du stress. Compteur d'activité, pas de souffrance.
 SCORE_BRACKETS = {
-    'stability':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},
+    'dispersion':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},  # amplitude, pas structure
     'regulation': {'direction': 'lower',  'thresholds': [0.1, 0.3, 0.5, 1.0]},
-    # fluidity : borne du 3 recalibrée EN CAMPAGNE (16/07, 4 seeds : régime
-    # naturel 0.072 ± 0.021, l'ancienne borne 0.08 coupait la distribution en
-    # deux -> papillonnement 2/3 selon la graine). Ancres de Pareto (4 et 5)
-    # inchangées. Le 2 marque désormais une dégradation réelle (< 0.035).
-    'fluidity':   {'direction': 'higher', 'thresholds': [0.55, 0.30, 0.035, 0.015], 'ge': False},
+    # fluidity : mesurée par le JERK de l'enveloppe fₙ (cf. cahier de validation).
+    # Seuils calibrés in-situ par balayage d'intensité (repos 0,94 → bruit fort
+    # 0,78, monotone) pour que toute l'échelle 1-5 soit atteignable :
+    #   repos→5 · bruit1→4 · bruit2→3 · bruit4→2 · bruit≥8→1.
+    'fluidity':   {'direction': 'higher', 'thresholds': [0.91, 0.87, 0.83, 0.80], 'ge': False},
     'resilience': {'direction': 'higher', 'thresholds': [0.90, 0.75, 0.60, 0.40], 'ge': True},
     'innovation': {'direction': 'higher', 'thresholds': [0.8, 0.6, 0.4, 0.2], 'ge': False},
     'cpu_cost':   {'direction': 'lower',  'thresholds': [0.001, 0.01, 0.1, 1.0]},
@@ -1107,7 +1106,7 @@ SCORE_BRACKETS = {
     # permanent des anciens seuils était connu faux ; ceux-ci notent la
     # croisière 3 EN ATTENDANT la certification sur-effort des campagnes
     # (question OUVERTE : l'effort est un compteur d'activité, pas de stress).
-    'effort':     {'direction': 'lower',  'thresholds': [30.0, 45.0, 75.0, 150.0]},
+    'activite':   {'direction': 'lower',  'thresholds': [30.0, 45.0, 75.0, 150.0]},  # ex-'effort' : churn, pas stress
 }
 
 
@@ -1134,13 +1133,13 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
     """
     if len(history_slice) < 3:
         return {
-            'stability': 3.0,
+            'dispersion': 3.0,
             'regulation': 3.0,
             'fluidity': 3.0,
             'resilience': 3.0,
             'innovation': 3.0,
             'cpu_cost': 3.0,
-            'effort': 3.0
+            'activite': 3.0
         }
     
     # Extraire les métriques
@@ -1154,10 +1153,12 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
 
     scores = {}
     
-    # Stabilité : basée sur std(S) et variations de C(t)
+    # 'dispersion' ≡ DISPERSION : écart-type de S = AMPLITUDE, pas structure
+    # (audit de validité). Score dormant (constant) → inoffensif ; à désactiver
+    # proprement plus tard. La clé reste 'dispersion' (rename = 5 fichiers, 0 gain).
     std_S = np.std(recent_S) if recent_S else 1.0
-    stability_score = score_from_brackets(std_S, 'stability')
-    scores['stability'] = float(stability_score)
+    stability_score = score_from_brackets(std_S, 'dispersion')
+    scores['dispersion'] = float(stability_score)  # = dispersion
     
     # Régulation : basée sur l'erreur moyenne
     mean_error = np.mean(recent_errors) if recent_errors else 1.0
@@ -1198,12 +1199,13 @@ def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
     cpu_score = score_from_brackets(mean_cpu, 'cpu_cost')
     scores['cpu_cost'] = float(cpu_score)
     
-    # Effort interne
+    # 'activite' (ex-'effort') : churn des paramètres (taux de changement), PAS
+    # du stress (audit de validité). Barèmes v3 : taux par unité de temps.
+    # NB : la clé de SCORE est 'activite' ; le champ de DONNÉES loggé reste
+    # 'effort(t)' (lu ci-dessus dans recent_efforts) — deux choses distinctes.
     mean_effort = np.mean(recent_efforts) if recent_efforts else 1.0
-    # Barèmes v3 : l'effort est désormais un TAUX (par unité de temps) ;
-    # anciens seuils x10 (équivalence stricte à dt=0.1).
-    effort_score = score_from_brackets(mean_effort, 'effort')
-    scores['effort'] = float(effort_score)
+    activite_score = score_from_brackets(mean_effort, 'activite')
+    scores['activite'] = float(activite_score)
     
     return scores
 
@@ -1221,13 +1223,13 @@ def weighted_average(scores_by_window: Dict[str, Dict[str, float]], weights: Dic
     """
     if not scores_by_window:
         return {
-            'stability': 3.0,
+            'dispersion': 3.0,
             'regulation': 3.0,
             'fluidity': 3.0,
             'resilience': 3.0,
             'innovation': 3.0,
             'cpu_cost': 3.0,
-            'effort': 3.0
+            'activite': 3.0
         }
     
     # Normaliser les poids pour qu'ils somment à 1
@@ -1238,7 +1240,7 @@ def weighted_average(scores_by_window: Dict[str, Dict[str, float]], weights: Dic
     final_scores = {}
     
     # Pour chaque métrique, calculer la moyenne pondérée
-    metric_names = ['stability', 'regulation', 'fluidity', 'resilience', 'innovation', 'cpu_cost', 'effort']
+    metric_names = ['dispersion', 'regulation', 'fluidity', 'resilience', 'innovation', 'cpu_cost', 'activite']
     
     for metric in metric_names:
         weighted_sum = 0.0
@@ -1271,13 +1273,13 @@ def calculate_all_scores(recent_history: List[Dict], config: Optional[Dict] = No
         # Pas assez d'historique, scores neutres
         return {
             'current': {
-                'stability': 3.0,
+                'dispersion': 3.0,
                 'regulation': 3.0,
                 'fluidity': 3.0,
                 'resilience': 3.0,
                 'innovation': 3.0,
                 'cpu_cost': 3.0,
-                'effort': 3.0
+                'activite': 3.0
             }
         }
     

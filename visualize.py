@@ -575,7 +575,7 @@ def calculate_empirical_scores_notebook(history, config) :
     # 1. STABILITÉ - basée sur la variation du signal
     S_values = [h.get('S(t)', 0) for h in recent_history]
     std_s = np.std(S_values)
-    scores['Stabilité'] = _sfb(std_s, 'stability')
+    scores['Stabilité'] = _sfb(std_s, 'dispersion')  # 'dispersion' = ex-'stability'
     
     # 2. RÉGULATION - basée sur l'erreur moyenne
     errors = [h.get('mean_abs_error', 1.0) for h in recent_history]
@@ -612,7 +612,7 @@ def calculate_empirical_scores_notebook(history, config) :
     effort_values = [h.get('effort(t)', 10.0) for h in recent_history]
     mean_effort = np.mean(effort_values)
     # Effort = TAUX depuis v3 : seuils x10.
-    scores['Effort interne'] = _sfb(mean_effort, 'effort')
+    scores['Effort interne'] = _sfb(mean_effort, 'activite')  # 'activite' = ex-'effort'
     
     return scores
 
@@ -1018,13 +1018,13 @@ def plot_scores_evolution(history: List[Dict], config: Dict = None,
             
             t_values.append(history[i]['t'])
             
-            scores_dict['Stabilité'].append(current_scores.get('stability', 3))
+            scores_dict['Stabilité'].append(current_scores.get('dispersion', 3))
             scores_dict['Régulation'].append(current_scores.get('regulation', 3))
             scores_dict['Fluidité'].append(current_scores.get('fluidity', 3))
             scores_dict['Résilience'].append(current_scores.get('resilience', 3))
             scores_dict['Innovation'].append(current_scores.get('innovation', 3))
             scores_dict['Coût CPU'].append(current_scores.get('cpu_cost', 3))
-            scores_dict['Effort interne'].append(current_scores.get('effort', 3))
+            scores_dict['Effort interne'].append(current_scores.get('activite', 3))
         except:
             continue
     
