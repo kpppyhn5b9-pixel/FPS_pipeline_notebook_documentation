@@ -353,40 +353,10 @@ def compute_fluidity(variance_d2S: float, reference_variance: float = 175.0) -> 
     return 1 / (1 + np.exp(k * (x - 1)))
 
 
-def compute_fluidity_spectral(S_window, dt: float, cutoff_rel: float = 0.25) -> float:
-    """
-    Fluidité SPECTRALE, sans dimension (lot v3, 14/07/2026).
-
-    Part de la puissance spectrale située sous cutoff_rel x Nyquist :
-    les signaux lisses concentrent leur énergie dans le grave. Invariante
-    à l'échelle d'amplitude et au dt (la coupure est RELATIVE à Nyquist).
-    Remplace compute_fluidity (variance_d2S / 175), dont l'audit dt a montré
-    l'explosion x15.9 à dt=0.05. Partage la logique spectrale d'entropy_S.
-
-    Barèmes associés (compute_scores) informés de la frontière de Pareto
-    entropie-fluidité : le coin « riche dans le grave » (~0.83) -> 5,
-    le spectre uniforme (entropie max, ~0.23) -> 3.
-
-    Args:
-        S_window: fenêtre du signal (>= 10 points recommandé)
-        dt: pas d'échantillonnage
-        cutoff_rel: coupure en fraction de Nyquist (défaut 1/4)
-
-    Returns:
-        float dans [0, 1] ; 1.0 si le signal est plat (aucune énergie = aucune
-        saccade) ; 0.15 (neutre provisoire, score 3) si fenêtre trop courte.
-    """
-    S_window = np.asarray(S_window, dtype=float)
-    if len(S_window) < 10:
-        return 0.15
-    w = S_window - np.mean(S_window)
-    P = np.abs(np.fft.rfft(w)) ** 2
-    total = P.sum()
-    if total < 1e-15:
-        return 1.0
-    freqs = np.fft.rfftfreq(len(w), dt)
-    nyq = 0.5 / dt
-    return float(P[freqs <= cutoff_rel * nyq].sum() / total)
+# compute_fluidity_spectral : SUPPRIMÉE (mise à niveau des métriques, 19/09).
+# Code mort — appelée nulle part. L'audit de validité a montré qu'elle classait
+# les à-coups/le bruit comme « fluides » (elle confond basse fréquence et lissité).
+# Remplacée partout par le jerk de l'enveloppe fₙ (score + switch + déficit par strate).
 
 
 def compute_entropy_S(S_t: Union[float, List[float], np.ndarray], 
