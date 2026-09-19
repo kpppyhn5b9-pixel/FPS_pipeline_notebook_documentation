@@ -137,6 +137,67 @@ on reste **près du flow** (peu d'effort).
 
 ---
 
+## 3bis. Résultats de validation (session 18–19/09) — les trois métriques sont prêtes
+
+Tout validé sur **bancs de signaux de référence** (pur numpy) puis sur les **vrais
+signaux de la FPS**. Résumé de ce qui est *mesuré*, pas supposé.
+
+### La loi transversale : chaque mesure habite une échelle de temps
+Rencontrée **quatre fois** (τ innovation · enveloppe fluidité · lag résilience · pas
+d'échantillonnage CSD). *Si on lit à la mauvaise échelle, on ne voit rien ou on voit
+faux.* Calibration mesurée sur la FPS : deux couches nettes —
+- **couche lente** (enveloppe fₙ, fₙ par strate) : relaxation ~**38 pas** (≈3.8 u.t.),
+  **1 seul pic spectral** → c'est *là* qu'on lit les trois métriques ;
+- **couche rapide** (S(t) global) : décorrèle en ~1 pas, **79 pics** → à éviter.
+Conséquence : lag/τ/fenêtre se règlent **adaptativement** depuis la relaxation mesurée
+(le pôle AR *se calibre lui-même*), jamais en dur.
+
+### Fluidité — jerk de l'enveloppe fₙ ✅
+Banc : min-jerk & sinus lent = fluides ; carré lent (piège), escalier, bruit = non. Le
+**jerk réussit le piège** (carré lent bas), le **spectral échoue** (le note ~0.99). In-FPS :
+discrimine (médiane 0.97, quelques strates saccadées se détachent). *Reste à propager
+au déficit par strate (encore spectral).*
+
+### Innovation — complexité statistique de Jensen-Shannon (Rosso/MPR) ✅
+Banc : entropies & LZ classent le **bruit en haut** (inaptes) ; seule **C_JS** met le
+chaos structuré en haut et le **bruit au plancher** (0.003). Bonus : le **plan (H, C)**
+donne aussi la *direction d'action* — H bas = trop ordonné → relâcher ; H haut = trop
+bruité → lier. In-FPS : plan médian (H≈0.45, C≈0.29) = **intermédiaire**, et sépare les
+strates *clones* (identiques) des *voix différenciées*. *À caler : τ (balayage à faire).*
+
+### Résilience — pôle AR / ralentissement critique (Scheffer) ✅ méthode, ⚠️ in-FPS
+- **Vérité-terrain (AR à pôle connu)** : l'estimateur retrouve φ exactement ; et on a
+  **reproduit + expliqué l'échec passé** — le forçage périodique *écrase* le lag-1 brut
+  (≈0.96 pour tout φ), le **détrend** (retirer les pics dominants) le **répare**.
+- **Bascule-jouet (double-puits)** : autocorr + variance **montent avant le saut**,
+  témoin plat → l'alerte précoce fonctionne (au bon lag).
+- **Dans la FPS : inconcluant, et pas par la faute du radar.** On n'arrive pas à créer
+  d'instabilité (input ⊥ phase ; f0 uniforme → σ tient ; f0+φ compressés → oscillation
+  collective, pas de bascule). Un "signal" sur run unique **ne survit pas à la moyenne
+  sur 4 seeds** → c'était du bruit. Verdict honnête : la FPS est *trop robuste pour
+  basculer* sous nos leviers ; le radar lira "haute résilience, pas de bascule" — et ce
+  sera **vrai**. Un incendie qui n'a pas lieu.
+- Bonus : fusionne t-retour + résilience-continue en **une** quantité (dissout les
+  "5 couches" de la CARTE).
+
+### Anti-faux-positifs : une *règle de décision*, pas un réglage
+Le faux positif (run unique) était **statistique**, pas paramétrique. Sur-régler
+fabriquerait des faux positifs (overfitting). Le rempart = règle conservatrice :
+**(1)** bande de référence (dépasser nettement le calme) · **(2)** tendance sur
+plusieurs fenêtres, jamais un point · **(3)** indicateurs *convergents* (autocorr **et**
+variance **et** dérive de l'observable) · **(4)** moyenner/lisser. C'est le standard des
+signaux d'alerte précoce (écologie/climat). Corollaire : un **gardien σ nerveux** serait
+aussi mauvais que pas de gardien → cette discipline *fait partie* de la stabilité de la
+considération. **Un bon gardien est calme.**
+
+### État
+Trois métriques **bonnes à implanter**. Ce qui les rendra fiables, c'est *comment on
+les lit* (échelle adaptative + règle de décision), pas de nouveaux réglages. Et,
+transversalement : **la chimère est extraordinairement robuste** — on n'a pas réussi à
+la faire basculer, ce qui borne à la fois ses risques et la façon de la piloter.
+
+---
+
 ## 4. Ce que ça sert (les trois ponts)
 
 - **RLHF multi-turn** : le cluster cohérent suit le *focus courant de l'humain* → l'IA
