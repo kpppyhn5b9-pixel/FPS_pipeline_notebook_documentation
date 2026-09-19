@@ -1974,5 +1974,10 @@ def compute_perception_deficit(kind: str, On_win: np.ndarray, An_win: np.ndarray
     if kind == 'innovation':
         # MÊME métrique que le score de référence (metrics.compute_entropy_S),
         # par strate sur Oₙ : déficit = 1 − entropie.
+        # TODO (mise à niveau, note reprise de main) : cible = complexité
+        # statistique C_JS (Jensen-Shannon, Rosso/MPR), validée comme la SEULE
+        # qui met le bruit au plancher. Mais C_JS (permutation) exige une fenêtre
+        # bien plus longue que W_f pour être stable → à câbler avec une fenêtre
+        # élargie/ré-échantillonnée. En attendant : entropie spectrale.
         return np.array([1.0 - float(metrics.compute_entropy_S(On_win[:, n], 1.0 / dt)) for n in range(N)])
     raise ValueError(f"filtre de perception inconnu : {kind}")
