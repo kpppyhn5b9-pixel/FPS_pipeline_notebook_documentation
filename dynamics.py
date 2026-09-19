@@ -763,16 +763,20 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
         journal['exploration_log'].append({'t': t, 'gamma': gamma, 'phase': 'systematic'})
 
         # L'exploration n'est plus aveugle : dès que les scores deviennent
-        # informatifs (≥6 pas, pas 5 : enregistré, mais fenêtre = floor(5/2) = 2 → compute_scores sur 2 points → < 3 → neutre 3.0. Un seul point neutre.), on enregistre le couple (γ, G) réellement observé
-        # au pas précédent et sa performance — même structure et même formule de
+        # informatifs, on enregistre le couple (γ, G) réellement observé au pas
+        # précédent et sa performance — même structure et même formule de
         # synergie que le chemin principal, pour que les combinaisons efficaces
         # du balayage soient repérables après la phase d'exploration.
         if len(history) >= 5:
             obs_G_arch = history[-1].get('G_arch_used', 'tanh')
             obs_gamma = history[-1].get('gamma', gamma)
-            obs_scores = metrics.calculate_all_scores(history, config)
-            # cpu_cost hors pilotage (lot v2) : temps mur non reproductible, saturé.
-            obs_perf = np.mean([v for k, v in obs_scores['current'].items() if k != 'cpu_cost'])
+            # LES SIX MÉTRIQUES DE RÉFÉRENCE, même barème que le switch, cible
+            # S(t) courant (seule exception de cible du pipeline : γ écoute le
+            # signal perçu), fenêtre de référence W_f.
+            _dt = config['system'].get('dt', 0.1)
+            _W = metrics.reference_window(config, _dt)
+            obs_scores = metrics.compute_reference_scores(history[-_W:], _dt, signal='S')
+            obs_perf = np.mean(list(obs_scores.values()))
             obs_key = (round(obs_gamma, 1), obs_G_arch)
 
             if obs_key not in journal['coupled_states']:
@@ -797,15 +801,13 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
     gamma_current = history[-1].get('gamma', 1.0) if history else 1.0
     
     # 2. CALCULER LA PERFORMANCE SYSTÈME
-    # Historique COMPLET : calculate_all_scores fenêtre elle-même (immediate/recent/
-    # medium/global) et a besoin de l'âge réel du run pour la maturité.
-    # L'ancienne troncature [-50:] gelait l'horizon : passé 50 pas, le système
-    # vivait dans un présent perpétuel et la fenêtre "global" n'existait jamais.
-    scores = metrics.calculate_all_scores(history, config)
-    current_scores = scores['current']
-    # cpu_cost hors pilotage (lot v2) : garde sa place dans les logs/figures,
-    # plus dans la moyenne qui pilote gamma.
-    system_performance_score = np.mean([v for k, v in current_scores.items() if k != 'cpu_cost'])
+    # LES SIX MÉTRIQUES DE RÉFÉRENCE (celles du switch de perception), même
+    # barème SCORE_BRACKETS, même fenêtre W_f — mais sur S(t) COURANT : γ est
+    # la seule voix du pipeline qui note le signal perçu, tout le reste note O(t).
+    _dt = config['system'].get('dt', 0.1)
+    _W = metrics.reference_window(config, _dt)
+    current_scores = metrics.compute_reference_scores(history[-_W:], _dt, signal='S')
+    system_performance_score = np.mean(list(current_scores.values()))
     
     # 3. ENREGISTRER L'ÉTAT COUPLÉ (γ, G)
     state_key = (round(gamma_current, 1), current_G_arch)
@@ -977,7 +979,7 @@ def compute_gamma_adaptive_aware(t: float, state: List[Dict], history: List[Dict
             best_synergy = candidate_key
     
     # Vérifier si on est au plateau parfait
-    all_scores_5 = all(score >= 5 for k, score in current_scores.items() if k != 'cpu_cost')
+    all_scores_5 = all(score >= 5 for score in current_scores.values())
     
     if all_scores_5 and best_synergy_score > 4.5:
         # MODE TRANSCENDANT SYNERGIQUE !
@@ -1966,34 +1968,16 @@ def compute_perception_deficit(kind: str, On_win: np.ndarray, An_win: np.ndarray
         iqr = np.maximum(q75 - q25, 1e-9)
         return np.abs(On_win[-1] - med) / iqr
     if kind == 'fluidite':
-        # ALIGNÉ SUR LE SCORE (jerk de l'enveloppe fₙ, validé sur banc de référence) :
-        # le déficit de fluidité = irrégularité du tempo de CHAQUE strate, mesurée sur
-        # sa fréquence fₙ (variable lente), pas sur Oₙ. Ratio std(d²fₙ)/std(d¹fₙ) :
-        # haut = saccadé = peu fluide = fort déficit. Remplace le spectral (dt-lié, que
-        # l'audit a montré faux : il notait les à-coups « fluides »).
-        out = np.zeros(N)
-        for n in range(N):
-            f = fn_win[:, n]
-            d1 = np.diff(f); d2 = np.diff(f, 2)
-            s1 = float(np.std(d1))
-            out[n] = float(np.std(d2) / (s1 + eps)) if s1 > eps else 0.0
-        return out
+        # MÊME métrique que le score de référence (metrics.compute_fluidity =
+        # jerk de l'enveloppe fₙ), par strate : déficit = 1 − fluidité.
+        return np.array([1.0 - metrics.compute_fluidity(fn_win[:, n]) for n in range(N)])
     if kind == 'innovation':
-        # TODO (mise à niveau) : cible = complexité statistique C_JS (Jensen-Shannon,
-        # Rosso/MPR) — validée comme la SEULE qui met le bruit au plancher. Mais C_JS
-        # (permutation) exige une fenêtre bien plus longue que W_f (~50) pour être
-        # stable → à câbler avec une fenêtre élargie/ré-échantillonnée. En attendant,
-        # entropie spectrale conservée (imparfaite, dt-liée) plutôt qu'un C_JS fragile.
-        out = np.zeros(N)
-        for n in range(N):
-            w = On_win[:, n] - On_win[:, n].mean()
-            P = np.abs(np.fft.rfft(w)) ** 2
-            tot = P.sum()
-            if tot < 1e-15:
-                out[n] = 1.0  # plat : pauvre en innovation
-                continue
-            p = P / tot
-            ent = -(p[p > 0] * np.log(p[p > 0])).sum() / max(np.log(len(p)), eps)
-            out[n] = 1.0 - float(ent)
-        return out
+        # MÊME métrique que le score de référence (metrics.compute_entropy_S),
+        # par strate sur Oₙ : déficit = 1 − entropie.
+        # TODO (mise à niveau, note reprise de main) : cible = complexité
+        # statistique C_JS (Jensen-Shannon, Rosso/MPR), validée comme la SEULE
+        # qui met le bruit au plancher. Mais C_JS (permutation) exige une fenêtre
+        # bien plus longue que W_f pour être stable → à câbler avec une fenêtre
+        # élargie/ré-échantillonnée. En attendant : entropie spectrale.
+        return np.array([1.0 - float(metrics.compute_entropy_S(On_win[:, n], 1.0 / dt)) for n in range(N)])
     raise ValueError(f"filtre de perception inconnu : {kind}")

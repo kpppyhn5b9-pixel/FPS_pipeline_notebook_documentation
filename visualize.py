@@ -257,24 +257,12 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
     if 'entropy_S' in history_dict:
         ax4.plot(history_dict['entropy_S'], color=FPS_COLORS['accent'], 
                  linewidth=2, label='Entropie')
-    # Afficher fluidity au lieu de variance_d2S
     if 'fluidity' in history_dict:
         ax4_twin = ax4.twinx()
         ax4_twin.plot(history_dict['fluidity'], color=FPS_COLORS['secondary'], 
                       linewidth=2, alpha=0.7, label='Fluidité')
         ax4_twin.set_ylabel('Fluidité', color=FPS_COLORS['secondary'])
         ax4_twin.set_ylim(0, 1.1)  # Fluidité entre 0 et 1
-    elif 'variance_d2S' in history_dict:
-        # Fallback LEGACY (anciens CSV sans colonne fluidity) : formule
-        # variance/175 d'avant v3 — ne reflète PAS la fluidité spectrale.
-        variance_data = np.array(history_dict['variance_d2S'])
-        x = variance_data / 175.0  # Reference variance
-        fluidity_data = 1 / (1 + np.exp(5.0 * (x - 1)))
-        ax4_twin = ax4.twinx()
-        ax4_twin.plot(fluidity_data, color=FPS_COLORS['secondary'], 
-                      linewidth=2, alpha=0.7, label='Fluidité (calculée)')
-        ax4_twin.set_ylabel('Fluidité', color=FPS_COLORS['secondary'])
-        ax4_twin.set_ylim(0, 1.1)
     ax4.set_title('Innovation & Fluidité', fontweight='bold')
     ax4.set_ylabel('Entropie', color=FPS_COLORS['accent'])
     ax4.grid(True, alpha=0.3)
@@ -551,264 +539,70 @@ def plot_amp_freq(history, config) -> plt.Figure :
 
 # ============== GRILLE EMPIRIQUE ==============
 
-def calculate_empirical_scores_notebook(history, config) :
-    # SOURCE UNIQUE (ré-appliqué 15/07) : barèmes depuis metrics.SCORE_BRACKETS.
-    from metrics import score_from_brackets as _sfb
+def calculate_empirical_scores_notebook(history, config):
     """
-    Version notebook de calculate_empirical_scores.
-    
-    Calcule les scores 1-5 pour chaque critère basé sur l'historique des derniers 20% de la run.
+    Scores 1-5 des SIX métriques de référence sur O(t) brut, fenêtre W_f,
+    barème SCORE_BRACKETS — via metrics.compute_reference_scores, le même
+    scoreur que le switch de perception (rien d'inline, aucun barème local).
+
+    Returns:
+        dict {'Stabilité', 'Régulation', 'Fluidité', 'Résilience',
+              'Innovation', 'Effort interne'} → int 1-5
     """
-    scores = {}
-    
-    if not history or len(history) < 20:
-        print("⚠️ Pas assez de données pour calculer les scores empiriques")
-        return {
-            'Stabilité': 3, 'Régulation': 3, 'Fluidité': 3,
-            'Résilience': 3, 'Innovation': 3, 'Coût CPU': 3, 'Effort interne': 3
-        }
-    
-    # Extraire les métriques des derniers pas
-    last_20_percent = int(len(history) * 0.2)
-    recent_history = history[-last_20_percent:]
-    
-    # 1. STABILITÉ - basée sur la variation du signal
-    S_values = [h.get('S(t)', 0) for h in recent_history]
-    std_s = np.std(S_values)
-    scores['Stabilité'] = _sfb(std_s, 'dispersion')  # 'dispersion' = ex-'stability'
-    
-    # 2. RÉGULATION - basée sur l'erreur moyenne
-    errors = [h.get('mean_abs_error', 1.0) for h in recent_history]
-    mean_error = np.mean(errors)
-    scores['Régulation'] = _sfb(mean_error, 'regulation')
-    
-    # 3. FLUIDITÉ - basée sur la métrique de fluidité
-    # BARÈMES SYNCHRONISÉS avec metrics.compute_scores (lot v3, 14/07/2026).
-    # DETTE CONNUE : ce scoreur est un DUPLICAT de compute_scores — toute
-    # modification de barème doit être faite AUX DEUX endroits (unification
-    # de la source au catalogue, section dettes).
-    fluidity_values = [h.get('fluidity', 0.15) for h in recent_history]
-    mean_fluidity = np.mean(fluidity_values)
-    scores['Fluidité'] = _sfb(mean_fluidity, 'fluidity')
-    
-    # 4. RÉSILIENCE - basée sur adaptive_resilience
-    # None = verdict suspendu (humilité) → traité comme neutre 0.5, jamais 0.
-    resilience_values = [v if (v := h.get('adaptive_resilience')) is not None else 0.5
-                         for h in recent_history]
-    mean_resilience = np.mean(resilience_values) if resilience_values else 0.5
-    scores['Résilience'] = _sfb(mean_resilience, 'resilience')
-    
-    # 5. INNOVATION - basée sur l'entropie
-    entropy_values = [h.get('entropy_S', 0) for h in recent_history]
-    mean_entropy = np.mean(entropy_values)
-    scores['Innovation'] = _sfb(mean_entropy, 'innovation')
-    
-    # 6. COÛT CPU - basé sur cpu_step
-    cpu_values = [h.get('cpu_step(t)', 0.001) for h in recent_history]
-    mean_cpu = np.mean(cpu_values)
-    scores['Coût CPU'] = _sfb(mean_cpu, 'cpu_cost')
-    
-    # 7. EFFORT INTERNE - basé sur effort(t)
-    effort_values = [h.get('effort(t)', 10.0) for h in recent_history]
-    mean_effort = np.mean(effort_values)
-    # Effort = TAUX depuis v3 : seuils x10.
-    scores['Effort interne'] = _sfb(mean_effort, 'activite')  # 'activite' = ex-'effort'
-    
-    return scores
+    if not history:
+        print("⚠️ Pas d'historique pour calculer les scores empiriques")
+        return metrics.labelled_scores(metrics.neutral_reference_scores())
+    dt = (config or {}).get('system', {}).get('dt', 0.1)
+    N = (config or {}).get('system', {}).get('N')
+    W = metrics.reference_window(config, dt)
+    return metrics.labelled_scores(
+        metrics.compute_reference_scores(history[-W:], dt, signal='O', N=N))
 
 
 # ============== SCORES SUR LE SIGNAL BRUT O(t) ==============
-# Les trois scores DÉRIVÉS DU SIGNAL (Stabilité, Fluidité, Innovation) sont
-# normalement calculés sur S(t) — le signal PERÇU (pondéré par l'attention).
-# Ici on calcule EXACTEMENT les mêmes scores, mais sur O(t) — le signal BRUT,
-# non pondéré (Σ Oₙ). Comparer les deux montre ce que la pondération de S(t)
-# change réellement à la qualité perçue du système.
+# Les scores du pipeline sont calculés sur O(t) = ΣOₙ (brut). Seul γ note
+# S(t) perçu. Cette figure montre ce que la pondération perceptive change :
+# les MÊMES six métriques de référence, sur S(t) et sur O(t).
 
 def reconstruct_O_signal(history: List[Dict], config: Dict = None) -> List[float]:
-    """
-    Reconstruit la série O(t) globale = Σₙ Oₙ(t), analogue NON pondéré de S(t).
-
-    S(t) en mode simple vaut exactement Σ Oₙ ; en mode extended c'est
-    Σ Oₙ·echelle_n avec moyenne(echelle_n)=1 (énergie conservée). O(t) global
-    est donc la bonne série à comparer à S(t), à la même échelle.
-
-    On log 'On_mean(t)' (moyenne par strate), donc Σ Oₙ = N · On_mean(t).
-
-    Args:
-        history: liste de dicts de métriques par pas (doit contenir 'On_mean(t)')
-        config: pour récupérer N (sinon, on retombe sur On_mean brut)
-
-    Returns:
-        list[float] : série O(t) globale
-    """
-    N = None
-    if config is not None:
-        N = config.get('system', {}).get('N')
-
-    # N peut aussi s'inférer de la longueur d'un 'O' par strate présent dans
-    # l'historique (utile pour le repli On_mean quand config=None).
-    if N is None:
-        for h in history:
-            O_val = h.get('O')
-            if O_val is not None and np.ndim(O_val) > 0:
-                N = len(O_val)
-                break
-
-    O_series = []
-    for h in history:
-        O_val = h.get('O')
-        # 'O' par strate : np.ndarray OU liste (deep_convert transforme les
-        # arrays en listes) → somme exacte ΣOₙ. np.ndim gère les deux.
-        if O_val is not None and np.ndim(O_val) > 0:
-            O_series.append(float(np.sum(O_val)))
-        elif 'On_mean(t)' in h:
-            on_mean = h['On_mean(t)']
-            # ΣOₙ = N · moyenne ; sans N connu, on garde la moyenne (échelle
-            # réduite) faute de mieux.
-            O_series.append(float(on_mean * N) if N else float(on_mean))
-    return O_series
-
-
-def compute_signal_quality_scores(signal_series: List[float], dt: float) -> Dict:
-    """
-    Scores 1-5 dérivés d'UN signal (S(t) ou O(t)), barèmes identiques au notebook.
-
-    Trois axes que l'on peut lire directement sur la forme du signal :
-      - Stabilité  ← écart-type           (seuils 0.5 / 0.7 / 1.0 / 1.3)
-      - Fluidité   ← fluidity(variance_d2) (seuils 0.9 / 0.7 / 0.5 / 0.3)
-      - Innovation ← entropie spectrale    (seuils 0.8 / 0.6 / 0.4 / 0.3)
-
-    Mêmes fonctions metrics que le moteur (compute_variance_d2S / compute_fluidity
-    / compute_entropy_S), pour une comparaison S(t) vs O(t) à méthode constante.
-
-    Returns:
-        dict {std, variance_d2S, fluidity, entropy, scores:{Stabilité, Fluidité, Innovation}}
-    """
-    series = np.asarray([s for s in signal_series if np.isfinite(s)], dtype=float)
-    out = {
-        'std': float('nan'), 'variance_d2S': float('nan'),
-        'fluidity': float('nan'), 'entropy': float('nan'),
-        'scores': {'Stabilité': 3, 'Fluidité': 3, 'Innovation': 3},
-    }
-    if len(series) < 3:
-        return out
-
-    # On reproduit la fenêtre "derniers 20%" de calculate_empirical_scores_notebook
-    last_20 = max(3, int(len(series) * 0.2))
-    window = series[-last_20:]
-    sampling_rate = 1.0 / dt if dt else 1.0
-
-    std_v = float(np.std(window))
-    var_d2 = float(metrics.compute_variance_d2S(window.tolist(), dt))
-    fluid = float(metrics.compute_fluidity(var_d2))
-    entropy = float(metrics.compute_entropy_S(window.tolist(), sampling_rate))
-
-    out['std'], out['variance_d2S'] = std_v, var_d2
-    out['fluidity'], out['entropy'] = fluid, entropy
-
-    # Stabilité (std faible = stable)
-    if std_v < 0.5:   out['scores']['Stabilité'] = 5
-    elif std_v < 0.7: out['scores']['Stabilité'] = 4
-    elif std_v < 1.0: out['scores']['Stabilité'] = 3
-    elif std_v < 1.3: out['scores']['Stabilité'] = 2
-    else:             out['scores']['Stabilité'] = 1
-
-    # Fluidité (fluidity élevée = fluide)
-    if fluid >= 0.9:   out['scores']['Fluidité'] = 5
-    elif fluid >= 0.7: out['scores']['Fluidité'] = 4
-    elif fluid >= 0.5: out['scores']['Fluidité'] = 3
-    elif fluid >= 0.3: out['scores']['Fluidité'] = 2
-    else:              out['scores']['Fluidité'] = 1
-
-    # Innovation (entropie élevée = innovante)
-    if entropy > 0.8:   out['scores']['Innovation'] = 5
-    elif entropy > 0.6: out['scores']['Innovation'] = 4
-    elif entropy > 0.4: out['scores']['Innovation'] = 3
-    elif entropy > 0.3: out['scores']['Innovation'] = 2
-    else:               out['scores']['Innovation'] = 1
-
-    return out
-
-
-def build_O_based_history(history: List[Dict], config: Dict = None) -> List[Dict]:
-    """
-    Construit un historique-miroir où les trois métriques dérivées du signal
-    (S(t), variance_d2S/fluidity, entropy_S) sont recalculées sur O(t) brut,
-    avec les MÊMES fenêtres que simulate.py :
-      - variance_d2S : sur tout l'historique O disponible à chaque pas
-      - fluidity     : compute_fluidity(variance_d2S)
-      - entropy_S    : fenêtre des min(50, len) derniers points si len >= 10, sinon 0.1
-
-    Les 4 autres scores (effort, coût CPU, régulation, résilience) sont
-    indépendants du signal observé : leurs colonnes sont conservées telles quelles.
-
-    Permet de produire sur O(t) les mêmes visualisations de scores que sur S(t)
-    (plot_scores_evolution, empirical_grid) — item catalogue.
-    """
-    import metrics as _metrics
-
-    O_series = reconstruct_O_signal(history, config)
-    if len(O_series) < 3:
-        print("⚠️ build_O_based_history : série O(t) indisponible")
-        return []
-
-    dt = (config or {}).get('system', {}).get('dt', 0.1)
-    shadow = []
-    O_running = []
-    for i, h in enumerate(history):
-        h2 = dict(h)
-        O_running.append(O_series[i])
-        h2['S(t)'] = O_series[i]
-        var_d2 = _metrics.compute_variance_d2S(O_running, dt) if len(O_running) >= 3 else 0
-        h2['variance_d2S'] = var_d2
-        h2['fluidity'] = _metrics.compute_fluidity(var_d2)
-        if len(O_running) >= 10:
-            window = O_running[-min(50, len(O_running)):]
-            h2['entropy_S'] = _metrics.compute_entropy_S(window, 1.0 / dt)
-        else:
-            h2['entropy_S'] = 0.1
-        shadow.append(h2)
-    return shadow
+    """Série O(t) globale = Σₙ Oₙ(t) (même extraction que le scoreur de référence)."""
+    N = (config or {}).get('system', {}).get('N')
+    return metrics.signal_series(history, 'O', N)
 
 
 def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
                               save_path: Optional[str] = None) -> Optional[plt.Figure]:
     """
-    Compare les scores dérivés du signal calculés sur S(t) (perçu, pondéré)
-    et sur O(t) (brut, non pondéré).
+    Compare les six scores de référence calculés sur S(t) (perçu, pondéré —
+    la cible de γ) et sur O(t) (brut, non pondéré — la cible du switch, des
+    figures et des rapports). Régulation, effort et résilience ne dépendent
+    pas du signal : seuls dispersion, fluidité et innovation peuvent différer.
 
-    4 panneaux :
-      1. S(t) et O(t) superposés dans le temps
-      2. Barres comparées des 3 scores (Stabilité / Fluidité / Innovation)
-      3. Métriques brutes comparées (std, fluidity, entropy)
-      4. Diagnostic textuel chiffré
-
-    Args:
-        history: liste de dicts de métriques par pas
-        config: configuration (N, dt)
-        save_path: si fourni, sauvegarde la figure
-
-    Returns:
-        plt.Figure (ou None si données insuffisantes)
+    4 panneaux : signaux superposés, scores comparés, métriques brutes
+    comparées, diagnostic chiffré.
     """
     if not history or len(history) < 3:
         print("⚠️ Pas assez de données pour comparer les scores S(t) vs O(t)")
         return None
 
     dt = (config or {}).get('system', {}).get('dt', 0.1)
+    N = (config or {}).get('system', {}).get('N')
+    W = metrics.reference_window(config, dt)
+    window = history[-W:]
 
-    S_series = [h.get('S(t)', np.nan) for h in history]
-    O_series = reconstruct_O_signal(history, config)
-
+    S_series = metrics.signal_series(history, 'S')
+    O_series = metrics.signal_series(history, 'O', N)
     if len(O_series) < 3:
         print("⚠️ Série O(t) indisponible (ni 'O' ni 'On_mean(t)' dans l'historique)")
         return None
 
-    S_scores = compute_signal_quality_scores(S_series, dt)
-    O_scores = compute_signal_quality_scores(O_series, dt)
+    raw_S = metrics.compute_reference_metrics(window, dt, signal='S', N=N)
+    raw_O = metrics.compute_reference_metrics(window, dt, signal='O', N=N)
+    sc_S = metrics.labelled_scores(metrics.score_reference_metrics(raw_S))
+    sc_O = metrics.labelled_scores(metrics.score_reference_metrics(raw_O))
 
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle("Scores dérivés du signal — S(t) perçu vs O(t) brut",
+    fig.suptitle("Six métriques de référence — S(t) perçu vs O(t) brut",
                  fontsize=15, fontweight='bold')
 
     # 1. Signaux superposés
@@ -820,54 +614,46 @@ def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
     ax.set_xlabel('t index'); ax.set_ylabel('amplitude')
     ax.legend(); ax.grid(True, alpha=0.3)
 
-    # 2. Barres des 3 scores
+    # 2. Barres des 6 scores
     ax = axes[0, 1]
-    criteria = ['Stabilité', 'Fluidité', 'Innovation']
+    criteria = list(sc_S.keys())
     x = np.arange(len(criteria)); w = 0.38
-    s_vals = [S_scores['scores'][c] for c in criteria]
-    o_vals = [O_scores['scores'][c] for c in criteria]
-    ax.bar(x - w/2, s_vals, w, label='S(t)', color=FPS_COLORS['primary'])
-    ax.bar(x + w/2, o_vals, w, label='O(t)', color=FPS_COLORS['secondary'])
-    ax.set_xticks(x); ax.set_xticklabels(criteria)
+    ax.bar(x - w/2, [sc_S[c] for c in criteria], w, label='S(t)', color=FPS_COLORS['primary'])
+    ax.bar(x + w/2, [sc_O[c] for c in criteria], w, label='O(t)', color=FPS_COLORS['secondary'])
+    ax.set_xticks(x); ax.set_xticklabels(criteria, rotation=20)
     ax.set_ylim(0, 5.5); ax.set_ylabel('Score (1-5)')
-    ax.set_title('Scores 1-5 comparés', fontweight='bold')
+    ax.set_title('Scores 1-5 comparés (fenêtre W_f)', fontweight='bold')
     ax.legend(); ax.grid(True, alpha=0.3, axis='y')
 
-    # 3. Métriques brutes comparées
+    # 3. Métriques brutes qui dépendent du signal
     ax = axes[1, 0]
-    raw = ['std', 'fluidity', 'entropy']
-    x = np.arange(len(raw))
-    s_raw = [S_scores[m] for m in raw]
-    o_raw = [O_scores[m] for m in raw]
-    ax.bar(x - w/2, s_raw, w, label='S(t)', color=FPS_COLORS['primary'])
-    ax.bar(x + w/2, o_raw, w, label='O(t)', color=FPS_COLORS['secondary'])
-    ax.set_xticks(x); ax.set_xticklabels(['écart-type', 'fluidity', 'entropy'])
+    raw_keys = ['dispersion', 'fluidity', 'innovation']
+    x = np.arange(len(raw_keys))
+    ax.bar(x - w/2, [raw_S[k] for k in raw_keys], w, label='S(t)', color=FPS_COLORS['primary'])
+    ax.bar(x + w/2, [raw_O[k] for k in raw_keys], w, label='O(t)', color=FPS_COLORS['secondary'])
+    ax.set_xticks(x); ax.set_xticklabels(['écart-type', 'fluidité (jerk fₙ)', 'entropie'])
     ax.set_title('Métriques brutes comparées', fontweight='bold')
     ax.legend(); ax.grid(True, alpha=0.3, axis='y')
 
     # 4. Diagnostic textuel
     ax = axes[1, 1]; ax.axis('off')
-    txt = (
-        "Diagnostic S(t) (perçu) vs O(t) (brut)\n"
-        "──────────────────────────────────────\n"
-        f"{'':12s}{'S(t)':>10s}{'O(t)':>10s}\n"
-        f"{'std':12s}{S_scores['std']:>10.4f}{O_scores['std']:>10.4f}\n"
-        f"{'var d²':12s}{S_scores['variance_d2S']:>10.4f}{O_scores['variance_d2S']:>10.4f}\n"
-        f"{'fluidity':12s}{S_scores['fluidity']:>10.4f}{O_scores['fluidity']:>10.4f}\n"
-        f"{'entropy':12s}{S_scores['entropy']:>10.4f}{O_scores['entropy']:>10.4f}\n"
-        "──────────────────────────────────────\n"
-        f"{'Stabilité':12s}{S_scores['scores']['Stabilité']:>10d}{O_scores['scores']['Stabilité']:>10d}\n"
-        f"{'Fluidité':12s}{S_scores['scores']['Fluidité']:>10d}{O_scores['scores']['Fluidité']:>10d}\n"
-        f"{'Innovation':12s}{S_scores['scores']['Innovation']:>10d}{O_scores['scores']['Innovation']:>10d}\n"
-        "──────────────────────────────────────\n"
-        "Seuls ces 3 scores dérivent du signal\n"
-        "observé. Les 4 autres (effort, coût\n"
-        "CPU, régulation, résilience) sont des\n"
-        "métriques système, identiques pour\n"
-        "S(t) et O(t).\n"
-    )
-    ax.text(0.02, 0.98, txt, transform=ax.transAxes, va='top', ha='left',
-            family='monospace', fontsize=11)
+    def _f(v):
+        return f"{v:>10.4f}" if v is not None and np.isfinite(v) else f"{'—':>10s}"
+    lines = ["Diagnostic S(t) (perçu) vs O(t) (brut)",
+             "──────────────────────────────────────",
+             f"{'':12s}{'S(t)':>10s}{'O(t)':>10s}"]
+    for k in metrics.REFERENCE_SCORE_KEYS:
+        lines.append(f"{k:12s}{_f(raw_S[k])}{_f(raw_O[k])}")
+    lines.append("──────────────────────────────────────")
+    for c in criteria:
+        lines.append(f"{c:12s}{sc_S[c]:>10d}{sc_O[c]:>10d}")
+    lines += ["──────────────────────────────────────",
+              "γ note S(t) ; switch, figures et",
+              "rapports notent O(t). Régulation,",
+              "effort et résilience ne dépendent",
+              "pas du signal."]
+    ax.text(0.02, 0.98, "\n".join(lines), transform=ax.transAxes, va='top', ha='left',
+            family='monospace', fontsize=10)
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
 
@@ -895,9 +681,8 @@ def create_empirical_grid(scores_dict) -> plt.Figure:
         5: {'icon': '*****', 'color': '#2E86AB', 'label': 'FPS-idéal'}
     }
     
-    # Critères dans l'ordre
-    criteria = ['Stabilité', 'Régulation', 'Fluidité', 'Résilience', 
-                'Innovation', 'Coût CPU', 'Effort interne']
+    # Les six critères de référence, dans l'ordre d'affichage
+    criteria = [metrics.SCORE_KEY_LABELS[k] for k in metrics.REFERENCE_SCORE_KEYS]
     
     # Créer la figure
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -971,108 +756,65 @@ def create_empirical_grid(scores_dict) -> plt.Figure:
 
 # ============== Évolution temporelle des scores empiriques ==============
 
-def plot_scores_evolution(history: List[Dict], config: Dict = None, 
-                         save_path: Optional[str] = None, calculate_all_scores = None) -> tuple:
+def plot_scores_evolution(history: List[Dict], config: Dict = None,
+                          save_path: Optional[str] = None, signal: str = 'O',
+                          calculate_all_scores=None) -> tuple:
     """
-    Affiche l'évolution temporelle de tous les scores empiriques.
-    
-    Crée 7 sous-plots empilés montrant comment chaque critère évolue,
-    avec fond coloré selon le régime et marqueurs des moments importants.
-    
+    Évolution temporelle des six scores de référence, en fenêtre glissante
+    W_f, via metrics.compute_reference_scores (le scoreur du switch).
+
     Args:
         history: historique complet de la simulation
-        config: configuration (pour calculate_all_scores)
+        config: configuration (dt, N, perception.W_f_t)
         save_path: chemin pour sauvegarder la figure
+        signal: 'O' (défaut : brut, comme le switch et les rapports) ou 'S'
+                (perçu, la cible de γ)
+        calculate_all_scores: ignoré (compatibilité d'appel)
+
+    Returns:
+        (fig, t_values, scores_dict) ou None si historique trop court
     """
-    if not history or len(history) < 20:
-        print("⚠️ Pas assez d'historique pour visualiser l'évolution")
-        return
-    
-    print("📊 Génération de l'évolution des scores empiriques...")
-    
-    # Calculer les scores pour chaque timestep
+    dt = (config or {}).get('system', {}).get('dt', 0.1)
+    N = (config or {}).get('system', {}).get('N')
+    W = metrics.reference_window(config, dt)
+    if not history or len(history) < W:
+        print("⚠️ Pas assez d'historique pour visualiser l'évolution des scores")
+        return None
+
+    print(f"📊 Génération de l'évolution des scores de référence (cible {signal})...")
+    labels = [metrics.SCORE_KEY_LABELS[k] for k in metrics.REFERENCE_SCORE_KEYS]
     t_values = []
-    scores_dict = {
-        'Stabilité': [],
-        'Régulation': [],
-        'Fluidité': [],
-        'Résilience': [],
-        'Innovation': [],
-        'Coût CPU': [],
-        'Effort interne': []
-    }
-    
-    # Calculer par fenêtres glissantes
-    window_size = 50
-    for i in range(len(history)):
-        if i < window_size:
-            continue
-        
-        # Fenêtre locale
-        local_history = history[max(0, i-window_size):i+1]
-        
-        try:
-            # Utiliser calculate_all_scores si disponible
-            scores_result = calculate_all_scores(local_history, config)
-            current_scores = scores_result.get('current', {})
-            
-            t_values.append(history[i]['t'])
-            
-            scores_dict['Stabilité'].append(current_scores.get('dispersion', 3))
-            scores_dict['Régulation'].append(current_scores.get('regulation', 3))
-            scores_dict['Fluidité'].append(current_scores.get('fluidity', 3))
-            scores_dict['Résilience'].append(current_scores.get('resilience', 3))
-            scores_dict['Innovation'].append(current_scores.get('innovation', 3))
-            scores_dict['Coût CPU'].append(current_scores.get('cpu_cost', 3))
-            scores_dict['Effort interne'].append(current_scores.get('activite', 3))
-        except:
-            continue
-    
-    if not t_values:
-        print("⚠️ Impossible de calculer les scores")
-        return
-    
-    # Créer la figure
-    fig, axes = plt.subplots(7, 1, figsize=(14, 12), sharex=True)
-    fig.suptitle('Évolution Temporelle des Scores Empiriques FPS', 
+    scores_dict = {lab: [] for lab in labels}
+    for i in range(W - 1, len(history)):
+        sc = metrics.compute_reference_scores(history[i - W + 1:i + 1], dt, signal=signal, N=N)
+        t_values.append(history[i].get('t', i))
+        for k in metrics.REFERENCE_SCORE_KEYS:
+            scores_dict[metrics.SCORE_KEY_LABELS[k]].append(sc[k])
+
+    fig, axes = plt.subplots(len(labels), 1, figsize=(14, 11), sharex=True)
+    fig.suptitle(f"Évolution temporelle des scores de référence (cible {signal}(t), fenêtre W_f)",
                  fontsize=16, fontweight='bold', y=0.995)
-    
-    # Couleurs pour chaque critère
-    colors = {
-        'Stabilité': '#2E86AB',
-        'Régulation': '#2E86AB', 
-        'Fluidité': '#2E86AB',
-        'Résilience': '#87BE3F',
-        'Innovation': '#87BE3F',
-        'Coût CPU': '#FFC43D',
-        'Effort interne': '#FFC43D'
-    }
-    
-    # Tracer chaque score
-    for idx, (criterion, scores) in enumerate(scores_dict.items()):
+    colors = {'Stabilité': '#2E86AB', 'Régulation': '#2E86AB', 'Fluidité': '#2E86AB',
+              'Résilience': '#87BE3F', 'Innovation': '#87BE3F', 'Effort interne': '#FFC43D'}
+    for idx, criterion in enumerate(labels):
         ax = axes[idx]
-        
-        # Ligne du score
+        scores = scores_dict[criterion]
         ax.plot(t_values, scores, color=colors[criterion], linewidth=2, label=criterion)
         ax.fill_between(t_values, scores, 0, alpha=0.2, color=colors[criterion])
-        
-        # Ligne de référence (score parfait = 5)
         ax.axhline(y=5, color='green', linestyle='--', alpha=0.3, linewidth=1)
         ax.axhline(y=4, color='orange', linestyle='--', alpha=0.2, linewidth=0.5)
         ax.axhline(y=3, color='gray', linestyle='--', alpha=0.2, linewidth=0.5)
-        
-        # Configuration
         ax.set_ylabel(criterion, fontweight='bold', fontsize=10)
         ax.set_ylim(0, 5.5)
         ax.grid(True, alpha=0.3, linestyle=':')
         ax.set_yticks([1, 2, 3, 4, 5])
-        
-        # Fond alternant pour lisibilité
         if idx % 2 == 0:
             ax.set_facecolor('#f9f9f9')
-    
-    # X-axis label sur le dernier subplot
     axes[-1].set_xlabel('Temps', fontsize=12, fontweight='bold')
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"✅ Évolution des scores sauvegardée: {save_path}")
 
     return fig, t_values, scores_dict
 
@@ -1594,7 +1336,6 @@ def plot_metrics_evolution(history: List[Dict],
             'Temps Caractéristiques': ['tau_A_mean', 'tau_f_mean', 'tau_S', 'tau_gamma'],
             'Résilience': ['adaptive_resilience', 'continuous_resilience'],
             'Best Pair': ['best_pair_score', 'best_pair_gamma'],
-            'Stabilité' : ['std_S', 'variance_d2S'],
             'Input' : ['In_mean(t)'],
             'Erreur' : ['En_mean(t)', 'On_mean(t)']
         }
@@ -1842,15 +1583,15 @@ def analyze_correlations(history: List[Dict],
         metrics_to_analyze = [
             'S(t)', 'C(t)', 'E(t)',
             'effort(t)', 'entropy_S', 'fluidity',
-            'mean_abs_error', 'variance_d2S', 'std_S',
+            'mean_abs_error',
             'gamma', 'gamma_mean(t)',
             'An_mean(t)', 'fn_mean(t)',
             'En_mean(t)', 'On_mean(t)', 'In_mean(t)',
             'tau_A_mean', 'tau_f_mean', 'tau_S',
             'temporal_coherence', 'adaptive_resilience', 'continuous_resilience',
-            'best_pair_score', 'best_pair_gamma'
+            'best_pair_score', 'best_pair_gamma',
             'decorrelation_time', 'autocorr_tau',
-            'mean_high_effort', 'd_effort_dt', 'max_median_ratio'
+            'mean_high_effort', 'd_effort_dt'
         ]
     
     # Créer un DataFrame avec les métriques
@@ -2873,7 +2614,6 @@ if __name__ == "__main__":
         'effort(t)': effort_fps,
         'cpu_step(t)': 0.01 + 0.005 * np.random.randn(len(t)),
         'entropy_S': 0.5 + 0.1 * np.sin(2 * np.pi * t / 30),
-        'variance_d2S': 0.01 + 0.005 * np.random.randn(len(t)),
         'mean_abs_error': 0.2 * np.exp(-t/50),
         'effort_status': ['stable' if e < 0.7 else 'transitoire' if e < 0.9 else 'chronique' 
                          for e in effort_fps]
@@ -2898,7 +2638,6 @@ if __name__ == "__main__":
         'Fluidité': 5,
         'Résilience': 3,
         'Innovation': 4,
-        'Coût CPU': 2,
         'Effort interne': 3
     }
     fig4 = create_empirical_grid(scores_test)

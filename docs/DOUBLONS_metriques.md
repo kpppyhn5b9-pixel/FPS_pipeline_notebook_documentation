@@ -7,7 +7,70 @@ autrement : fonctions, blocs inline, barèmes, colonnes loggées. Complète
 explique le sens).*
 
 **Vérifié le 2026-09-19**, branche `claude/metrics-py-inventory-glxowx`. Les lignes
-renvoient à cet état du code. Rien n'est supprimé ici : c'est une liste pour décider.
+renvoient à l'état du code AVANT le chantier décrit ci-dessous.
+
+---
+
+## ✅ Chantier de mise à niveau — fait le 19/09/2026 (même branche)
+
+Décisions d'Andréa appliquées : les six métriques du switch sont les seules du
+pipeline ; un seul barème (`SCORE_BRACKETS`) ; gamma note **S(t) courant**, tout le
+reste note **O(t)** ; plus d'inline remplaçable par un appel ; notebook intouché.
+
+**Ce qui existe maintenant (`metrics.py`)**
+
+| Fonction | Rôle |
+|---|---|
+| `reference_window(config, dt)` | LA fenêtre de scoring : `max(10, perception.W_f_t/dt)` |
+| `compute_dispersion`, `compute_fluidity` (jerk de fₙ), `compute_entropy_S`, `compute_mean_abs_error`, `compute_effort`, `compute_adaptive_resilience` | les six valeurs brutes |
+| `compute_reference_metrics(history, dt, signal='O'|'S', N)` | les six valeurs sur une fenêtre |
+| `score_reference_metrics`, `compute_reference_scores` | LE scoreur (barème `SCORE_BRACKETS`, neutre 3 sans verdict) |
+| `FILTER_TO_SCORE_KEY`, `REFERENCE_SCORE_KEYS`, `SCORE_KEY_LABELS`, `labelled_scores` | clés switch ↔ barème ↔ libellés des figures |
+
+**Qui l'appelle** : le switch (`simulate.py`, cible O), `gamma_adaptive_aware`
+(`dynamics.py`, cible S), `visualize.calculate_empirical_scores_notebook`,
+`plot_scores_evolution`, `plot_signal_scores_S_vs_O` (cible O),
+`analyze.analyze_criteria_statistics` (cible O, déclenchement = score <
+`perception.seuil_declenchement`), `compare_modes` (barème), `kuramoto.py`
+(fonctions de référence).
+
+**Supprimé** : `compute_cpu_step` (temps mur) et la colonne `wall_time_step(t)`,
+`compute_variance_d2S` + colonne, l'ancienne `compute_fluidity` sigmoïde et ses
+copies inline (`main.py`, `compare_modes.py`), `compute_fluidity_spectral`,
+`compute_max_median_ratio` + colonne, `check_thresholds`, `log_metrics`,
+`summarize_metrics`, `detect_chaos_events`, `compute_adaptive_window`,
+`compute_scores`, `weighted_average`, `calculate_all_scores`, l'auto-test de
+`metrics.py`, `visualize.compute_signal_quality_scores`, `build_O_based_history`,
+`main.calculate_empirical_scores` et `_safe_score`, `analyze.refine_cpu`, le score
+`cpu_cost` (le coût CPU reste loggé via `compute_cpu_step_deterministic`, seule
+fonction CPU), les barèmes inline de résilience (`_rb` dans `simulate.py`,
+`resilience_v2.score_brackets`, ceux de `compute_adaptive_resilience`), les
+réimplémentations de `kuramoto.py`, les seuils de score de `to_calibrate`
+(`variance_d2S`, `fluidity_threshold`, `stability_ratio`, `resilience`, `entropy_S`,
+`t_retour`, `cpu_step_ctrl`, `max_chaos_events`) et `adaptive_windows.scoring`.
+Gardé : `compute_decorrelation_time`, les dérivés de l'effort (`effort_status`,
+`mean_high_effort`, `d_effort_dt`), les deux producteurs de `adaptive_resilience`.
+
+**Aligné sans supprimer** : `dynamics.compute_perception_deficit` utilise
+`metrics.compute_fluidity` (jerk de fₙ par strate) et `metrics.compute_entropy_S` ;
+la colonne `entropy_S` et la colonne `fluidity` du moteur sont calculées sur la
+fenêtre `W_f` ; `adaptive_resilience_score` passe par `score_from_brackets`.
+
+**Reste ouvert (décisions, pas des doublons)**
+1. La normalisation `1/(1+t_retour)` du chemin ponctuel ne peut pas atteindre les
+   scores 4-5 avec le barème `resilience` (plancher ~2 du settling-time) : à
+   calibrer côté barème ou côté normalisation, pas par un second barème.
+2. `adaptive_resilience` est produite soit par les enveloppes, soit par le chemin
+   typé selon `resilience_v2.mode` ; le switch consomme la colonne quelle que soit
+   la source (cf. `CARTE_metriques.md` §4.4).
+3. Le notebook garde ses copies (hors périmètre).
+
+Validation : 47 tests verts (`test_fps.py`, dont `TestReferenceScores`), pipeline
+complet exécuté sur T=40 (3 simulations, 23 figures, batch, comparaison, rapport).
+
+---
+
+*Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*
 
 ---
 

@@ -322,15 +322,13 @@ class TestMetrics(unittest.TestCase):
             }
         }
     
-    def test_compute_cpu_step(self):
-        """Test du calcul CPU."""
-        start = time.perf_counter()
-        time.sleep(0.01)
-        end = time.perf_counter()
-        
-        cpu = metrics.compute_cpu_step(start, end, 10)
-        self.assertGreater(cpu, 0)
-        self.assertLess(cpu, 1.0)  # Moins d'1 seconde par strate
+    def test_compute_cpu_step_deterministic(self):
+        """Le coût CPU est déterministe, croissant avec N, une seule fonction."""
+        c10 = metrics.compute_cpu_step_deterministic(10)
+        self.assertGreater(c10, 0)
+        self.assertEqual(c10, metrics.compute_cpu_step_deterministic(10))
+        self.assertGreater(metrics.compute_cpu_step_deterministic(100), c10)
+        self.assertEqual(metrics.compute_cpu_step_deterministic(0), 0.0)
     
     def test_compute_effort(self):
         """Test du calcul d'effort."""
@@ -344,43 +342,23 @@ class TestMetrics(unittest.TestCase):
         expected = np.sum(np.abs(delta_An)) + np.sum(np.abs(delta_fn))
         self.assertAlmostEqual(effort, expected, places=6)
     
-    def test_compute_variance_d2S(self):
-        """Test de la variance de d²S/dt²."""
-        # Signal lisse
-        t = np.linspace(0, 10, 100)
-        S_smooth = list(np.sin(t))
-        var_smooth = metrics.compute_variance_d2S(S_smooth, 0.1)
-        
-        # Signal bruité
-        S_noisy = list(np.sin(t) + 0.1 * np.random.randn(100))
-        var_noisy = metrics.compute_variance_d2S(S_noisy, 0.1)
-        
-        # Le signal bruité doit avoir plus de variance
-        self.assertGreater(var_noisy, var_smooth)
-    
     def test_compute_fluidity(self):
-        """Test de la nouvelle métrique de fluidité."""
-        # Test avec variance nulle (fluidité parfaite)
-        fluidity_perfect = metrics.compute_fluidity(0.0)
-        self.assertEqual(fluidity_perfect, 1.0)
-        
-        # Test avec variance de référence (fluidité = 0.5)
-        fluidity_ref = metrics.compute_fluidity(175.0)
-        self.assertAlmostEqual(fluidity_ref, 0.5, places=2)
-        
-        # Test avec variance élevée (fluidité faible)
-        fluidity_low = metrics.compute_fluidity(350.0)
-        self.assertLess(fluidity_low, 0.1)
-        
-        # Test avec variance faible (fluidité élevée)
-        fluidity_high = metrics.compute_fluidity(87.5)
-        self.assertGreater(fluidity_high, 0.9)
-        
-        # Vérifier la monotonie : plus de variance = moins de fluidité
-        variances = [50, 100, 150, 200, 250, 300]
-        fluidities = [metrics.compute_fluidity(v) for v in variances]
-        for i in range(len(fluidities) - 1):
-            self.assertGreater(fluidities[i], fluidities[i+1])
+        """Fluidité de référence = jerk de l'enveloppe fₙ (métrique du switch)."""
+        rng = np.random.RandomState(0)
+        t = np.linspace(0, 10, 100)
+        # Moins de 4 points : rien de saccadé encore
+        self.assertEqual(metrics.compute_fluidity([1.0, 1.0, 1.0]), 1.0)
+        # Tempo qui glisse doucement : très fluide
+        smooth = 1.0 + 0.1 * np.sin(t)
+        f_smooth = metrics.compute_fluidity(smooth)
+        self.assertGreater(f_smooth, 0.9)
+        # Tempo bruité : moins fluide, et borné dans [0, 1]
+        noisy = smooth + 0.05 * rng.randn(100)
+        f_noisy = metrics.compute_fluidity(noisy)
+        self.assertLess(f_noisy, f_smooth)
+        self.assertTrue(0.0 <= f_noisy <= 1.0)
+        # Sans dimension : invariante à l'échelle
+        self.assertAlmostEqual(metrics.compute_fluidity(10 * noisy), f_noisy, places=9)
     
     def test_compute_adaptive_resilience(self):
         """Test de la résilience adaptative."""
@@ -415,6 +393,8 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(result_cont['type'], 'continuous')
         self.assertEqual(result_cont['metric_used'], 'continuous_resilience')
         self.assertEqual(result_cont['value'], 0.85)
+        # UN SEUL barème : celui du switch (SCORE_BRACKETS['resilience'])
+        self.assertEqual(result_cont['score'], metrics.score_from_brackets(0.85, 'resilience'))
         self.assertEqual(result_cont['score'], 4)  # 0.85 → score 4
         
         # Test avec perturbation ponctuelle
@@ -425,7 +405,9 @@ class TestMetrics(unittest.TestCase):
         
         self.assertEqual(result_punct['type'], 'punctual')
         self.assertEqual(result_punct['metric_used'], 't_retour')
-        self.assertEqual(result_punct['score'], 5)  # t_retour 1.5 → score 5 (barèmes v2 settling-time : <2.5 → 5)
+        self.assertAlmostEqual(result_punct['value'], 1.0 / (1.0 + 1.5))
+        # Même barème que le switch, appliqué à la valeur normalisée
+        self.assertEqual(result_punct['score'], metrics.score_from_brackets(result_punct['value'], 'resilience'))
         
         # Test sans perturbation
         config_none = {'system': {'input': {'perturbations': []}}}
@@ -465,6 +447,78 @@ class TestMetrics(unittest.TestCase):
         self.assertIn(status, ["chronique", "transitoire"])
 
 
+class TestReferenceScores(unittest.TestCase):
+    """Le scoreur unique du pipeline : six métriques, une fenêtre, un barème."""
+
+    @staticmethod
+    def _history(n=60, N=3, dt=0.1, seed=1):
+        rng = np.random.RandomState(seed)
+        hist = []
+        for i in range(n):
+            t = i * dt
+            O = np.array([np.sin(t + k) for k in range(N)])
+            E = O + 0.05 * rng.randn(N)
+            fn = 1.0 + 0.1 * np.sin(t / 3) + np.zeros(N)
+            hist.append({
+                't': t, 'S(t)': float(np.sum(O)) * 0.5, 'O': O, 'E': E, 'fn': fn,
+                'mean_abs_error': float(np.mean(np.abs(E - O))),
+                'effort(t)': 20.0 + rng.rand(), 'adaptive_resilience': 0.8,
+                'On_mean(t)': float(np.mean(O)), 'fn_mean(t)': float(np.mean(fn)),
+            })
+        return hist
+
+    def test_reference_window_single_source(self):
+        self.assertEqual(metrics.reference_window({'perception': {'W_f_t': 5}}, 0.1), 50)
+        self.assertEqual(metrics.reference_window({}, 0.1), 50)
+        self.assertEqual(metrics.reference_window({'perception': {'W_f_t': 0.2}}, 0.1), 10)
+
+    def test_scores_keys_and_range(self):
+        hist = self._history()
+        for signal in ('O', 'S'):
+            sc = metrics.compute_reference_scores(hist[-50:], 0.1, signal=signal, N=3)
+            self.assertEqual(tuple(sc.keys()), metrics.REFERENCE_SCORE_KEYS)
+            self.assertTrue(all(1 <= v <= 5 for v in sc.values()))
+        self.assertEqual(set(metrics.FILTER_TO_SCORE_KEY.values()), set(metrics.REFERENCE_SCORE_KEYS))
+        self.assertEqual(metrics.compute_reference_scores([], 0.1), metrics.neutral_reference_scores())
+
+    def test_raw_values_match_reference_functions(self):
+        hist = self._history()[-50:]
+        raw = metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)
+        O_series = [float(np.sum(h['O'])) for h in hist]
+        self.assertAlmostEqual(raw['dispersion'], float(np.std(O_series)))
+        self.assertAlmostEqual(raw['fluidity'], metrics.compute_fluidity([float(np.mean(h['fn'])) for h in hist]))
+        self.assertAlmostEqual(raw['innovation'], float(metrics.compute_entropy_S(O_series, 10.0)))
+        self.assertAlmostEqual(raw['regulation'], float(np.mean([h['mean_abs_error'] for h in hist])))
+        self.assertAlmostEqual(raw['activite'], float(np.mean([h['effort(t)'] for h in hist])))
+        self.assertAlmostEqual(raw['resilience'], 0.8)
+        self.assertEqual(metrics.score_reference_metrics(raw)['resilience'],
+                         metrics.score_from_brackets(0.8, 'resilience'))
+
+    def test_signal_target_changes_only_signal_metrics(self):
+        hist = self._history()[-50:]
+        raw_O = metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)
+        raw_S = metrics.compute_reference_metrics(hist, 0.1, signal='S', N=3)
+        for k in ('fluidity', 'regulation', 'activite', 'resilience'):
+            self.assertEqual(raw_O[k], raw_S[k])
+        self.assertNotEqual(raw_O['dispersion'], raw_S['dispersion'])
+
+    def test_csv_like_rows_use_On_mean(self):
+        hist = self._history()[-50:]
+        rows = [{k: v for k, v in h.items() if k not in ('O', 'E', 'fn')} for h in hist]
+        raw_full = metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)
+        raw_rows = metrics.compute_reference_metrics(rows, 0.1, signal='O', N=3)
+        self.assertAlmostEqual(raw_full['dispersion'], raw_rows['dispersion'])
+        self.assertAlmostEqual(raw_full['fluidity'], raw_rows['fluidity'])
+
+    def test_no_resilience_verdict_is_neutral(self):
+        hist = self._history()[-50:]
+        for h in hist:
+            h['adaptive_resilience'] = None
+        sc = metrics.compute_reference_scores(hist, 0.1, signal='O', N=3)
+        self.assertEqual(sc['resilience'], metrics.NEUTRAL_SCORE)
+        self.assertEqual(set(metrics.labelled_scores(sc).keys()), set(metrics.SCORE_KEY_LABELS.values()))
+
+
 class TestValidateConfig(unittest.TestCase):
     """Tests pour le module validate_config.py"""
     
@@ -498,17 +552,17 @@ class TestValidateConfig(unittest.TestCase):
         
         try:
             success = validate_config.update_config_threshold(
-                config, 'variance_d2S', 0.02, 'Test', changelog_path
+                config, 'mean_high_effort', 3.5, 'Test', changelog_path
             )
             
             self.assertTrue(success)
-            self.assertEqual(config['to_calibrate']['variance_d2S'], 0.02)
+            self.assertEqual(config['to_calibrate']['mean_high_effort'], 3.5)
             
             # Vérifier le changelog
             with open(changelog_path, 'r') as f:
                 content = f.read()
-                self.assertIn('variance_d2S', content)
-                self.assertIn('0.02', content)
+                self.assertIn('mean_high_effort', content)
+                self.assertIn('3.5', content)
         finally:
             os.unlink(changelog_path)
 
@@ -816,6 +870,7 @@ def run_all_tests():
         TestDynamics,
         TestRegulation,
         TestMetrics,
+        TestReferenceScores,
         TestValidateConfig,
         TestPerturbations,
         TestAnalyze,

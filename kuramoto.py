@@ -21,12 +21,12 @@ Ce contrôle permet de montrer que la FPS apporte :
 """
 
 import numpy as np
-import time
 import csv
 import os
 from typing import Dict, List, Tuple, Optional, Any
 import json
 from utils import deep_convert
+import metrics
 
 
 def kuramoto_step(phases: np.ndarray, frequencies: np.ndarray, 
@@ -140,8 +140,6 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
     
     # Boucle de simulation
     for step, t in enumerate(t_array):
-        step_start = time.perf_counter()
-        
         # Application de la perturbation (sur les fréquences)
         freq_perturbed = frequencies.copy()
         if pert_type == 'choc' and abs(t - pert_t0) < dt:
@@ -175,8 +173,8 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
             C_t = 1.0
         C_history.append(C_t)
         
-        # Temps CPU
-        cpu_step = (time.perf_counter() - step_start) / N
+        # Coût CPU : la même fonction déterministe que la FPS
+        cpu_step = metrics.compute_cpu_step_deterministic(N)
         cpu_steps.append(cpu_step)
         
         # Métriques compatibles FPS
@@ -191,13 +189,12 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
             'A_mean(t)': 1.0,  # Amplitude fixe
             'f_mean(t)': np.mean(frequencies),
             'effort_status': 'stable',
-            'variance_d2S': 0.0,  # À calculer si nécessaire
-            'entropy_S': 0.0,     # À calculer si nécessaire
+            'fluidity': 1.0,      # fₙ fixe : rien de saccadé
+            'entropy_S': 0.0,     # calculée en fin de run
             'mean_abs_error': 0.0,  # Pas de régulation
             'mean_high_effort': 0.0,
             'd_effort_dt': 0.0,
             't_retour': 0.0,
-            'max_median_ratio': 1.0,
             'continuous_resilience': 1.0  # Valeur par défaut
         }
         
@@ -240,57 +237,25 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
     print(f"  - CPU moyen: {np.mean(cpu_steps)*1000:.3f} ms/step")
     print(f"  - Signal S(t): μ={np.mean(S_history):.3f}, σ={np.std(S_history):.3f}")
     
-    # Calculer des métriques supplémentaires pour comparaison
-    from scipy import signal as scipy_signal
+    # Métriques de comparaison : LES fonctions de référence de metrics.py,
+    # exactement celles de la FPS (rien de recalculé en local).
+    W = metrics.reference_window(config, dt)
+    entropy_S = float(metrics.compute_entropy_S(S_history[-W:], 1.0 / dt)) if len(S_history) >= 10 else 0.5
+    final_fluidity = metrics.compute_fluidity([np.mean(frequencies)] * min(len(S_history), W))
     
-    # Variance de d²S/dt²
-    if len(S_history) >= 3:
-        dS_dt = np.gradient(S_history, dt)
-        d2S_dt2 = np.gradient(dS_dt, dt)
-        variance_d2S = np.var(d2S_dt2)
-    else:
-        variance_d2S = 0.0
-    
-    # Entropie spectrale
-    if len(S_history) >= 10:
-        freqs, psd = scipy_signal.periodogram(S_history, 1/dt)
-        psd_norm = psd / np.sum(psd)
-        psd_norm = psd_norm + 1e-15  # Éviter log(0)
-        entropy_S = -np.sum(psd_norm * np.log(psd_norm))
-        entropy_S = entropy_S / np.log(len(psd_norm))  # Normaliser
-    else:
-        entropy_S = 0.5
-    
-    # Temps de retour après perturbation
+    # Temps de retour après perturbation (même settling-time que la FPS)
     if pert_type != 'none' and pert_t0 < T/2:
-        t_choc_idx = int(pert_t0 / dt)
-        pre_shock_mean = np.mean(order_params[max(0, t_choc_idx-50):t_choc_idx])
-        
-        # Chercher le retour à 95% de la valeur pré-choc
-        t_retour = 0.0
-        for i in range(t_choc_idx, len(order_params)):
-            if abs(order_params[i] - pre_shock_mean) < 0.05 * pre_shock_mean:
-                t_retour = (i - t_choc_idx) * dt
-                break
+        t_retour = metrics.compute_t_retour(S_history, int(pert_t0 / dt), dt)
     else:
         t_retour = 0.0
     
     # Résilience continue pour perturbations non-ponctuelles
-    if pert_type in ['sinus', 'bruit', 'rampe'] and len(C_history) >= 20:
-        # Import de la fonction si disponible
-        try:
-            from metrics import compute_continuous_resilience
-            continuous_resilience = compute_continuous_resilience(
-                C_history, S_history, perturbation_active=True
-            )
-        except:
-            # Calcul simplifié si la fonction n'est pas disponible
-            C_mean = np.mean(C_history[-100:]) if len(C_history) >= 100 else np.mean(C_history)
-            C_std = np.std(C_history[-100:]) if len(C_history) >= 100 else np.std(C_history)
-            stability_score = C_mean / (1 + C_std) if C_mean > 0 else 0.0
-            continuous_resilience = min(1.0, stability_score)
+    if pert_type in ['sinus', 'bruit', 'rampe']:
+        continuous_resilience = metrics.compute_continuous_resilience(
+            C_history, S_history, perturbation_active=True
+        )
     else:
-        continuous_resilience = 0.5  # Valeur par défaut pour Kuramoto
+        continuous_resilience = None  # pas de perturbation continue : pas de verdict
     
     # Résultats finaux
     results = {
@@ -302,7 +267,7 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
             'std_C': np.std(C_history),
             'mean_cpu_step': np.mean(cpu_steps),
             'final_order': order_params[-1],
-            'variance_d2S': variance_d2S,
+            'final_fluidity': float(final_fluidity),
             'entropy_S': entropy_S,
             't_retour': t_retour,
             'mean_effort': 0.0,  # Toujours 0 pour Kuramoto

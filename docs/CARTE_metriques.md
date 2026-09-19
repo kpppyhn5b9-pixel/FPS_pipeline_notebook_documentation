@@ -10,6 +10,15 @@ ont été vérifiées dans le code, pas recopiées de mémoire.*
 **Dernière vérification : 2026-09-17** (branche `claude/eager-dirac-8emh3h`, alignée sur
 `main` après merge de la PR #6).
 
+> **Mise à jour 2026-09-19 (branche `claude/metrics-py-inventory-glxowx`)** : les
+> chevauchements du §4 et les doublons du §5 ont été **résorbés**. Six métriques de
+> référence, un barème (`metrics.SCORE_BRACKETS`), un scoreur
+> (`metrics.compute_reference_scores`), une fenêtre (`metrics.reference_window`).
+> γ note S(t) courant, tout le reste note O(t). Détail du chantier et de ce qui
+> reste ouvert : `docs/DOUBLONS_metriques.md` (section « Chantier de mise à niveau »).
+> Les tableaux ci-dessous décrivent l'état d'avant et restent utiles comme
+> historique.
+
 ---
 
 ## 0. En une phrase

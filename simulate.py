@@ -241,15 +241,13 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'filter': _f0,
         'weights': (np.ones(config['system']['N']) if _f0 == 'neutre' else None),
         'last_eval_t': -1e9, 'last_switch_t': -1e9,
-        'W_f': max(10, int(round(float(_pcfg.get('W_f_t', 5.0)) / dt))),
+        'W_f': metrics.reference_window(config, dt),  # source unique de la fenêtre de scoring
         'T_switch': float(_pcfg.get('T_switch_t', 5.0)),
         'dwell': float(_pcfg.get('dwell_t', 10.0)),
         'seuil_in': int(_pcfg.get('seuil_declenchement', 3)),
         'seuil_out': int(_pcfg.get('seuil_sortie', 3)),
         'enabled': _pcfg.get('filters_enabled', ['erreur','stabilite','fluidite','innovation','effort']),
     }
-    # Barèmes du score de résilience en CONFIG (calibration sans toucher au code)
-    _rb = config.get('resilience_v2', {}).get('score_brackets', [0.90, 0.75, 0.60, 0.40])
 
     # Historiques avec limite de mémoire
     MAX_HISTORY_SIZE = config.get('system', {}).get('max_history_size', 10000)
@@ -302,8 +300,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
     # -- BOUCLE PRINCIPALE --
     try:
         for step, t in enumerate(t_array):
-            step_start = time.perf_counter()
-
             # Tests chimériques 2/3 : resets mid-run (no-op si non configurés)
             phase_acc = check_chimera_reset(t, T, config, state, phase_acc)
 
@@ -333,10 +329,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 In_t = np.full(N, 0.1)
             
             # ----------- 2. CALCULS DYNAMIQUE FPS --------------
-            # Réinitialiser le chronomètre ici pour mesurer UNIQUEMENT la dynamique FPS
-            # (perturbations déjà appliquées ; métriques et logging seront chronométrés après)
-            core_start = time.perf_counter()
-            
             # ================= RÉORDONNANCEMENT DU PAS (15/07/2026) =============
             # φ_reg → Eₙ calculé UNE FOIS ici, puis passé à compute_An (enveloppe)
             # et compute_S (erreur relative) via les configs. Avant : Eₙ était
@@ -578,11 +570,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # d) Update état complet du système
             try:
                 state = dynamics.update_state(state, An_t, fn_t, phi_n_t, gamma_n_t, F_n_t_fn, F_n_t_An) if hasattr(dynamics, 'update_state') else state
-                # Temps mur « dynamique pur » : profilage uniquement, ne pilote RIEN.
-                wall_time_step = metrics.compute_cpu_step(core_start, time.perf_counter(), N) if hasattr(metrics, 'compute_cpu_step') else 0.0
-                # Coût CPU DÉTERMINISTE : c'est lui qui alimente cpu_cost → γ, pour
-                # une parité bit-à-bit indépendante de la machine.
-                cpu_step = metrics.compute_cpu_step_deterministic(N) if hasattr(metrics, 'compute_cpu_step_deterministic') else 0.0
+                # Coût CPU : UNE fonction, déterministe et reproductible (plus de
+                # temps mur : non reproductible, il n'est plus mesuré).
+                cpu_step = metrics.compute_cpu_step_deterministic(N)
             except Exception as e:
                 print(f"⚠️ Erreur update state à t={t}: {e}")
             
@@ -599,33 +589,17 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     perception_state['last_eval_t'] = t
                     _Wf = perception_state['W_f']
                     if len(history) >= _Wf:
-                        _O_agg = np.array([np.sum(h['O']) for h in history[-_Wf:]])
-                        _o_scores = {}
-                        _o_scores['stabilite'] = metrics.score_from_brackets(float(np.std(_O_agg)), 'dispersion')
-                        # fluidité du switch = MÊME métrique que le score : jerk de
-                        # l'enveloppe fₙ (avant : spectrale sur O, cassée + incohérente).
-                        _fmean_w = np.array([float(np.mean(h['fn'])) for h in history[-_Wf:]])
-                        if len(_fmean_w) >= 4:
-                            _d1w, _d2w = np.diff(_fmean_w), np.diff(_fmean_w, 2)
-                            _flu = 1.0 / (1.0 + float(np.std(_d2w) / (np.std(_d1w) + 1e-12)))
-                        else:
-                            _flu = 1.0
-                        _o_scores['fluidite'] = metrics.score_from_brackets(_flu, 'fluidity')
-                        _o_scores['innovation'] = metrics.score_from_brackets(
-                            float(metrics.compute_entropy_S(_O_agg, 1.0/dt)), 'innovation')
-                        _errs_abs = [np.mean(np.abs(np.asarray(h['E']) - np.asarray(h['O']))) for h in history[-_Wf:]]
-                        _o_scores['erreur'] = metrics.score_from_brackets(float(np.mean(_errs_abs)), 'regulation')
-                        _o_scores['effort'] = metrics.score_from_brackets(
-                            float(np.mean(effort_history[-_Wf:])) if effort_history else 0.0, 'activite')
-                        # RÉSILIENCE (déverrouillée par Andréa, 15/07 nuit) : son score
-                        # EXISTE déjà et est le seul nativement non-contaminé par S —
-                        # l'enveloppe lit μ_Rloc/effort/erreur, jamais la perception.
-                        # On branche l'existant, on ne recalcule rien.
-                        _res_vals = [h.get('adaptive_resilience') for h in history[-_Wf:]]
-                        _res_vals = [v for v in _res_vals if v is not None]
-                        if _res_vals:
-                            _o_scores['resilience'] = metrics.score_from_brackets(
-                                float(np.mean(_res_vals)), 'resilience')
+                        # LES SIX MÉTRIQUES DE RÉFÉRENCE sur O(t) brut, fenêtre W_f,
+                        # barème SCORE_BRACKETS — LE scoreur du pipeline (metrics.
+                        # compute_reference_*), le même que gamma (cible S), les
+                        # figures, les rapports et l'analyse (cible O). Rien d'inline.
+                        _raw_ref = metrics.compute_reference_metrics(history[-_Wf:], dt, signal='O', N=N)
+                        _ref_scores = metrics.score_reference_metrics(_raw_ref)
+                        _o_scores = {f: _ref_scores[k] for f, k in metrics.FILTER_TO_SCORE_KEY.items()}
+                        if _raw_ref.get('resilience') is None:
+                            # Aucun verdict de résilience dans la fenêtre : le filtre
+                            # ne peut ni s'engager ni sortir (pas de note inventée).
+                            _o_scores.pop('resilience', None)
                         _o_scores = {k: v for k, v in _o_scores.items() if k in perception_state['enabled']}
                         if perception_mode == 'auto':
                             # ANTI-CAMPEMENT (règle d'Andréa) : un remède tenu 3 x dwell
@@ -769,28 +743,15 @@ def run_fps_simulation(config, state, loggers, strict=False):
             effort_history.append(effort_t)
             effort_status = metrics.compute_effort_status(effort_t, effort_history, config) if hasattr(metrics, 'compute_effort_status') else "stable"
             
-            # Calcul variance_d2S / fluidité (aligné notebook : pas de garde, compute_fluidity gère)
-            variance_d2S = metrics.compute_variance_d2S(S_history, dt) if len(S_history) >= 3 else 0
-            # FLUIDITÉ SPECTRALE (lot v3) — variance_d2S reste calculée et loggée
-            # en diagnostic (legacy, dt-liée), mais ne pilote plus la fluidité.
-            _fl_win = max(10, int(round(5.0 / dt)))  # fenêtre de 5 unités de temps
-            # FLUIDITÉ (jerk de l'enveloppe de fréquence fₙ) — validée sur banc de
-            # signaux de référence + calibrée in-situ (cf. cahier de validation).
-            # Mesure la douceur du TEMPO du système (variable lente porteuse de
-            # structure) : O(t) et l'amplitude sont trop nerveux pour ça. Remplace
-            # la fluidité spectrale (qui notait les à-coups « fluides »).
-            if len(fn_history) >= 4:
-                _fmean = np.array([float(np.mean(f)) for f in fn_history[-_fl_win:]], dtype=float)
-                _d1, _d2 = np.diff(_fmean), np.diff(_fmean, 2)
-                fluidity = 1.0 / (1.0 + float(np.std(_d2) / (np.std(_d1) + 1e-12)))
-            else:
-                fluidity = 1.0  # démarrage (<4 pas) : rien de saccadé encore
-            
-            # Calcul entropy_S (innovation)
+            # FLUIDITÉ et INNOVATION loggées par pas : les fonctions de RÉFÉRENCE
+            # (metrics.compute_fluidity = jerk de l'enveloppe fₙ, metrics.
+            # compute_entropy_S) sur LA fenêtre de référence W_f. Ce sont les
+            # colonnes calculées sur S(t) ; les scores sur O(t) sont recalculés
+            # depuis history par metrics.compute_reference_scores.
+            _W_ref = perception_state['W_f']
+            fluidity = metrics.compute_fluidity([float(np.mean(f)) for f in fn_history[-_W_ref:]])
             if len(S_history) >= 10:
-                window_size = min(50, len(S_history))
-                S_window = S_history[-window_size:]
-                entropy_S = metrics.compute_entropy_S(S_window, 1.0/dt) if hasattr(metrics, 'compute_entropy_S') else 0.5
+                entropy_S = metrics.compute_entropy_S(S_history[-_W_ref:], 1.0/dt)
             else:
                 entropy_S = 0.1
             
@@ -872,12 +833,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
             else:
                 continuous_resilience = 1.0
             
-            # Calcul max_median_ratio (stabilité)
-            if len(S_history) >= 10:
-                max_median_ratio = metrics.compute_max_median_ratio(S_history) if hasattr(metrics, 'compute_max_median_ratio') else 1.0
-            else:
-                max_median_ratio = 1.0
-            
             # Résilience (lot v2 + étage 2 enveloppes, spec 13/07/2026) :
             # Les enveloppes de santé sont TOUJOURS calculées et loggées
             # (route de validation). Le score fourni à gamma dépend du mode :
@@ -897,13 +852,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
             adaptive_resilience_score = 3
             if use_envelope and env_result is not None:
                 adaptive_resilience = env_result['value']
-                if adaptive_resilience is None:
-                    adaptive_resilience_score = 3  # warmup : verdict suspendu
-                else:
-                    adaptive_resilience_score = (5 if adaptive_resilience >= _rb[0] else
-                                                 4 if adaptive_resilience >= _rb[1] else
-                                                 3 if adaptive_resilience >= _rb[2] else
-                                                 2 if adaptive_resilience >= _rb[3] else 1)
+                # UN SEUL barème (SCORE_BRACKETS['resilience']) ; None = verdict suspendu → neutre
+                adaptive_resilience_score = (metrics.NEUTRAL_SCORE if adaptive_resilience is None
+                                             else metrics.score_from_brackets(float(adaptive_resilience), 'resilience'))
             elif hasattr(metrics, 'compute_adaptive_resilience'):
                 # Créer un dict temporaire avec les métriques actuelles.
                 # Moyenne None-safe : un verdict suspendu (None) ne compte pas.
@@ -939,12 +890,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'E(t)': E_t,
                 'L(t)': L_t,
                 'cpu_step(t)': cpu_step,
-                'wall_time_step(t)': wall_time_step if 'wall_time_step' in locals() else 0.0,
                 'effort(t)': effort_t,
                 'A_mean(t)': A_mean_t,
                 'f_mean(t)': f_mean_t,
-                'variance_d2S': variance_d2S,
-                'fluidity': fluidity,  # Nouvelle métrique de fluidité
+                'fluidity': fluidity,  # jerk de l'enveloppe fₙ (métrique de référence)
                 'entropy_S': entropy_S,
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
                 'autocorr_tau': autocorr_tau,  # Temps de décorrélation
@@ -957,7 +906,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'mean_high_effort': mean_high_effort,
                 'd_effort_dt': d_effort_dt,
                 't_retour': t_retour,
-                'max_median_ratio': max_median_ratio,
                 'continuous_resilience': continuous_resilience,
                 'mu_Rloc(t)': mu_Rloc_t,
                 'resilience_env(t)': (env_result['value'] if env_result else None),
@@ -1115,9 +1063,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'C': C_t, 'A_spiral': A_spiral_t, 'entropy_S': entropy_S,
                 'delta_fn': delta_fn_t, 'S(t)': S_t, 'C(t)': C_t,
                 'effort(t)': effort_t, 'cpu_step(t)': cpu_step,
-                'wall_time_step(t)': wall_time_step if 'wall_time_step' in locals() else 0.0,
                 'A_mean(t)': A_mean_t, 'f_mean(t)': f_mean_t,
-                'variance_d2S': variance_d2S, 'fluidity': fluidity,
+                'fluidity': fluidity,
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
                 'En_mean(t)': En_mean_t,
@@ -1185,7 +1132,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             alert_file.write(f"{alert_msg}\n")
                 
                 # Même vérification pour d'autres métriques non-déclencheuses
-                for metric_name in ['variance_d2S', 'mean_high_effort', 'd_effort_dt']:
+                for metric_name in ['fluidity', 'mean_high_effort', 'd_effort_dt']:
                     if metric_name in all_metrics:
                         metric_history = [h.get(metric_name, 0) for h in history[-100:] if metric_name in h]
                         if len(metric_history) > 10:
@@ -1253,7 +1200,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'mean_cpu_step': np.mean(cpu_steps) if cpu_steps else 0.0,
             'final_entropy_S': float(entropy_S) if entropy_S is not None else 0.0,
             'entropy_S': float(mean_entropy_S),  # NOUVEAU: moyenne pour cohérence avec système adaptatif
-            'final_variance_d2S': float(variance_d2S) if variance_d2S is not None else 0.0,
             'final_fluidity': float(fluidity) if 'fluidity' in locals() and fluidity is not None else 0.0,
             'final_mean_abs_error': float(mean_abs_error) if mean_abs_error is not None else 0.0,
             'mean_C': float(np.mean(C_history)) if C_history else float('nan'),
@@ -1266,18 +1212,12 @@ def run_fps_simulation(config, state, loggers, strict=False):
                                     if 'adaptive_resilience' in locals() and adaptive_resilience is not None
                                     else float('nan')),
             'adaptive_resilience_score': int(adaptive_resilience_score) if 'adaptive_resilience_score' in locals() else 3,
-            'stability_ratio': float(max_median_ratio) if max_median_ratio is not None else 1.0,
             'total_steps': len(t_array),
             'recorded_steps': len(S_history),
             'dt': float(dt),
             'N': int(N),
             'mode': 'FPS'
         }
-        
-        # Ne PAS appeler summarize_metrics avec le nom du fichier
-        # Si on veut utiliser summarize_metrics, il faut lui passer history, pas logs
-        # if hasattr(metrics, "summarize_metrics") and history:
-        #     metrics_summary.update(metrics.summarize_metrics(history))
         
         # Calcul du checksum des logs pour intégrité
         if hasattr(utils, "compute_checksum") and os.path.exists(logs):
@@ -1362,8 +1302,6 @@ def run_kuramoto_simulation(config, loggers):
         cpu_steps = []
         
         for t in t_array:
-            step_start = time.perf_counter()
-            
             # Équation Kuramoto
             dphases_dt = frequencies.copy()
             for i in range(N):
@@ -1388,9 +1326,8 @@ def run_kuramoto_simulation(config, loggers):
             # Signal global (somme des oscillateurs)
             S_t = np.sum(np.sin(phases))
 
-            # Temps mur (profilage) vs coût déterministe (reproductible)
-            wall_time_step = (time.perf_counter() - step_start) / N
-            cpu_step = metrics.compute_cpu_step_deterministic(N) if hasattr(metrics, 'compute_cpu_step_deterministic') else 0.0
+            # Coût CPU : une seule fonction, déterministe
+            cpu_step = metrics.compute_cpu_step_deterministic(N)
 
             # Log
             metrics_dict = {
@@ -1400,7 +1337,6 @@ def run_kuramoto_simulation(config, loggers):
                 'E(t)': order_param,
                 'L(t)': 0,
                 'cpu_step(t)': cpu_step,
-                'wall_time_step(t)': wall_time_step,
                 'effort(t)': 0.0,
                 'A_mean(t)': 1.0,
                 'f_mean(t)': np.mean(frequencies),
@@ -1471,8 +1407,6 @@ def run_neutral_simulation(config, loggers):
     cpu_steps = []
     
     for t in t_array:
-        step_start = time.perf_counter()
-        
         # Signal sans feedback
         S_t = np.sum(amplitudes * np.sin(2 * np.pi * frequencies * t + phases))
         
@@ -1481,9 +1415,8 @@ def run_neutral_simulation(config, loggers):
         E_t = np.max(amplitudes)
         L_t = 0
         
-        # Temps mur (profilage) vs coût déterministe (reproductible)
-        wall_time_step = (time.perf_counter() - step_start) / N
-        cpu_step = metrics.compute_cpu_step_deterministic(N) if hasattr(metrics, 'compute_cpu_step_deterministic') else 0.0
+        # Coût CPU : une seule fonction, déterministe
+        cpu_step = metrics.compute_cpu_step_deterministic(N)
 
         # Log
         metrics_dict = {
@@ -1493,12 +1426,10 @@ def run_neutral_simulation(config, loggers):
             'E(t)': E_t,
             'L(t)': L_t,
             'cpu_step(t)': cpu_step,
-            'wall_time_step(t)': wall_time_step,
             'effort(t)': 0.0,
             'A_mean(t)': 1.0,
             'f_mean(t)': np.mean(frequencies),
             'effort_status': 'stable',
-            'variance_d2S': 0.0,
             'entropy_S': 0.0,
             'mean_abs_error': 0.0
         }
