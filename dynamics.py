@@ -1965,21 +1965,35 @@ def compute_perception_deficit(kind: str, On_win: np.ndarray, An_win: np.ndarray
         q75, q25 = np.percentile(On_win, [75, 25], axis=0)
         iqr = np.maximum(q75 - q25, 1e-9)
         return np.abs(On_win[-1] - med) / iqr
-    if kind in ('fluidite', 'innovation'):
+    if kind == 'fluidite':
+        # ALIGNÉ SUR LE SCORE (jerk de l'enveloppe fₙ, validé sur banc de référence) :
+        # le déficit de fluidité = irrégularité du tempo de CHAQUE strate, mesurée sur
+        # sa fréquence fₙ (variable lente), pas sur Oₙ. Ratio std(d²fₙ)/std(d¹fₙ) :
+        # haut = saccadé = peu fluide = fort déficit. Remplace le spectral (dt-lié, que
+        # l'audit a montré faux : il notait les à-coups « fluides »).
+        out = np.zeros(N)
+        for n in range(N):
+            f = fn_win[:, n]
+            d1 = np.diff(f); d2 = np.diff(f, 2)
+            s1 = float(np.std(d1))
+            out[n] = float(np.std(d2) / (s1 + eps)) if s1 > eps else 0.0
+        return out
+    if kind == 'innovation':
+        # TODO (mise à niveau) : cible = complexité statistique C_JS (Jensen-Shannon,
+        # Rosso/MPR) — validée comme la SEULE qui met le bruit au plancher. Mais C_JS
+        # (permutation) exige une fenêtre bien plus longue que W_f (~50) pour être
+        # stable → à câbler avec une fenêtre élargie/ré-échantillonnée. En attendant,
+        # entropie spectrale conservée (imparfaite, dt-liée) plutôt qu'un C_JS fragile.
         out = np.zeros(N)
         for n in range(N):
             w = On_win[:, n] - On_win[:, n].mean()
             P = np.abs(np.fft.rfft(w)) ** 2
             tot = P.sum()
             if tot < 1e-15:
-                out[n] = 0.0 if kind == 'fluidite' else 1.0  # plat : fluide / pauvre
+                out[n] = 1.0  # plat : pauvre en innovation
                 continue
             p = P / tot
-            if kind == 'fluidite':
-                freqs = np.fft.rfftfreq(len(w), dt)
-                out[n] = 1.0 - float(p[freqs <= 0.25 * (0.5 / dt)].sum())
-            else:
-                ent = -(p[p > 0] * np.log(p[p > 0])).sum() / max(np.log(len(p)), eps)
-                out[n] = 1.0 - float(ent)
+            ent = -(p[p > 0] * np.log(p[p > 0])).sum() / max(np.log(len(p)), eps)
+            out[n] = 1.0 - float(ent)
         return out
     raise ValueError(f"filtre de perception inconnu : {kind}")
