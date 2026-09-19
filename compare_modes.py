@@ -7,6 +7,7 @@ import numpy as np
 from datetime import datetime
 import os
 from utils import deep_convert
+import metrics as fps_metrics  # le dict local 'metrics' masquerait le module
 
 def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
     """
@@ -57,18 +58,24 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         'fps_vs_neutral_efficiency': (fps_sync - neutral_sync) / (abs(neutral_sync) + 1e-10) * 100
     }
     
-    # 2. Stabilité (basée sur std_S)
-    # CORRECTION : Utiliser clés cohérentes et gestion des valeurs infinies
-    fps_std_S = fps_result.get('metrics', {}).get('std_S', fps_result.get('metrics', {}).get('stability_std_S', 1.0))
-    kura_std_S = kuramoto_result.get('metrics', {}).get('std_S', kuramoto_result.get('metrics', {}).get('stability_std_S', 1.0))
-    neutral_std_S = neutral_result.get('metrics', {}).get('std_S', neutral_result.get('metrics', {}).get('stability_std_S', 1.0))
+    # 2. Stabilité = score de référence 'dispersion' (barème SCORE_BRACKETS)
+    # sur l'écart-type du signal global de chaque mode.
+    def _score(value, key):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return fps_metrics.NEUTRAL_SCORE
+        return fps_metrics.NEUTRAL_SCORE if not np.isfinite(v) else fps_metrics.score_from_brackets(v, key)
+
+    fps_std_S = fps_result.get('metrics', {}).get('std_S', 1.0)
+    kura_std_S = kuramoto_result.get('metrics', {}).get('std_S', 1.0)
+    neutral_std_S = neutral_result.get('metrics', {}).get('std_S', 1.0)
     
     print(f"   Std_S values - FPS: {fps_std_S}, Kuramoto: {kura_std_S}, Neutral: {neutral_std_S}")
     
-    # CORRECTION : Éviter 1/inf et normaliser les std
-    fps_stability = 1.0 / (fps_std_S + 1e-3) if fps_std_S != float('inf') else 1000.0
-    kura_stability = 1.0 / (kura_std_S + 1e-3) if kura_std_S != float('inf') else 1000.0
-    neutral_stability = 1.0 / (neutral_std_S + 1e-3) if neutral_std_S != float('inf') else 1000.0
+    fps_stability = _score(fps_std_S, 'dispersion')
+    kura_stability = _score(kura_std_S, 'dispersion')
+    neutral_stability = _score(neutral_std_S, 'dispersion')
     
     metrics['stability'] = {
         'fps_value': fps_stability,
@@ -78,24 +85,19 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         'fps_vs_neutral_efficiency': (fps_stability - neutral_stability) / (abs(neutral_stability) + 1e-3) * 100
     }
     
-    # 3. Résilience (utilise maintenant adaptive_resilience si disponible)
-    # Essayer d'abord adaptive_resilience
+    # 3. Résilience = score de référence 'resilience' sur adaptive_resilience
+    # (FPS) ; pour les contrôles, sur la même normalisation 1/(1+t_retour)
+    # que compute_adaptive_resilience. Neutral : aucun mécanisme → neutre.
     fps_adaptive_resil = fps_result.get('metrics', {}).get('adaptive_resilience', None)
+    if fps_adaptive_resil is None or not np.isfinite(fps_adaptive_resil):
+        fps_t_retour = fps_result.get('metrics', {}).get('resilience_t_retour', 10.0)
+        fps_adaptive_resil = 1.0 / (1.0 + fps_t_retour) if np.isfinite(fps_t_retour) else None
+    print(f"   Adaptive resilience - FPS: {fps_adaptive_resil}")
+    fps_resilience = _score(fps_adaptive_resil, 'resilience')
     
-    if fps_adaptive_resil is not None:
-        # Utiliser la résilience adaptative
-        fps_resilience = fps_adaptive_resil
-        print(f"   Adaptive resilience - FPS: {fps_resilience}")
-    else:
-        # Fallback sur t_retour
-        fps_t_retour = fps_result.get('metrics', {}).get('resilience_t_retour', fps_result.get('metrics', {}).get('t_retour', 10.0))
-        print(f"   t_retour values - FPS: {fps_t_retour}")
-        fps_resilience = 1.0 / (fps_t_retour + 1.0) if fps_t_retour != float('inf') else 0.1
-    
-    # Pour Kuramoto, utiliser t_retour (pas de résilience adaptative)
-    kura_t_retour = kuramoto_result.get('metrics', {}).get('t_retour', kuramoto_result.get('metrics', {}).get('resilience_t_retour', 10.0))
-    kura_resilience = 1.0 / (kura_t_retour + 1.0) if kura_t_retour != float('inf') else 0.1
-    neutral_resilience = 0.1  # Neutral n'a pas de résilience active
+    kura_t_retour = kuramoto_result.get('metrics', {}).get('t_retour', 10.0)
+    kura_resilience = _score(1.0 / (1.0 + kura_t_retour) if np.isfinite(kura_t_retour) else None, 'resilience')
+    neutral_resilience = fps_metrics.NEUTRAL_SCORE
     
     metrics['resilience'] = {
         'fps_value': fps_resilience,
@@ -107,8 +109,15 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
     
     # 3b. Résilience continue (pour perturbations non-ponctuelles)
     # Récupérer les valeurs de continuous_resilience depuis les métriques finales
-    fps_cont_resil = fps_result.get('metrics', {}).get('continuous_resilience', 1.0)
-    kura_cont_resil = kuramoto_result.get('metrics', {}).get('continuous_resilience', 0.5)  # Kuramoto moins bon en continu
+    def _val(x, default):
+        try:
+            v = float(x)
+        except (TypeError, ValueError):
+            return default
+        return v if np.isfinite(v) else default
+    # None / NaN = pas de verdict (pas de perturbation continue) → valeur neutre 0.5
+    fps_cont_resil = _val(fps_result.get('metrics', {}).get('continuous_resilience'), 0.5)
+    kura_cont_resil = _val(kuramoto_result.get('metrics', {}).get('continuous_resilience'), 0.5)
     neutral_cont_resil = 0.3  # Neutral n'a pas de mécanisme d'adaptation
     
     print(f"   Continuous resilience - FPS: {fps_cont_resil}, Kuramoto: {kura_cont_resil}, Neutral: {neutral_cont_resil}")
@@ -121,13 +130,14 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         'fps_vs_neutral_efficiency': (fps_cont_resil - neutral_cont_resil) / (abs(neutral_cont_resil) + 1e-10) * 100
     }
     
-    # 4. Innovation (basée sur entropy_S)
-    # CORRECTION : Utiliser clés cohérentes pour entropy
-    fps_innovation = fps_result.get('metrics', {}).get('final_entropy_S', fps_result.get('metrics', {}).get('entropy_S', 0.5))
-    kura_innovation = kuramoto_result.get('metrics', {}).get('entropy_S', kuramoto_result.get('metrics', {}).get('final_entropy_S', 0.5))
-    neutral_innovation = neutral_result.get('metrics', {}).get('entropy_S', neutral_result.get('metrics', {}).get('final_entropy_S', 0.5))
-    
-    print(f"   Entropy values - FPS: {fps_innovation}, Kuramoto: {kura_innovation}, Neutral: {neutral_innovation}")
+    # 4. Innovation = score de référence 'innovation' sur l'entropie spectrale
+    fps_entropy = fps_result.get('metrics', {}).get('entropy_S', 0.5)
+    kura_entropy = kuramoto_result.get('metrics', {}).get('entropy_S', 0.5)
+    neutral_entropy = neutral_result.get('metrics', {}).get('entropy_S', 0.5)
+    print(f"   Entropy values - FPS: {fps_entropy}, Kuramoto: {kura_entropy}, Neutral: {neutral_entropy}")
+    fps_innovation = _score(fps_entropy, 'innovation')
+    kura_innovation = _score(kura_entropy, 'innovation')
+    neutral_innovation = _score(neutral_entropy, 'innovation')
     
     metrics['innovation'] = {
         'fps_value': fps_innovation,
@@ -137,26 +147,12 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         'fps_vs_neutral_efficiency': (fps_innovation - neutral_innovation) / (abs(neutral_innovation) + 1e-10) * 100
     }
     
-    # 5. Fluidity (utilise maintenant la métrique de fluidité directement)
-    # Si la métrique fluidity n'est pas disponible, calculer depuis variance_d2S
-    fps_fluid = fps_result.get('metrics', {}).get('final_fluidity', None)
-    if fps_fluid is None:
-        # Fallback : calculer depuis variance_d2S avec la nouvelle formule
-        fps_var = fps_result.get('metrics', {}).get('final_variance_d2S', 175.0)
-        x = fps_var / 175.0  # Reference variance
-        fps_fluid = 1 / (1 + np.exp(5.0 * (x - 1)))
-    
-    kura_fluid = kuramoto_result.get('metrics', {}).get('final_fluidity', None)
-    if kura_fluid is None:
-        kura_var = kuramoto_result.get('metrics', {}).get('variance_d2S', 175.0)
-        x = kura_var / 175.0
-        kura_fluid = 1 / (1 + np.exp(5.0 * (x - 1)))
-    
-    neutral_fluid = neutral_result.get('metrics', {}).get('final_fluidity', None)
-    if neutral_fluid is None:
-        neutral_var = neutral_result.get('metrics', {}).get('variance_d2S', 175.0)
-        x = neutral_var / 175.0
-        neutral_fluid = 1 / (1 + np.exp(5.0 * (x - 1)))
+    # 5. Fluidité = score de référence 'fluidity' sur la fluidité finale
+    # (jerk de l'enveloppe fₙ, metrics.compute_fluidity). Un mode sans
+    # enveloppe de fréquence vivante (fₙ constant) est parfaitement fluide.
+    fps_fluid = _score(fps_result.get('metrics', {}).get('final_fluidity', 1.0), 'fluidity')
+    kura_fluid = _score(kuramoto_result.get('metrics', {}).get('final_fluidity', 1.0), 'fluidity')
+    neutral_fluid = _score(neutral_result.get('metrics', {}).get('final_fluidity', 1.0), 'fluidity')
 
     metrics['fluidity'] = {
         'fps_value': fps_fluid,

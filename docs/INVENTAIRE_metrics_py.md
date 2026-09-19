@@ -11,6 +11,10 @@ recenser, sans juger.*
 (racine + `notebooks/`) et les cellules de code de `notebooks/NOTEBOOK_FPS.ipynb`
 et `EMI_etape1_temoignages.ipynb`. Les numéros de ligne renvoient à cet état du code.
 
+> **Note 2026-09-19** : cet inventaire décrit `metrics.py` AVANT le chantier de mise à
+> niveau (voir `DOUBLONS_metriques.md`). Depuis, 13 fonctions ont été supprimées et le
+> bloc « six métriques de référence » (`compute_reference_scores` et co.) a été ajouté.
+
 ---
 
 ## 0. Lecture rapide

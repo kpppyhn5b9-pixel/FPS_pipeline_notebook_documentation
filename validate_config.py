@@ -6,9 +6,9 @@ from datetime import datetime
 # 1. — METRIQUES VALIDES —
 METRIQUES_VALIDES = {
     "t", "S(t)", "A_mean(t)", "f_mean(t)", "effort(t)", "cpu_step(t)",
-    "C(t)", "E(t)", "L(t)", "variance_d2S", "fluidity", "entropy_S", "effort_status",
+    "C(t)", "E(t)", "L(t)", "fluidity", "entropy_S", "effort_status",
     "mean_abs_error", "mean_high_effort", "d_effort_dt", "t_retour",
-    "max_median_ratio", "A_spiral(t)", "continuous_resilience", "mu_Rloc(t)", "resilience_env(t)", "D_excursion(t)", "D_mean(t)", "D_max(t)", "D_rms(t)", "resilience_metric_used", "perception_filter", "adaptive_resilience",
+    "A_spiral(t)", "continuous_resilience", "mu_Rloc(t)", "resilience_env(t)", "D_excursion(t)", "D_mean(t)", "D_max(t)", "D_rms(t)", "resilience_metric_used", "perception_filter", "adaptive_resilience", "adaptive_resilience_score",
     "En_mean(t)", "On_mean(t)", "gamma", "gamma_mean(t)", "In_mean(t)",
     "An_mean(t)", "fn_mean(t)", "gamma_regime", "G_arch_used",
     "best_pair_gamma", "best_pair_G", "best_pair_score",
@@ -16,28 +16,25 @@ METRIQUES_VALIDES = {
     "tau_S", "tau_gamma", "tau_C",  "tau_A_mean", "tau_f_mean"
 }
 
+# Les six critères de référence (clés de barème metrics.SCORE_BRACKETS, celles
+# du switch de perception) + les deux critères dérivés de l'effort.
 CRITERES_VALIDES = {
-    "fluidity", "stability", "resilience", "innovation",
-    "regulation", "cpu_cost", "effort_internal", "effort_transient"
+    "dispersion", "regulation", "fluidity", "resilience", "innovation", "activite",
+    "effort_internal", "effort_transient"
 }
 
-# NOTE FPS - Seuils initiaux théoriques
-# Ces seuils sont basés sur la théorie FPS et doivent être ajustés
-# après les 5 premiers runs de calibration (N=5, T=20, In(t)~U[0,1])
+# NOTE FPS - to_calibrate ne contient PLUS de seuils de score : les barèmes
+# des six métriques vivent dans metrics.SCORE_BRACKETS (source unique, celle
+# du switch de perception). Restent ici les seuils des dérivés de l'effort
+# (statut stable/transitoire/chronique) et les paramètres structurels.
 SEUILS_THEORIQUES_INITIAUX = {
-    "variance_d2S": 0.01,        # Fluidité : variance de d²S/dt²
-    "fluidity_threshold": 0.3,   # Fluidité : seuil minimum (0=saccadé, 1=parfait)
-    "stability_ratio": 10,        # Stabilité : max(S(t))/median(S(t))
-    "resilience": 2,             # Résilience : t_retour / médiane
-    "entropy_S": 0.5,            # Innovation : entropie spectrale
     "mean_high_effort": 2,       # Effort chronique : moyenne haute
     "d_effort_dt": 5,            # Effort transitoire : dérivée (en σ)
-    "t_retour": 2,               # Temps retour équilibre (× médiane)
+    "effort_chronique_threshold": 75.0,    # compute_effort_status (taux, lot v3)
+    "effort_transitoire_threshold": 150.0, # compute_effort_status (taux, lot v3)
     "gamma_n": 1.0,              # Latence par strate
     "env_n": "gaussienne",       # Type enveloppe
-    "sigma_n": 0.1,              # Écart-type enveloppe
-    "cpu_step_ctrl": 2,          # Coût CPU vs contrôle
-    "max_chaos_events": 5        # Nombre max événements chaotiques
+    "sigma_n": 0.1               # Écart-type enveloppe
 }
 
 # 2. — ERROR COLLECTOR —
@@ -275,40 +272,29 @@ def validate_exploration(exploration, collector):
     if exploration.get("detect_fractal_patterns"):
         print("Fractal motif detection config: OK")
 
+SEUILS_DE_SCORE_OBSOLETES = {
+    "variance_d2S", "fluidity_threshold", "stability_ratio", "resilience",
+    "entropy_S", "t_retour", "cpu_step_ctrl", "max_chaos_events"
+}
+
 def validate_to_calibrate(tc, collector):
-    # Afficher la note sur les seuils théoriques initiaux
-    print("\n[NOTE FPS] Seuils théoriques initiaux définis - À ajuster après 5 runs de calibration")
-    
-    if tc.get("variance_d2S", 0) <= 0:
-        collector.add_error("to_calibrate.variance_d2S doit être > 0")
-    # Validation du nouveau seuil de fluidité
-    fluidity_threshold = tc.get("fluidity_threshold")
-    if fluidity_threshold is not None:
-        if not (is_float(fluidity_threshold) and 0 < fluidity_threshold < 1):
-            collector.add_error("to_calibrate.fluidity_threshold doit être dans ]0,1[")
-    if tc.get("stability_ratio", 0) <= 1:
-        collector.add_error("to_calibrate.stability_ratio doit être > 1")
-    if tc.get("resilience", 0) <= 0:
-        collector.add_error("to_calibrate.resilience doit être > 0")
-    es = tc.get("entropy_S")
-    if not (is_float(es) and 0 < es < 1):
-        collector.add_error("to_calibrate.entropy_S doit être dans ]0,1[")
+    # Les seuils de score sont dans metrics.SCORE_BRACKETS : un ancien seuil
+    # ici serait ignoré en silence, on le signale.
+    for key in sorted(SEUILS_DE_SCORE_OBSOLETES & set(tc.keys())):
+        collector.add_warning(f"to_calibrate.{key} est obsolète : les barèmes des six métriques vivent dans metrics.SCORE_BRACKETS")
     if tc.get("mean_high_effort", 0) <= 1:
         collector.add_error("to_calibrate.mean_high_effort doit être > 1")
     if tc.get("d_effort_dt", 0) <= 0:
         collector.add_error("to_calibrate.d_effort_dt doit être > 0")
-    if tc.get("t_retour", 0) <= 0:
-        collector.add_error("to_calibrate.t_retour doit être > 0")
+    for key in ("effort_chronique_threshold", "effort_transitoire_threshold"):
+        if key in tc and not (is_float(tc[key]) and tc[key] > 0):
+            collector.add_error(f"to_calibrate.{key} doit être > 0")
     if tc.get("gamma_n", 0) <= 0:
         collector.add_error("to_calibrate.gamma_n doit être > 0")
     if tc.get("env_n") not in ["gaussienne", "sigmoide"]:
         collector.add_error("to_calibrate.env_n doit être 'gaussienne' ou 'sigmoide'")
     if tc.get("sigma_n", 0) <= 0:
         collector.add_error("to_calibrate.sigma_n doit être > 0")
-    if tc.get("cpu_step_ctrl", 0) <= 1:
-        collector.add_error("to_calibrate.cpu_step_ctrl doit être > 1")
-    if tc.get("max_chaos_events", -1) < 0:
-        collector.add_error("to_calibrate.max_chaos_events doit être >= 0")
 
 def validate_validation(validation, collector):
     criteria = validation.get("criteria", [])
@@ -514,23 +500,6 @@ def generate_default_config(N=5, T=100):
                 "min_absolute": 10,
                 "max_percent": 0.98
             },
-            "scoring": {
-                "immediate": {
-                    "target_percent": 0.95,
-                    "min_absolute": 5,
-                    "max_percent": 0.99
-                },
-                "recent": {
-                    "target_percent": 0.92,
-                    "min_absolute": 10,
-                    "max_percent": 0.97
-                },
-                "medium": {
-                    "target_percent": 0.88,
-                    "min_absolute": 20,
-                    "max_percent": 0.95
-                }
-            },
             "transition_smoothing": {
                 "target_percent": 0.98,
                 "min_absolute": 10,
@@ -609,7 +578,9 @@ def validate_adaptive_windows(config):
         return errors, warnings
     
     # Valider chaque section
-    expected_sections = ['exploration', 'gamma_adaptation', 'G_effectiveness', 'scoring', 
+    # 'scoring' (fenêtres multiples de l'ancien calculate_all_scores) n'existe
+    # plus : la fenêtre de scoring est perception.W_f_t (metrics.reference_window).
+    expected_sections = ['exploration', 'gamma_adaptation', 'G_effectiveness',
                         'transition_smoothing', 'pattern_detection']
     
     for section in expected_sections:
@@ -619,59 +590,29 @@ def validate_adaptive_windows(config):
             
         section_config = adaptive_windows[section]
         
-        if section == 'scoring':
-            # Validation spéciale pour scoring qui contient des sous-sections
-            expected_windows = ['immediate', 'recent', 'medium']
-            for window in expected_windows:
-                if window not in section_config:
-                    warnings.append(f"Fenêtre 'adaptive_windows.scoring.{window}' manquante")
-                    continue
+        if not isinstance(section_config, dict):
+            errors.append(f"'adaptive_windows.{section}' doit être un dictionnaire")
+            continue
+            
+        # Vérifier les paramètres requis
+        required_params = ['target_percent', 'min_absolute']
+        for param in required_params:
+            if param not in section_config:
+                errors.append(f"'adaptive_windows.{section}.{param}' requis")
+            elif param == 'target_percent':
+                if not isinstance(section_config[param], (int, float)) or section_config[param] <= 0:
+                    errors.append(f"'adaptive_windows.{section}.{param}' doit être > 0")
+            elif param == 'min_absolute':
+                if not isinstance(section_config[param], int) or section_config[param] <= 0:
+                    errors.append(f"'adaptive_windows.{section}.{param}' doit être un entier > 0")
                     
-                window_config = section_config[window]
-                if not isinstance(window_config, dict):
-                    errors.append(f"'adaptive_windows.scoring.{window}' doit être un dictionnaire")
-                    continue
-                    
-                # Vérifier les paramètres requis
-                if 'target_percent' not in window_config:
-                    errors.append(f"'adaptive_windows.scoring.{window}.target_percent' requis")
-                elif not isinstance(window_config['target_percent'], (int, float)) or window_config['target_percent'] <= 0:
-                    errors.append(f"'adaptive_windows.scoring.{window}.target_percent' doit être > 0")
-                    
-                if 'min_absolute' not in window_config:
-                    errors.append(f"'adaptive_windows.scoring.{window}.min_absolute' requis")
-                elif not isinstance(window_config['min_absolute'], int) or window_config['min_absolute'] <= 0:
-                    errors.append(f"'adaptive_windows.scoring.{window}.min_absolute' doit être un entier > 0")
-                    
-                # Vérifier max_percent optionnel
-                if 'max_percent' in window_config:
-                    if not isinstance(window_config['max_percent'], (int, float)) or window_config['max_percent'] <= 0:
-                        errors.append(f"'adaptive_windows.scoring.{window}.max_percent' doit être > 0")
-        else:
-            # Validation pour les autres sections
-            if not isinstance(section_config, dict):
-                errors.append(f"'adaptive_windows.{section}' doit être un dictionnaire")
-                continue
-                
-            # Vérifier les paramètres requis
-            required_params = ['target_percent', 'min_absolute']
-            for param in required_params:
-                if param not in section_config:
-                    errors.append(f"'adaptive_windows.{section}.{param}' requis")
-                elif param == 'target_percent':
-                    if not isinstance(section_config[param], (int, float)) or section_config[param] <= 0:
-                        errors.append(f"'adaptive_windows.{section}.{param}' doit être > 0")
-                elif param == 'min_absolute':
-                    if not isinstance(section_config[param], int) or section_config[param] <= 0:
-                        errors.append(f"'adaptive_windows.{section}.{param}' doit être un entier > 0")
-                        
-            # Vérifier max_percent optionnel
-            if 'max_percent' in section_config:
-                if not isinstance(section_config['max_percent'], (int, float)) or section_config['max_percent'] <= 0:
-                    errors.append(f"'adaptive_windows.{section}.max_percent' doit être > 0")
-                if section_config['max_percent'] <= section_config.get('target_percent', 0):
-                    warnings.append(f"'adaptive_windows.{section}.max_percent' devrait être > target_percent")
-    
+        # Vérifier max_percent optionnel
+        if 'max_percent' in section_config:
+            if not isinstance(section_config['max_percent'], (int, float)) or section_config['max_percent'] <= 0:
+                errors.append(f"'adaptive_windows.{section}.max_percent' doit être > 0")
+            if section_config['max_percent'] <= section_config.get('target_percent', 0):
+                warnings.append(f"'adaptive_windows.{section}.max_percent' devrait être > target_percent")
+
     return errors, warnings
 
 def validate_config(config_path_or_dict):

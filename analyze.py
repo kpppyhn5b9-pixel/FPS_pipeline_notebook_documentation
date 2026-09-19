@@ -30,12 +30,11 @@ import warnings
 from collections import defaultdict
 from utils import deep_convert
 
-# Import des modules FPS pour cohérence
-try:
-    import metrics
-    import validate_config
-except ImportError:
-    warnings.warn("Modules metrics ou validate_config non trouvés. Mode standalone.")
+# Modules FPS : metrics est LA source des six métriques de référence et de
+# leur barème (SCORE_BRACKETS) — l'analyse de batch note exactement comme le
+# switch de perception, sur O(t).
+import metrics
+import validate_config
 
 
 # ============== ANALYSE DE BATCH ==============
@@ -100,12 +99,15 @@ def analyze_criteria_and_refine(logs_batch: List[str], config: Dict) -> Dict[str
     updated_config = config.copy()
     refinements_applied = []
     
+    applied_funcs = set()
     for criterion, stats in refinements_needed.items():
         print(f"\nCritère '{criterion}' déclenché sur {stats['trigger_rate']*100:.1f}% des runs")
         
-        # Appeler la fonction de raffinement appropriée
+        # Appeler la fonction de raffinement appropriée (une seule fois par
+        # fonction : 'activite' et 'effort_internal' partagent le même remède)
         refinement_func = REFINEMENT_FUNCTIONS.get(criterion)
-        if refinement_func:
+        if refinement_func and refinement_func not in applied_funcs:
+            applied_funcs.add(refinement_func)
             changes = refinement_func(updated_config, stats)
             if changes:
                 refinements_applied.append({
@@ -180,115 +182,72 @@ def load_run_data(csv_path: str) -> Dict[str, np.ndarray]:
 
 # ============== ANALYSE DES CRITÈRES ==============
 
+def _rows_from_run_data(run_data: Dict) -> List[Dict]:
+    """Transforme les colonnes chargées (dict de tableaux) en liste de dicts par pas."""
+    cols = {k: v for k, v in run_data.items() if hasattr(v, '__len__') and not isinstance(v, str)}
+    if not cols:
+        return []
+    n = min(len(v) for v in cols.values())
+    return [{k: v[i] for k, v in cols.items()} for i in range(n)]
+
+
 def analyze_criteria_statistics(batch_data: List[Dict], config: Dict) -> Dict[str, Dict]:
     """
-    Calcule les statistiques pour chaque critère sur le batch.
-    
+    Statistiques des SIX critères de référence sur le batch.
+
+    Pour chaque run : scores 1-5 des six métriques (metrics.compute_reference_
+    scores, cible O(t), barème SCORE_BRACKETS) sur des fenêtres W_f successives.
+    Un critère est déclenché sur un run si son score est sous le seuil du switch
+    (perception.seuil_declenchement, défaut 3) sur plus de la moitié des
+    fenêtres. Aucun seuil local : le barème est celui du switch.
+
     Returns:
-        Dict[criterion_name, statistics_dict]
+        Dict[criterion_key, statistics_dict] avec les clés de barème
+        ('dispersion', 'regulation', 'fluidity', 'resilience', 'innovation',
+        'activite') + les critères dérivés de l'effort.
     """
-    stats = {}
-    thresholds = config.get('to_calibrate', {})
-    
-    # Critères et leurs métriques associées
-    criteria_metrics = {
-        'fluidity': {
-            'metric': 'fluidity',  # Utilise maintenant la métrique de fluidité directement
-            'threshold_key': 'fluidity_threshold',  # Nouveau seuil pour fluidity
-            'condition': lambda x, t: x < t,  # Inversé : fluidity faible = problème
-            'threshold_percent': 0.7  # 70% du run
-        },
-        'stability': {
-            'metric': 'max_median_ratio',
-            'threshold_key': 'stability_ratio',
-            'condition': lambda x, t: x > t,
-            'threshold_percent': 0.05  # 5% du run
-        },
-        'resilience': {
-            'metric': 't_retour',
-            'threshold_key': 'resilience',
-            'condition': lambda x, t: x > t,
-            'threshold_percent': None  # Valeur unique
-        },
-        'innovation': {
-            'metric': 'entropy_S',
-            'threshold_key': 'entropy_S',
-            'condition': lambda x, t: x < t,
-            'threshold_percent': 0.7
-        },
-        'regulation': {
-            'metric': 'mean_abs_error',
-            'threshold_key': 'mean_high_effort',  # Utilise ce seuil pour la régulation
-            'condition': lambda x, t: x > 2 * t,  # 2x la médiane
-            'threshold_percent': 0.5
-        },
-        'cpu_cost': {
-            'metric': 'cpu_step(t)',
-            'threshold_key': 'cpu_step_ctrl',
-            'condition': lambda x, t: x > t,
-            'threshold_percent': 0.8
-        }
-    }
-    
-    # Analyser chaque critère
-    for criterion, metric_info in criteria_metrics.items():
-        metric_name = metric_info['metric']
-        threshold_key = metric_info['threshold_key']
-        condition = metric_info['condition']
-        threshold_percent = metric_info['threshold_percent']
-        
-        if threshold_key not in thresholds:
+    sys_cfg = config.get('system', {})
+    dt = sys_cfg.get('dt', 0.1)
+    N = sys_cfg.get('N')
+    W = metrics.reference_window(config, dt)
+    seuil = int(config.get('perception', {}).get('seuil_declenchement', metrics.NEUTRAL_SCORE))
+
+    stats = {key: {
+        'threshold': seuil,
+        'runs_triggered': 0,
+        'values_per_run': [],
+        'mean_values': [],
+        'max_values': [],
+        'trigger_rate': 0.0
+    } for key in metrics.REFERENCE_SCORE_KEYS}
+
+    for run_data in batch_data:
+        rows = _rows_from_run_data(run_data)
+        if len(rows) < W:
             continue
-        
-        threshold_value = thresholds[threshold_key]
-        
-        # Collecter les statistiques pour ce critère
-        criterion_stats = {
-            'threshold': threshold_value,
-            'runs_triggered': 0,
-            'values_per_run': [],
-            'mean_values': [],
-            'max_values': [],
-            'trigger_rate': 0.0
-        }
-        
-        # Analyser chaque run
-        for run_data in batch_data:
-            if metric_name not in run_data:
+        window_scores = {key: [] for key in metrics.REFERENCE_SCORE_KEYS}
+        for end in range(W, len(rows) + 1, W):
+            sc = metrics.compute_reference_scores(rows[end - W:end], dt, signal='O', N=N)
+            for key in metrics.REFERENCE_SCORE_KEYS:
+                window_scores[key].append(sc[key])
+        for key, values in window_scores.items():
+            if not values:
                 continue
-            
-            values = run_data[metric_name]
-            if len(values) == 0:
-                continue
-            
-            # Calculer le pourcentage de dépassement
-            if threshold_percent is not None:
-                # Pourcentage du temps où le seuil est franchi
-                triggers = [condition(v, threshold_value) for v in values if not np.isnan(v)]
-                trigger_rate = sum(triggers) / len(triggers) if triggers else 0
-                
-                if trigger_rate >= threshold_percent:
-                    criterion_stats['runs_triggered'] += 1
-            else:
-                # Valeur unique (comme t_retour)
-                final_value = values[-1] if len(values) > 0 else 0
-                if condition(final_value, threshold_value):
-                    criterion_stats['runs_triggered'] += 1
-            
-            # Statistiques
-            criterion_stats['values_per_run'].append(values)
-            criterion_stats['mean_values'].append(np.mean(values))
-            criterion_stats['max_values'].append(np.max(np.abs(values)))
-        
-        # Taux de déclenchement sur le batch
-        if len(batch_data) > 0:
-            criterion_stats['trigger_rate'] = criterion_stats['runs_triggered'] / len(batch_data)
-        
-        stats[criterion] = criterion_stats
-    
-    # Ajouter les critères d'effort
+            low_rate = sum(1 for v in values if v < seuil) / len(values)
+            if low_rate > 0.5:
+                stats[key]['runs_triggered'] += 1
+            stats[key]['values_per_run'].append(values)
+            stats[key]['mean_values'].append(float(np.mean(values)))
+            stats[key]['max_values'].append(float(np.max(values)))
+
+    if len(batch_data) > 0:
+        for key in stats:
+            stats[key]['trigger_rate'] = stats[key]['runs_triggered'] / len(batch_data)
+
+    # Critères dérivés de l'effort (chronique / transitoire), fondés sur
+    # compute_effort via les colonnes mean_high_effort et d_effort_dt.
     stats.update(analyze_effort_criteria(batch_data, config))
-    
+
     return stats
 
 
@@ -543,25 +502,6 @@ def refine_regulation(config: Dict, stats: Dict) -> Dict[str, Any]:
     return changes
 
 
-def refine_cpu(config: Dict, stats: Dict) -> Dict[str, Any]:
-    """
-    Optimise la complexité computationnelle.
-    """
-    changes = {}
-    
-    # Réduire le nombre de métriques loguées si nécessaire
-    log_metrics = config.get('system', {}).get('logging', {}).get('log_metrics', [])
-    if len(log_metrics) > 10:
-        # Garder seulement les essentielles
-        essential = ['t', 'S(t)', 'C(t)', 'effort(t)', 'cpu_step(t)', 'entropy_S']
-        old_metrics = log_metrics.copy()
-        config['system']['logging']['log_metrics'] = essential
-        changes['log_metrics'] = {'old': len(old_metrics), 'new': len(essential)}
-        print(f"  → Métriques loguées: {len(old_metrics)} → {len(essential)}")
-    
-    return changes
-
-
 def refine_chronic_effort(config: Dict, stats: Dict) -> Dict[str, Any]:
     """
     Raffine pour réduire l'effort chronique.
@@ -631,13 +571,15 @@ def refine_transient_effort(config: Dict, stats: Dict) -> Dict[str, Any]:
 
 
 # Dictionnaire des fonctions de raffinement
+# Clés = les six critères de référence (clés de barème) + les deux critères
+# dérivés de l'effort. Le coût CPU est loggé, pas noté : plus de raffinement CPU.
 REFINEMENT_FUNCTIONS = {
     'fluidity': refine_fluidity,
-    'stability': refine_stability,
+    'dispersion': refine_stability,
     'resilience': refine_resilience,
     'innovation': refine_innovation,
     'regulation': refine_regulation,
-    'cpu_cost': refine_cpu,
+    'activite': refine_chronic_effort,
     'effort_internal': refine_chronic_effort,
     'effort_transient': refine_transient_effort
 }
@@ -726,7 +668,7 @@ def analyze_cross_metrics(run_data: Dict) -> Dict[str, float]:
     # Paires de métriques intéressantes
     pairs = [
         ('effort(t)', 'cpu_step(t)'),
-        ('entropy_S', 'variance_d2S'),
+        ('entropy_S', 'fluidity'),
         ('mean_abs_error', 'effort(t)'),
         ('C(t)', 'S(t)')
     ]
@@ -765,9 +707,6 @@ if __name__ == "__main__":
         'regulation': {'G_arch': 'tanh', 'dynamic_G': False},
         'spiral': {'epsilon': 0.05},
         'to_calibrate': {
-            'variance_d2S': 0.01,
-            'stability_ratio': 10,
-            'entropy_S': 0.5,
             'mean_high_effort': 2.0,
             'd_effort_dt': 5.0
         }

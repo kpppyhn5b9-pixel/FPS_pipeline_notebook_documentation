@@ -847,7 +847,7 @@ def export_all_correlations(history: List[Dict],
         metrics_to_analyze = [
             'S(t)', 'C(t)', 'E(t)',
             'effort(t)', 'entropy_S', 'fluidity',
-            'mean_abs_error', 'variance_d2S', 'std_S',
+            'mean_abs_error',
             'gamma', 'gamma_mean(t)',
             'An_mean(t)', 'fn_mean(t)',
             'En_mean(t)', 'On_mean(t)', 'In_mean(t)',
@@ -855,7 +855,7 @@ def export_all_correlations(history: List[Dict],
             'temporal_coherence', 'adaptive_resilience', 'continuous_resilience',
             'best_pair_score', 'best_pair_gamma',
             'decorrelation_time', 'autocorr_tau',
-            'mean_high_effort', 'd_effort_dt', 'max_median_ratio'
+            'mean_high_effort', 'd_effort_dt'
         ]
     
     # Créer DataFrame

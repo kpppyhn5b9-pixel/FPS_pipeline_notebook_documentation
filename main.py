@@ -530,13 +530,11 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
             except Exception as e:
                 print(f"    ⚠️ plot_metrics_evolution : {e}")
 
-            # 9. Évolution temporelle des scores empiriques (retourne un tuple)
+            # 9. Évolution temporelle des six scores de référence, sur O(t)
             try:
-                print("  → Scores empiriques (évolution)...")
-                # calculate_all_scores est requis comme callable par plot_scores_evolution
-                _calc_fn = getattr(FPS_MODULES.get('metrics'), 'calculate_all_scores', None)
+                print("  → Scores de référence (évolution, cible O)...")
                 result_scores = FPS_MODULES['visualize'].plot_scores_evolution(
-                    history, config, calculate_all_scores=_calc_fn
+                    history, config, signal='O'
                 )
                 if result_scores is not None:
                     fig9, _, _ = result_scores
@@ -558,32 +556,6 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
                     figures_paths['signal_scores_S_vs_O'] = path_svo
             except Exception as e:
                 print(f"    ⚠️ plot_signal_scores_S_vs_O : {e}")
-
-            # 10bis. Mêmes visualisations de scores, calculées sur O(t) (item catalogue)
-            try:
-                print("  → Scores sur O(t) : évolution + grille...")
-                shadow_O = FPS_MODULES['visualize'].build_O_based_history(history, config)
-                if shadow_O:
-                    _calc_fn = getattr(FPS_MODULES.get('metrics'), 'calculate_all_scores', None)
-                    res_O = FPS_MODULES['visualize'].plot_scores_evolution(
-                        shadow_O, config, calculate_all_scores=_calc_fn
-                    )
-                    if res_O is not None:
-                        fig_O, _, _ = res_O
-                        path_O = os.path.join(dirs['figures'], 'scores_evolution_O.png')
-                        fig_O.savefig(path_O, dpi=150, bbox_inches='tight')
-                        figures_paths['scores_evolution_O'] = path_O
-                        plt.close(fig_O)
-                    scores_nb_O = FPS_MODULES['visualize'].calculate_empirical_scores_notebook(
-                        shadow_O, config
-                    )
-                    fig_grid_O = FPS_MODULES['visualize'].create_empirical_grid(scores_nb_O)
-                    path_grid_O = os.path.join(dirs['figures'], 'empirical_grid_O.png')
-                    fig_grid_O.savefig(path_grid_O, dpi=150, bbox_inches='tight')
-                    figures_paths['empirical_grid_O'] = path_grid_O
-                    plt.close(fig_grid_O)
-            except Exception as e:
-                print(f"    ⚠️ scores sur O(t) : {e}")
 
             # 11. Résilience adaptative
             try:
@@ -785,15 +757,6 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
     return figures_paths
 
 
-def _safe_score(x, default=3):
-    """int(round(x)) robuste : NaN/None/inf -> neutre (jamais un crash)."""
-    try:
-        xf = float(x)
-        return int(round(xf)) if np.isfinite(xf) else default
-    except (TypeError, ValueError):
-        return default
-
-
 def generate_final_report(results: Dict, exploration_results: Dict, 
                          analysis_result: Optional[Dict], config: Dict, 
                          dirs: Dict) -> str:
@@ -869,175 +832,6 @@ def create_minimal_report(results: Dict, dirs: Dict) -> str:
 
 # ============== FONCTIONS HELPER ==============
 
-def calculate_empirical_scores(metrics: Dict, config: Dict = None, history: List[Dict] = None) -> Dict[str, int]:
-    """
-    Calcule les scores 1-5 pour la grille empirique en utilisant les fenêtres adaptatives.
-    
-    Signé: Claude, Gepetto & Andréa Gadal 🌀
-    
-    Args:
-        metrics: métriques calculées (pour fallback)
-        config: configuration (contient adaptive_windows)
-        history: historique complet pour fenêtres adaptatives
-    
-    Returns:
-        dict avec scores 1-5 pour chaque critère
-    """
-    # Si on a l'historique, utiliser le nouveau système adaptatif
-    if history and len(history) >= 20:
-        try:
-            # Utiliser calculate_all_scores avec fenêtres adaptatives
-            import metrics as metrics_module
-            adaptive_scores = metrics_module.calculate_all_scores(history, config)
-            current_scores = adaptive_scores.get('current', {})
-            
-            if current_scores:
-                # Mapper vers la grille empirique
-                return {
-                    # Garde NaN (14/07/2026) : un score non calculable (fenêtre
-                    # vide, verdict suspendu propagé) tombe sur le neutre 3 au
-                    # lieu de faire planter le rapport (int(NaN) -> crash).
-                    'Dispersion': _safe_score(current_scores.get('dispersion', 3)),
-                    'Régulation': _safe_score(current_scores.get('regulation', 3)),
-                    'Fluidité': _safe_score(current_scores.get('fluidity', 3)),
-                    'Résilience': _safe_score(current_scores.get('resilience', 3)),
-                    'Innovation': _safe_score(current_scores.get('innovation', 3)),
-                    'Coût CPU': _safe_score(current_scores.get('cpu_cost', 3)),
-                    'Activité': _safe_score(current_scores.get('activite', 3))
-                }
-        except Exception as e:
-            print(f"  ⚠️ Erreur système adaptatif, fallback : {e}")
-    
-    # Sinon, fallback sur l'ancien système (garde la compatibilité)
-    scores = {}
-    
-    # Stabilité (basée sur std_S et max_median_ratio)
-    std_s = metrics.get('std_S', float('inf'))
-    if std_s < 0.5:
-        scores['Stabilité'] = 5
-    elif std_s < 1.0:
-        scores['Stabilité'] = 4
-    elif std_s < 2.0:
-        scores['Stabilité'] = 3
-    else:
-        scores['Stabilité'] = 2
-    
-    # Régulation (basée sur final_mean_abs_error)
-    error = metrics.get('final_mean_abs_error', float('inf'))
-    if error < 0.1:
-        scores['Régulation'] = 5
-    elif error < 0.5:
-        scores['Régulation'] = 4
-    elif error < 1.0:
-        scores['Régulation'] = 3
-    else:
-        scores['Régulation'] = 2
-    
-    # Fluidité (basée sur la nouvelle métrique de fluidité)
-    fluidity = metrics.get('final_fluidity', None)
-    if fluidity is None:
-        # Fallback : calculer depuis variance_d2S si fluidity n'est pas disponible
-        var_d2s = metrics.get('final_variance_d2S', 175.0)
-        x = var_d2s / 175.0  # Reference variance
-        fluidity = 1 / (1 + np.exp(5.0 * (x - 1)))
-    
-    if fluidity >= 0.9:
-        scores['Fluidité'] = 5
-    elif fluidity >= 0.7:
-        scores['Fluidité'] = 4
-    elif fluidity >= 0.5:
-        scores['Fluidité'] = 3
-    elif fluidity >= 0.3:
-        scores['Fluidité'] = 2
-    else:
-        scores['Fluidité'] = 1
-    
-    # Résilience - Utilise métrique adaptative unifiée
-    adaptive_resilience_score = metrics.get('adaptive_resilience_score', None)
-    
-    if adaptive_resilience_score is not None:
-        scores['Résilience'] = adaptive_resilience_score
-    else:
-        # Fallback : ancienne logique
-        has_continuous_perturbation = False
-        
-        # Nouvelle structure avec input.perturbations
-        input_cfg = config.get('system', {}).get('input', {}) if config else {}
-        perturbations = input_cfg.get('perturbations', [])
-        
-        for pert in perturbations:
-            if pert.get('type') in ['sinus', 'bruit', 'rampe']:
-                has_continuous_perturbation = True
-                break
-        
-        # Si pas trouvé dans la nouvelle structure, vérifier l'ancienne (pour compatibilité)
-        if not has_continuous_perturbation and config:
-            old_pert = config.get('system', {}).get('perturbation', {})
-            if old_pert.get('type') in ['sinus', 'bruit', 'rampe']:
-                has_continuous_perturbation = True
-        
-        if has_continuous_perturbation:
-            cont_resilience = metrics.get('continuous_resilience_mean', metrics.get('continuous_resilience', 0))
-            if cont_resilience >= 0.90:
-                scores['Résilience'] = 5
-            elif cont_resilience >= 0.75:
-                scores['Résilience'] = 4
-            elif cont_resilience >= 0.60:
-                scores['Résilience'] = 3
-            elif cont_resilience >= 0.40:
-                scores['Résilience'] = 2
-            else:
-                scores['Résilience'] = 1
-        else:
-            t_retour = metrics.get('resilience_t_retour', float('inf'))
-            if t_retour < 1.0:
-                scores['Résilience'] = 5
-            elif t_retour < 2.0:
-                scores['Résilience'] = 4
-            elif t_retour < 5.0:
-                scores['Résilience'] = 3
-            elif t_retour < 10.0:
-                scores['Résilience'] = 2
-            else:
-                scores['Résilience'] = 1
-    
-    # Innovation (basée sur entropy_S moyen pour cohérence avec système adaptatif)
-    # CORRECTION: utiliser la moyenne plutôt que la valeur finale pour éviter les artefacts
-    entropy = metrics.get('entropy_S', metrics.get('final_entropy_S', 0))  # Priorité à la moyenne
-    if entropy > 0.8:
-        scores['Innovation'] = 5
-    elif entropy > 0.6:
-        scores['Innovation'] = 4
-    elif entropy > 0.4:
-        scores['Innovation'] = 3
-    else:
-        scores['Innovation'] = 2
-    
-    # Coût CPU (basé sur mean_cpu_step)
-    cpu = metrics.get('mean_cpu_step', float('inf'))
-    if cpu < 0.001:
-        scores['Coût CPU'] = 5
-    elif cpu < 0.01:
-        scores['Coût CPU'] = 4
-    elif cpu < 0.1:
-        scores['Coût CPU'] = 3
-    else:
-        scores['Coût CPU'] = 2
-    
-    # Effort interne (basé sur mean_effort)
-    effort = metrics.get('mean_effort', float('inf'))
-    if effort < 0.5:
-        scores['Effort interne'] = 5
-    elif effort < 1.0:
-        scores['Effort interne'] = 4
-    elif effort < 2.0:
-        scores['Effort interne'] = 3
-    else:
-        scores['Effort interne'] = 2
-    
-    return scores
-
-
 def get_criteria_terms_mapping() -> Dict[str, List[str]]:
     """
     Retourne le mapping critères-termes FPS pour la matrice de corrélation.
@@ -1045,13 +839,13 @@ def get_criteria_terms_mapping() -> Dict[str, List[str]]:
     Cette fonction définit la correspondance entre les critères empiriques
     et les termes mathématiques du système FPS.
     """
+    # Les six critères de référence (ceux du switch de perception).
     return {
-        'Stabilité': ['S(t)', 'C(t)', 'φₙ(t)', 'L(t)', 'max_median_ratio'],
+        'Stabilité': ['S(t)', 'C(t)', 'φₙ(t)', 'L(t)', 'dispersion'],
         'Régulation': ['Fₙ(t)', 'G(x)', 'γ(t)', 'Aₙ(t)', 'mean_abs_error'],
         'Fluidité': ['γₙ(t)', 'σ(x)', 'envₙ(x,t)', 'μₙ(t)', 'fluidity'],
         'Résilience': ['Aₙ(t)', 'G(x,t)', 'effort(t)', 'adaptive_resilience'],
         'Innovation': ['A_spiral(t)', 'Eₙ(t)', 'r(t)', 'entropy_S'],
-        'Coût CPU': ['cpu_step(t)', 'N', 'T'],
         'Effort interne': ['effort(t)', 'd_effort/dt', 'mean_high_effort']
     }
 

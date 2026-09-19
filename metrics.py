@@ -23,44 +23,16 @@ la falsification et le raffinement continu.
 
 import numpy as np
 from scipy import signal
-import time
-import csv
-import h5py
-import os
 from typing import Dict, List, Union, Optional, Tuple, Any
 import warnings
-from utils import deep_convert
 
 
 # ============== MÉTRIQUES DE PERFORMANCE ==============
 
-def compute_cpu_step(start_time: float, end_time: float, N: int) -> float:
-    """
-    Temps MUR mesuré par pas et par strate — PROFILAGE UNIQUEMENT.
-
-    cpu_step = (end_time - start_time) / N
-
-    ⚠️ Non reproductible et dépendant de la machine (time.perf_counter()).
-    Ne DOIT PAS piloter le contrôle : pour le score cpu_cost qui alimente γ,
-    utiliser compute_cpu_step_deterministic(N), sinon le temps mur fuit dans
-    la sélection de γ et casse la parité bit-à-bit avec l'oracle.
-
-    Args:
-        start_time: temps début (time.perf_counter())
-        end_time: temps fin
-        N: nombre de strates
-
-    Returns:
-        float: temps mur moyen par strate en secondes (info de profilage)
-    """
-    if N <= 0:
-        return 0.0
-    return (end_time - start_time) / N
-
 
 # Coût nominal d'une opération de couplage (secondes "modèle", indépendant de
 # la machine). Calibré pour que les tailles N usuelles tombent dans une bande
-# de score réaliste (N≈100 → ~1e-4 → cpu_cost 5), comme le temps mur observé.
+# réaliste (N≈100 → ~1e-4 s/strate), comme le temps mur observé jadis.
 CPU_NOMINAL_OP_COST = 1e-6
 
 
@@ -68,15 +40,16 @@ def compute_cpu_step_deterministic(N: int, op_cost: float = CPU_NOMINAL_OP_COST)
     """
     Coût CPU par strate, DÉTERMINISTE et reproductible.
 
-    Remplace le temps mur pour tout ce qui pilote le contrôle (score cpu_cost
-    → performance système → synergie → γ), afin que deux runs identiques
-    produisent exactement les mêmes décisions, sur n'importe quelle machine.
+    Remplace le temps mur afin que deux runs identiques produisent exactement
+    les mêmes logs, sur n'importe quelle machine. Le coût CPU est LOGGÉ
+    (diagnostic), il n'est pas noté : il ne fait pas partie des six métriques
+    de référence et ne pilote rien.
 
     Modèle : le travail par strate est dominé par la somme de couplage sur les
     N strates → O(N) opérations par strate. On renvoie op_cost * N : une
     estimation RELATIVE, machine-indépendante, identique d'un run à l'autre.
-    Le temps mur réel reste mesuré et loggé à part (cf. compute_cpu_step), mais
-    ne nourrit plus aucune décision.
+    C'est LA mesure de coût CPU du pipeline (colonne cpu_step(t)) : le temps
+    mur n'est plus mesuré, il n'est pas reproductible.
 
     Args:
         N: nombre de strates
@@ -293,101 +266,6 @@ def compute_d_effort_dt(effort_history: List[float], dt: float) -> float:
 
 # ============== MÉTRIQUES DE QUALITÉ DYNAMIQUE ==============
 
-def compute_variance_d2S(S_history: List[float], dt: float) -> float:
-    """
-    Calcule la variance de la dérivée seconde de S(t).
-    
-    Mesure la fluidité : une faible variance indique des transitions douces.
-    
-    Args:
-        S_history: historique du signal global
-        dt: pas de temps
-    
-    Returns:
-        float: variance de d²S/dt²
-    """
-    if len(S_history) < 3:
-        return 0.0
-    
-    # Conversion en array pour calculs
-    S_array = np.array(S_history)
-    
-    # Première dérivée
-    dS_dt = np.gradient(S_array, dt)
-    
-    # Seconde dérivée
-    d2S_dt2 = np.gradient(dS_dt, dt)
-    
-    # Variance robuste via IQR (protection contre outliers)
-    try:
-        q75, q25 = np.percentile(d2S_dt2, [75, 25])
-        iqr = q75 - q25
-        # Conversion IQR -> σ pour distribution normale (facteur 0.7413)
-        robust_variance = (iqr * 0.7413) ** 2
-        return robust_variance
-    except:
-        # Fallback si problème de calcul
-        return np.var(d2S_dt2)
-
-
-def compute_fluidity(variance_d2S: float, reference_variance: float = 175.0) -> float:
-    """
-    Calcule la fluidité du système basée sur la variance de d²S/dt².
-    
-    Une faible variance indique des transitions douces (haute fluidité).
-    Utilise une sigmoïde inversée pour une sensibilité optimale.
-    
-    Args:
-        variance_d2S: variance de la dérivée seconde du signal
-        reference_variance: variance de référence (défaut: médiane empirique)
-    
-    Returns:
-        float: fluidité entre 0 (saccadé) et 1 (très fluide)
-    """
-    if variance_d2S <= 0:
-        return 1.0  # Variance nulle = parfaitement fluide
-    
-    x = variance_d2S / reference_variance
-    k = 5.0  # Sensibilité de la transition
-    
-    return 1 / (1 + np.exp(k * (x - 1)))
-
-
-def compute_fluidity_spectral(S_window, dt: float, cutoff_rel: float = 0.25) -> float:
-    """
-    Fluidité SPECTRALE, sans dimension (lot v3, 14/07/2026).
-
-    Part de la puissance spectrale située sous cutoff_rel x Nyquist :
-    les signaux lisses concentrent leur énergie dans le grave. Invariante
-    à l'échelle d'amplitude et au dt (la coupure est RELATIVE à Nyquist).
-    Remplace compute_fluidity (variance_d2S / 175), dont l'audit dt a montré
-    l'explosion x15.9 à dt=0.05. Partage la logique spectrale d'entropy_S.
-
-    Barèmes associés (compute_scores) informés de la frontière de Pareto
-    entropie-fluidité : le coin « riche dans le grave » (~0.83) -> 5,
-    le spectre uniforme (entropie max, ~0.23) -> 3.
-
-    Args:
-        S_window: fenêtre du signal (>= 10 points recommandé)
-        dt: pas d'échantillonnage
-        cutoff_rel: coupure en fraction de Nyquist (défaut 1/4)
-
-    Returns:
-        float dans [0, 1] ; 1.0 si le signal est plat (aucune énergie = aucune
-        saccade) ; 0.15 (neutre provisoire, score 3) si fenêtre trop courte.
-    """
-    S_window = np.asarray(S_window, dtype=float)
-    if len(S_window) < 10:
-        return 0.15
-    w = S_window - np.mean(S_window)
-    P = np.abs(np.fft.rfft(w)) ** 2
-    total = P.sum()
-    if total < 1e-15:
-        return 1.0
-    freqs = np.fft.rfftfreq(len(w), dt)
-    nyq = 0.5 / dt
-    return float(P[freqs <= cutoff_rel * nyq].sum() / total)
-
 
 def compute_entropy_S(S_t: Union[float, List[float], np.ndarray], 
                       sampling_rate: float) -> float:
@@ -462,32 +340,6 @@ def compute_entropy_S(S_t: Union[float, List[float], np.ndarray],
     except Exception as e:
         warnings.warn(f"Erreur dans compute_entropy_S: {e}")
         return 0.5
-
-
-def compute_max_median_ratio(S_history: List[float]) -> float:
-    """
-    Calcule le ratio max/médiane du signal.
-    
-    Mesure la stabilité : un ratio élevé indique des pics extrêmes.
-    
-    Args:
-        S_history: historique du signal
-    
-    Returns:
-        float: ratio max(|S|) / median(|S|)
-    """
-    if len(S_history) < 10:
-        return 1.0
-    
-    # Valeurs absolues
-    S_abs = np.abs(S_history)
-    
-    # Protection contre médiane nulle
-    median_val = np.median(S_abs)
-    if median_val < 1e-10:
-        median_val = 1e-10
-    
-    return np.max(S_abs) / median_val
 
 
 # ============== MÉTRIQUES DE RÉGULATION ==============
@@ -734,18 +586,8 @@ def compute_adaptive_resilience(config: Dict, metrics: Dict,
         if cont_resilience is not None:
             result['value'] = cont_resilience
             result['raw_value'] = cont_resilience
-            
-            # Calculer le score 1-5
-            if cont_resilience >= 0.90:
-                result['score'] = 5  # Excellence
-            elif cont_resilience >= 0.75:
-                result['score'] = 4  # Très bon
-            elif cont_resilience >= 0.60:
-                result['score'] = 3  # Bon
-            elif cont_resilience >= 0.40:
-                result['score'] = 2  # Acceptable
-            else:
-                result['score'] = 1  # Faible
+            # UN SEUL barème : celui du switch (SCORE_BRACKETS['resilience']).
+            result['score'] = score_from_brackets(float(cont_resilience), 'resilience')
     
     else:
         # Utiliser t_retour pour perturbation ponctuelle ou absence
@@ -767,177 +609,18 @@ def compute_adaptive_resilience(config: Dict, metrics: Dict,
                 result['value'] = 1.0
             else:
                 result['value'] = 1.0 / (1.0 + t_retour)
-            
-            # Calculer le score 1-5 — barèmes calibrés pour le t_retour v2
-            # (settling-time : plancher ~2 dû au lissage, cf. balayage tau).
-            if t_retour < 2.5:
-                result['score'] = 5  # Récupération très rapide
-            elif t_retour < 4.0:
-                result['score'] = 4  # Récupération rapide
-            elif t_retour < 7.0:
-                result['score'] = 3  # Récupération modérée
-            elif t_retour < 11.0:
-                result['score'] = 2  # Récupération lente
-            else:
-                result['score'] = 1  # Très lente
+            # UN SEUL barème : celui du switch, appliqué à la valeur normalisée
+            # (c'est ce que le switch et les scoreurs consomment). NB : avec
+            # 1/(1+t_retour) et le plancher ~2 du settling-time, l'échelle
+            # 4-5 n'est pas atteignable — calibration de la normalisation à
+            # faire côté barème, pas par un second barème ici.
+            result['score'] = score_from_brackets(result['value'], 'resilience')
     
     return result
 
 
-# ============== VÉRIFICATION DES SEUILS ==============
-
-def check_thresholds(metrics_dict: Dict[str, float], 
-                     thresholds_dict: Dict[str, float]) -> Dict[str, bool]:
-    """
-    Vérifie le franchissement des seuils pour chaque métrique.
-    
-    Args:
-        metrics_dict: dictionnaire des métriques calculées
-        thresholds_dict: dictionnaire des seuils (depuis config)
-    
-    Returns:
-        Dict[str, bool]: métrique -> dépassement True/False
-    
-    Note:
-        Seuils initiaux théoriques, à ajuster après 5 runs de calibration
-    """
-    results = {}
-    
-    # Mapping des métriques aux seuils et conditions
-    threshold_checks = {
-        'variance_d2S': ('variance_d2S', lambda x, t: x > t),
-        'max_median_ratio': ('stability_ratio', lambda x, t: x > t),
-        't_retour': ('resilience', lambda x, t: x > t),
-        'entropy_S': ('entropy_S', lambda x, t: x < t),
-        'mean_high_effort': ('mean_high_effort', lambda x, t: x > t),
-        'd_effort_dt': ('d_effort_dt', lambda x, t: x > t),
-        'mean_abs_error': ('regulation_threshold', lambda x, t: x > t)
-    }
-    
-    for metric_name, (threshold_key, check_func) in threshold_checks.items():
-        if metric_name in metrics_dict and threshold_key in thresholds_dict:
-            value = metrics_dict[metric_name]
-            threshold = thresholds_dict[threshold_key]
-            results[metric_name] = check_func(value, threshold)
-        else:
-            results[metric_name] = False
-    
-    return deep_convert(results)
-
-
-# ============== EXPORT ET LOGGING ==============
-
-def log_metrics(t: float, metrics_dict: Dict[str, Any], csv_writer: Any, 
-                hdf5_file: Optional[h5py.File] = None) -> None:
-    """
-    Exporte les métriques dans les fichiers de log.
-    
-    Args:
-        t: temps actuel
-        metrics_dict: toutes les métriques à logger
-        csv_writer: writer CSV (depuis simulate.py)
-        hdf5_file: fichier HDF5 optionnel pour gros volumes
-    
-    Note:
-        L'ordre des colonnes est défini dans config['system']['logging']['log_metrics']
-    """
-    # Pour CSV : on suppose que simulate.py gère déjà l'écriture
-    # Cette fonction est un placeholder pour extensions futures
-    
-    # Si HDF5 est fourni (pour N > 10 ou T > 1000)
-    if hdf5_file is not None:
-        try:
-            # Créer un groupe pour ce pas de temps
-            time_group = hdf5_file.create_group(f"t_{int(t*1000)}")
-            
-            # Sauvegarder chaque métrique
-            for key, value in metrics_dict.items():
-                if isinstance(value, (int, float)):
-                    time_group.attrs[key] = value
-                elif isinstance(value, np.ndarray):
-                    time_group.create_dataset(key, data=value)
-                elif isinstance(value, str):
-                    time_group.attrs[key] = value
-                    
-        except Exception as e:
-            warnings.warn(f"Erreur HDF5 à t={t}: {e}")
-
-
-def summarize_metrics(metrics_history: Union[Dict[str, List], List[Dict]]) -> Dict[str, float]:
-    """
-    Calcule un résumé statistique des métriques sur tout le run.
-    
-    Args:
-        metrics_history: historique complet des métriques
-    
-    Returns:
-        Dict[str, float]: statistiques résumées
-    """
-    summary = {}
-    
-    # Convertir en format uniforme si nécessaire
-    if isinstance(metrics_history, list) and len(metrics_history) > 0:
-        # Liste de dicts -> dict de listes
-        keys = metrics_history[0].keys()
-        history_dict = {k: [m.get(k, 0) for m in metrics_history] for k in keys}
-    else:
-        history_dict = metrics_history
-    
-    # Calculer les statistiques pour chaque métrique numérique
-    for key, values in history_dict.items():
-        if len(values) > 0 and isinstance(values[0], (int, float)):
-            summary[f"{key}_mean"] = np.mean(values)
-            summary[f"{key}_std"] = np.std(values)
-            summary[f"{key}_min"] = np.min(values)
-            summary[f"{key}_max"] = np.max(values)
-            summary[f"{key}_final"] = values[-1]
-    
-    return deep_convert(summary)
-
-
 # ============== FONCTIONS SPÉCIALISÉES ==============
 
-def detect_chaos_events(S_history: List[float], threshold_sigma: float = 3.0) -> List[Dict]:
-    """
-    Détecte les événements chaotiques dans le signal.
-    
-    Un événement chaotique est défini comme une déviation > threshold_sigma * σ.
-    
-    Args:
-        S_history: historique du signal
-        threshold_sigma: seuil en nombre d'écarts-types
-    
-    Returns:
-        List[Dict]: liste des événements détectés
-    """
-    if len(S_history) < 100:
-        return []
-    
-    events = []
-    S_array = np.array(S_history)
-    
-    # Statistiques de référence sur une fenêtre glissante
-    window_size = 50
-    
-    for i in range(window_size, len(S_array)):
-        # Fenêtre de référence
-        window = S_array[i-window_size:i]
-        mean_window = np.mean(window)
-        std_window = np.std(window)
-        
-        # Vérifier la valeur actuelle
-        if std_window > 0:
-            z_score = abs(S_array[i] - mean_window) / std_window
-            
-            if z_score > threshold_sigma:
-                events.append({
-                    'time_index': i,
-                    'value': S_array[i],
-                    'z_score': z_score,
-                    'type': 'chaos'
-                })
-    
-    return deep_convert(events)
 
 def compute_correlation_effort_cpu(effort_history: List[float], 
                                    cpu_history: List[float]) -> float:
@@ -970,119 +653,21 @@ def compute_correlation_effort_cpu(effort_history: List[float],
         return 0.0
 
 
-# ============== TESTS ET VALIDATION ==============
-
-if __name__ == "__main__":
-    """
-    Tests du module metrics.py
-    """
-    print("=== Tests du module metrics.py ===\n")
-    
-    # Test 1: CPU step
-    print("Test 1 - CPU step:")
-    start = time.perf_counter()
-    time.sleep(0.1)  # Simuler du travail
-    end = time.perf_counter()
-    cpu = compute_cpu_step(start, end, 10)
-    print(f"  CPU par strate: {cpu:.4f} secondes")
-    
-    # Test 2: Effort
-    print("\nTest 2 - Effort:")
-    delta_A = np.array([0.1, -0.05, 0.02])
-    delta_f = np.array([0.01, 0.02, -0.01])
-    delta_gamma = np.array([0.0, 0.0, 0.0])
-    effort = compute_effort(delta_A, delta_f, delta_gamma, 1.0, 1.0, 1.0)
-    print(f"  Effort total: {effort:.4f}")
-    
-    # Test 3: Variance d²S/dt²
-    print("\nTest 3 - Fluidité:")
-    # Signal sinusoïdal lisse
-    t = np.linspace(0, 10, 100)
-    S_smooth = np.sin(t)
-    S_noisy = np.sin(t) + 0.1 * np.random.randn(100)
-    
-    var_smooth = compute_variance_d2S(S_smooth.tolist(), 0.1)
-    var_noisy = compute_variance_d2S(S_noisy.tolist(), 0.1)
-    print(f"  Variance lisse: {var_smooth:.6f}")
-    print(f"  Variance bruitée: {var_noisy:.6f}")
-    
-    # Test 4: Entropie spectrale
-    print("\nTest 4 - Entropie spectrale:")
-    # Signal mono-fréquence vs multi-fréquence
-    S_mono = np.sin(2 * np.pi * t)
-    S_multi = np.sin(2 * np.pi * t) + 0.5 * np.sin(6 * np.pi * t) + 0.3 * np.sin(10 * np.pi * t)
-    
-    entropy_mono = compute_entropy_S(S_mono, 10.0)
-    entropy_multi = compute_entropy_S(S_multi, 10.0)
-    print(f"  Entropie mono-fréquence: {entropy_mono:.4f}")
-    print(f"  Entropie multi-fréquence: {entropy_multi:.4f}")
-    
-    # Test 5: Temps de retour
-    print("\nTest 5 - Résilience:")
-    # Signal avec perturbation
-    S_perturbed = np.ones(100)
-    S_perturbed[50:55] = 5.0  # Perturbation
-    S_perturbed[55:] = 1.0 + 0.1 * np.exp(-0.1 * np.arange(45))  # Retour progressif
-    
-    t_ret = compute_t_retour(S_perturbed.tolist(), 50, 0.1, 0.95)
-    print(f"  Temps de retour: {t_ret:.2f}")
-    
-    # Test 6: Vérification des seuils
-    print("\nTest 6 - Vérification seuils:")
-    metrics = {
-        'variance_d2S': 0.02,
-        'entropy_S': 0.3,
-        'mean_high_effort': 2.5
-    }
-    thresholds = {
-        'variance_d2S': 0.01,
-        'entropy_S': 0.5,
-        'mean_high_effort': 2.0
-    }
-    
-    checks = check_thresholds(metrics, thresholds)
-    for metric, exceeded in checks.items():
-        print(f"  {metric}: {'DÉPASSÉ' if exceeded else 'OK'}")
-    
-    print("\n✅ Module metrics.py prêt pour quantifier l'harmonie!")
-
-
-# ============== MÉTRIQUES GLOBALES ET SCORES ==============
-
-def compute_adaptive_window(total_steps: int, target_percentage: float, 
-                           min_absolute: int = 20, max_percentage: float = 0.5) -> int:
-    """
-    Calcule une taille de fenêtre adaptative qui :
-    - Respecte un pourcentage cible du total
-    - Garantit un minimum absolu pour la signification statistique
-    - Plafonne à un maximum pour éviter trop d'inertie
-    
-    Args:
-        total_steps: nombre total de pas de la simulation
-        target_percentage: pourcentage cible (ex: 0.1 pour 10%)
-        min_absolute: minimum de pas requis (défaut: 20)
-        max_percentage: pourcentage maximum (défaut: 50%)
-        
-    Returns:
-        int: taille de fenêtre optimale
-    """
-    # Calcul de base
-    window = int(total_steps * target_percentage)
-    
-    # Appliquer les contraintes
-    window = max(window, min_absolute)  # Au moins min_absolute pas
-    window = min(window, int(total_steps * max_percentage))  # Au plus max_percentage
-    
-    return window
-
-
-
+# ============== LES SIX MÉTRIQUES DE RÉFÉRENCE ET LEUR SCORING ==============
+#
+# Décision 19/09/2026 : le switch de perception (simulate.py) est LA référence.
+# Six métriques, une fenêtre W_f, un barème (SCORE_BRACKETS), un scoreur
+# (compute_reference_scores). Tout ce qui note le système passe par ici :
+#   - le switch, les visualisations, les rapports, l'analyse de batch :
+#     signal='O' (O(t) = ΣOₙ, le signal brut non pondéré) ;
+#   - gamma_adaptive_aware : signal='S' (S(t) perçu courant) — mêmes
+#     métriques, même barème, seule la CIBLE change.
+# Plus de scoreur parallèle, plus de barème en dur, plus d'inline.
+#
 # ============================================================================
 # SOURCE UNIQUE DES BARÈMES DE SCORES (unification 14/07/2026, ré-appliquée
-# le 15/07 : le checkpoint d'Andréa prédatait sa livraison — atelier mixte
-# révélé par le switch de perception qui consomme cette table)
-# Consommée par metrics.compute_scores, visualize.calculate_empirical_scores_
-# notebook ET le switch de perception. Toute calibration se fait ICI, une fois.
+# le 15/07). Consommée par compute_reference_scores, donc par le switch de
+# perception, gamma, visualize, main, analyze. Toute calibration se fait ICI.
 # ============================================================================
 # NOMS HONNÊTES (audit de validité, cf. cahier) — clés RENOMMÉES :
 #   'dispersion' (ex-'stability') : écart-type de S = AMPLITUDE des variations,
@@ -1100,7 +685,6 @@ SCORE_BRACKETS = {
     'fluidity':   {'direction': 'higher', 'thresholds': [0.91, 0.87, 0.83, 0.80], 'ge': False},
     'resilience': {'direction': 'higher', 'thresholds': [0.90, 0.75, 0.60, 0.40], 'ge': True},
     'innovation': {'direction': 'higher', 'thresholds': [0.8, 0.6, 0.4, 0.2], 'ge': False},
-    'cpu_cost':   {'direction': 'lower',  'thresholds': [0.001, 0.01, 0.1, 1.0]},
     # effort : PROVISOIRE (15/07, dossier 4 seeds — médiane repos 59, p75 73,
     # p90 229, corrélation effort<->erreur +0.54, choc invisible). Le score 1
     # permanent des anciens seuils était connu faux ; ceux-ci notent la
@@ -1121,225 +705,196 @@ def score_from_brackets(value: float, key: str) -> int:
     return 5 if value > t[0] else 4 if value > t[1] else 3 if value > t[2] else 2 if value > t[3] else 1
 
 
-def compute_scores(history_slice: List[Dict]) -> Dict[str, float]:
+# Clés du switch (filtres de perception) ↔ clés de barème (SCORE_BRACKETS).
+FILTER_TO_SCORE_KEY = {
+    'stabilite':  'dispersion',
+    'fluidite':   'fluidity',
+    'innovation': 'innovation',
+    'erreur':     'regulation',
+    'effort':     'activite',
+    'resilience': 'resilience',
+}
+SCORE_KEY_TO_FILTER = {v: k for k, v in FILTER_TO_SCORE_KEY.items()}
+REFERENCE_SCORE_KEYS = ('dispersion', 'regulation', 'fluidity', 'resilience', 'innovation', 'activite')
+# Libellés des figures et rapports, dans l'ordre d'affichage.
+SCORE_KEY_LABELS = {
+    'dispersion': 'Stabilité',
+    'regulation': 'Régulation',
+    'fluidity':   'Fluidité',
+    'resilience': 'Résilience',
+    'innovation': 'Innovation',
+    'activite':   'Effort interne',
+}
+NEUTRAL_SCORE = 3
+
+
+def reference_window(config: Optional[Dict], dt: float) -> int:
     """
-    Calcule les scores pour une tranche d'historique donnée.
-    
+    Fenêtre W_f du switch de perception, en pas : max(10, W_f_t / dt).
+
+    Source unique de la fenêtre de scoring (config perception.W_f_t, défaut
+    5 unités de temps) : le switch, gamma, les figures et l'analyse de batch
+    regardent tous la même durée.
+    """
+    w_t = float((config or {}).get('perception', {}).get('W_f_t', 5.0))
+    return max(10, int(round(w_t / max(float(dt), 1e-12))))
+
+
+def compute_dispersion(signal_window) -> float:
+    """
+    Dispersion (score 'dispersion', filtre 'stabilite') : écart-type du signal
+    sur la fenêtre. C'est l'AMPLITUDE des variations, pas la structure.
+    """
+    x = np.asarray(signal_window, dtype=float).ravel()
+    x = x[np.isfinite(x)]
+    return float(np.std(x)) if len(x) else 0.0
+
+
+def compute_fluidity(fn_mean_window) -> float:
+    """
+    Fluidité (score 'fluidity', filtre 'fluidite') : douceur du TEMPO du
+    système = jerk de l'enveloppe de fréquence fₙ.
+
+        fluidity = 1 / (1 + std(d²f) / std(d¹f))   sur la moyenne de fₙ par pas
+
+    Validée sur banc de signaux de référence et calibrée in-situ (cahier de
+    validation). Sans dimension, invariante à l'échelle. < 4 points → 1.0
+    (démarrage : rien de saccadé encore).
+
     Args:
-        history_slice: portion d'historique à analyser
-        
-    Returns:
-        dict: scores calculés pour cette fenêtre
+        fn_mean_window: moyenne de fₙ à chaque pas de la fenêtre
     """
-    if len(history_slice) < 3:
-        return {
-            'dispersion': 3.0,
-            'regulation': 3.0,
-            'fluidity': 3.0,
-            'resilience': 3.0,
-            'innovation': 3.0,
-            'cpu_cost': 3.0,
-            'activite': 3.0
-        }
-    
-    # Extraire les métriques
-    recent_S = [h.get('S(t)', 0) for h in history_slice]
-    recent_errors = [h.get('mean_abs_error', 0) for h in history_slice]
-    recent_efforts = [h.get('effort(t)', 0) for h in history_slice]
-    recent_cpu = [h.get('cpu_step(t)', 0) for h in history_slice]
-    recent_entropy = [h.get('entropy_S', 0.5) for h in history_slice]
-    recent_fluidity = [h.get('fluidity', 1.0) for h in history_slice]
-    recent_adaptive_resilience = [h.get('adaptive_resilience', None) for h in history_slice]
+    f = np.asarray(fn_mean_window, dtype=float).ravel()
+    if len(f) < 4:
+        return 1.0
+    d1, d2 = np.diff(f), np.diff(f, 2)
+    return 1.0 / (1.0 + float(np.std(d2) / (np.std(d1) + 1e-12)))
 
+
+def _num(v) -> Optional[float]:
+    """float fini ou None (cellule vide d'un CSV, None, NaN, texte)."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if np.isfinite(f) else None
+
+
+def signal_series(history_window: List[Dict], signal: str, N: Optional[int] = None) -> List[float]:
+    """Série du signal cible : 'O' = ΣOₙ (brut), 'S' = S(t) (perçu)."""
+    out = []
+    if signal == 'S':
+        for h in history_window:
+            v = _num(h.get('S(t)', h.get('S')))
+            if v is not None:
+                out.append(v)
+        return out
+    if N is None:
+        for h in history_window:
+            O = h.get('O')
+            if O is not None and np.ndim(O) > 0:
+                N = len(O)
+                break
+    for h in history_window:
+        O = h.get('O')
+        if O is not None and np.ndim(O) > 0:
+            out.append(float(np.sum(O)))
+        elif _num(h.get('On_mean(t)')) is not None:
+            # ΣOₙ = N · moyenne (CSV rechargé : seule la moyenne est loggée)
+            out.append(_num(h['On_mean(t)']) * (N if N else 1))
+    return out
+
+
+def _fn_mean_series(history_window: List[Dict]) -> List[float]:
+    out = []
+    for h in history_window:
+        fn = h.get('fn')
+        if fn is not None and np.ndim(fn) > 0:
+            out.append(float(np.mean(fn)))
+        elif _num(h.get('fn_mean(t)')) is not None:
+            out.append(_num(h['fn_mean(t)']))
+    return out
+
+
+def compute_reference_metrics(history_window: List[Dict], dt: float,
+                              signal: str = 'O', N: Optional[int] = None) -> Dict[str, Optional[float]]:
+    """
+    Valeurs brutes des six métriques de référence sur une fenêtre d'historique.
+
+    Mêmes calculs que le switch de perception, à l'identique :
+      dispersion  = std(signal)                       (compute_dispersion)
+      fluidity    = jerk de la moyenne de fₙ           (compute_fluidity)
+      innovation  = entropie spectrale du signal       (compute_entropy_S)
+      regulation  = moyenne de mean_abs_error par pas  (compute_mean_abs_error)
+      activite    = moyenne de effort(t)               (compute_effort)
+      resilience  = moyenne de adaptive_resilience     (compute_adaptive_resilience
+                    ou enveloppes) ; None si aucun verdict dans la fenêtre
+
+    Args:
+        history_window: liste de dicts par pas (history[-W:])
+        dt: pas de temps
+        signal: 'O' (brut, ΣOₙ — switch, figures, rapports, analyse) ou
+                'S' (perçu — gamma_adaptive_aware)
+        N: nombre de strates (utile quand seul On_mean(t) est disponible)
+    """
+    series = [v for v in signal_series(history_window, signal, N) if np.isfinite(v)]
+    fn_means = _fn_mean_series(history_window)
+
+    errors = []
+    for h in history_window:
+        e = _num(h.get('mean_abs_error'))
+        if e is None and h.get('E') is not None and h.get('O') is not None:
+            e = _num(compute_mean_abs_error(np.asarray(h['E'], dtype=float), np.asarray(h['O'], dtype=float)))
+        if e is not None:
+            errors.append(e)
+    efforts = [v for v in (_num(h.get('effort(t)')) for h in history_window) if v is not None]
+    resil = [v for v in (_num(h.get('adaptive_resilience')) for h in history_window) if v is not None]
+
+    return {
+        'dispersion': compute_dispersion(series) if series else 0.0,
+        'fluidity':   compute_fluidity(fn_means),
+        'innovation': float(compute_entropy_S(series, 1.0 / dt)) if series else 0.1,
+        'regulation': float(np.mean(errors)) if errors else 0.0,
+        'activite':   float(np.mean(efforts)) if efforts else 0.0,
+        'resilience': float(np.mean(resil)) if resil else None,
+    }
+
+
+def score_reference_metrics(raw: Dict[str, Optional[float]]) -> Dict[str, int]:
+    """Scores 1-5 des six métriques via SCORE_BRACKETS. Valeur absente → neutre 3."""
     scores = {}
-    
-    # 'dispersion' ≡ DISPERSION : écart-type de S = AMPLITUDE, pas structure
-    # (audit de validité). Score dormant (constant) → inoffensif ; à désactiver
-    # proprement plus tard. La clé reste 'dispersion' (rename = 5 fichiers, 0 gain).
-    std_S = np.std(recent_S) if recent_S else 1.0
-    stability_score = score_from_brackets(std_S, 'dispersion')
-    scores['dispersion'] = float(stability_score)  # = dispersion
-    
-    # Régulation : basée sur l'erreur moyenne
-    mean_error = np.mean(recent_errors) if recent_errors else 1.0
-    regulation_score = score_from_brackets(mean_error, 'regulation')
-    scores['regulation'] = float(regulation_score)
-    
-    # Fluidité : directement depuis la métrique
-    mean_fluidity = np.mean(recent_fluidity) if recent_fluidity else 0.15
-    # Barèmes v3 pour la fluidité SPECTRALE, informés de la frontière de Pareto
-    # entropie-fluidité : coin « riche dans le grave » (~0.83) -> 5 ; spectre
-    # uniforme à entropie max (~0.23) -> 3 ; régime courant mesuré (~0.10-0.12)
-    # -> 3. Provisoires, à calibrer multi-campagnes.
-    fluidity_score = score_from_brackets(mean_fluidity, 'fluidity')
-    scores['fluidity'] = float(fluidity_score)
-    
-    # Résilience : UN SEUL miroir honnête — le verdict d'adaptive_resilience,
-    # qui encode déjà le switch ponctuel/continu (t_retour vs continuous).
-    # Plus de cascade par disponibilité (qui ferait scorer deux runs par des
-    # chemins différents), plus de proxy C(t) (qui confondrait cohésion de
-    # chaîne et résilience). Sans verdict (p. ex. sous perturbation mais pas
-    # assez vécu) → neutre 3, jamais une note inventée.
-    valid_adaptive_resilience = [r for r in recent_adaptive_resilience if r is not None]
-    if valid_adaptive_resilience:
-        mean_adaptive_resilience = np.mean(valid_adaptive_resilience)
-        resilience_score = score_from_brackets(mean_adaptive_resilience, 'resilience')
-    else:
-        resilience_score = 3  # Aucun verdict disponible : neutre.
-
-    scores['resilience'] = float(resilience_score)
-    
-    # Innovation : basée sur l'entropie
-    mean_entropy = np.mean(recent_entropy) if recent_entropy else 0.5
-    innovation_score = score_from_brackets(mean_entropy, 'innovation')
-    scores['innovation'] = float(innovation_score)
-    
-    # Coût CPU
-    mean_cpu = np.mean(recent_cpu) if recent_cpu else 0.01
-    cpu_score = score_from_brackets(mean_cpu, 'cpu_cost')
-    scores['cpu_cost'] = float(cpu_score)
-    
-    # 'activite' (ex-'effort') : churn des paramètres (taux de changement), PAS
-    # du stress (audit de validité). Barèmes v3 : taux par unité de temps.
-    # NB : la clé de SCORE est 'activite' ; le champ de DONNÉES loggé reste
-    # 'effort(t)' (lu ci-dessus dans recent_efforts) — deux choses distinctes.
-    mean_effort = np.mean(recent_efforts) if recent_efforts else 1.0
-    activite_score = score_from_brackets(mean_effort, 'activite')
-    scores['activite'] = float(activite_score)
-    
+    for key in REFERENCE_SCORE_KEYS:
+        v = raw.get(key)
+        if v is None or not np.isfinite(v):
+            scores[key] = NEUTRAL_SCORE  # verdict suspendu : neutre, jamais inventé
+        else:
+            scores[key] = int(score_from_brackets(float(v), key))
     return scores
 
 
-def weighted_average(scores_by_window: Dict[str, Dict[str, float]], weights: Dict[str, float]) -> Dict[str, float]:
-    """
-    Calcule la moyenne pondérée des scores par fenêtre.
-    
-    Args:
-        scores_by_window: scores pour chaque fenêtre
-        weights: poids pour chaque fenêtre
-        
-    Returns:
-        dict: scores moyens pondérés
-    """
-    if not scores_by_window:
-        return {
-            'dispersion': 3.0,
-            'regulation': 3.0,
-            'fluidity': 3.0,
-            'resilience': 3.0,
-            'innovation': 3.0,
-            'cpu_cost': 3.0,
-            'activite': 3.0
-        }
-    
-    # Normaliser les poids pour qu'ils somment à 1
-    total_weight = sum(weights.get(window, 0) for window in scores_by_window.keys())
-    if total_weight == 0:
-        total_weight = 1.0
-    
-    final_scores = {}
-    
-    # Pour chaque métrique, calculer la moyenne pondérée
-    metric_names = ['dispersion', 'regulation', 'fluidity', 'resilience', 'innovation', 'cpu_cost', 'activite']
-    
-    for metric in metric_names:
-        weighted_sum = 0.0
-        total_w = 0.0
-        
-        for window_name, window_scores in scores_by_window.items():
-            if window_name in weights:
-                w = weights[window_name]
-                weighted_sum += window_scores.get(metric, 3.0) * w
-                total_w += w
-        
-        final_scores[metric] = weighted_sum / total_w if total_w > 0 else 3.0
-    
-    return final_scores
+def neutral_reference_scores() -> Dict[str, int]:
+    return {key: NEUTRAL_SCORE for key in REFERENCE_SCORE_KEYS}
 
 
-def calculate_all_scores(recent_history: List[Dict], config: Optional[Dict] = None) -> Dict[str, Dict[str, float]]:
+def compute_reference_scores(history_window: List[Dict], dt: float,
+                             signal: str = 'O', N: Optional[int] = None,
+                             min_points: int = 3) -> Dict[str, int]:
     """
-    Calcule les scores normalisés (1-5) pour toutes les métriques FPS avec fenêtres adaptatives.
-    Utilisé par compute_gamma_adaptive_aware pour évaluer la performance système.
-    
-    Args:
-        recent_history: historique complet des métriques
-        config: configuration contenant adaptive_windows
-        
-    Returns:
-        dict avec scores normalisés pour chaque métrique
+    LE scoreur du pipeline : scores 1-5 des six métriques de référence sur
+    une fenêtre d'historique, barème SCORE_BRACKETS.
+
+    Utilisé par le switch de perception (signal='O'), gamma_adaptive_aware
+    (signal='S'), les figures, les rapports et l'analyse de batch (signal='O').
+    Moins de min_points pas → scores neutres.
     """
-    if len(recent_history) < 5:
-        # Pas assez d'historique, scores neutres
-        return {
-            'current': {
-                'dispersion': 3.0,
-                'regulation': 3.0,
-                'fluidity': 3.0,
-                'resilience': 3.0,
-                'innovation': 3.0,
-                'cpu_cost': 3.0,
-                'activite': 3.0
-            }
-        }
-    
-    total_steps = len(recent_history)
-    
-    # Récupérer la config des fenêtres adaptatives
-    adaptive_config = config.get('adaptive_windows', {}).get('scoring', {}) if config else {}
-    
-    # Valeurs par défaut si pas de config
-    default_scoring_config = {
-        'immediate': {'target_percent': 0.02, 'min_absolute': 10},
-        'recent': {'target_percent': 0.10, 'min_absolute': 30},
-        'medium': {'target_percent': 0.40, 'min_absolute': 100}
-    }
-    
-    scoring_config = adaptive_config if adaptive_config else default_scoring_config
-    
-    # Calculer toutes les fenêtres
-    windows = {}
-    for name, params in scoring_config.items():
-        windows[name] = compute_adaptive_window(
-            total_steps,
-            params['target_percent'],
-            params['min_absolute'],
-            params.get('max_percent', 0.5)
-        )
-    
-    # Calculer les scores pour chaque fenêtre
-    scores = {}
-    for name, window_size in windows.items():
-        if len(recent_history) >= window_size:
-            scores[name] = compute_scores(recent_history[-window_size:])
-    
-    # Pondération adaptative selon la maturité (= avancement réel du run)
-    # L'âge du run = longueur de l'historique COMPLET reçu, rapporté au nombre
-    # de pas attendus (T/dt, depuis la config). L'ancienne formule
-    # len/max(len,100) était circulaire : combinée à la troncature [-50:] côté
-    # appelant, elle gelait la maturité à 0.5 pour toujours.
-    if config is not None:
-        sys_cfg = config.get('system', {})
-        expected_steps = sys_cfg.get('T', 100) / max(sys_cfg.get('dt', 0.1), 1e-9)
-    else:
-        expected_steps = 100
-    maturity = min(len(recent_history) / max(expected_steps, 1.0), 1.0)
-    
-    if maturity < 0.2:  # Début
-        weights = {'immediate': 0.7, 'recent': 0.3}
-    elif maturity < 0.5:  # Mi-parcours
-        weights = {'immediate': 0.2, 'recent': 0.5, 'medium': 0.3}
-    else:  # Mature
-        weights = {'immediate': 0.1, 'recent': 0.2, 'medium': 0.4, 'global': 0.3}
-    
-    # Ajouter fenêtre globale si maturité suffisante
-    if maturity >= 0.5:
-        scores['global'] = compute_scores(recent_history)
-    
-    # Calculer la moyenne pondérée
-    final_scores = weighted_average(scores, weights)
-    
-    return {'current': final_scores}
+    if history_window is None or len(history_window) < min_points:
+        return neutral_reference_scores()
+    return score_reference_metrics(compute_reference_metrics(history_window, dt, signal, N))
+
+
+def labelled_scores(scores: Dict[str, int]) -> Dict[str, int]:
+    """{'Stabilité': 4, 'Régulation': 3, ...} pour les figures et rapports."""
+    return {SCORE_KEY_LABELS[k]: int(scores.get(k, NEUTRAL_SCORE)) for k in REFERENCE_SCORE_KEYS}
 
 
 def compute_tau_parameter(history, param_name, min_samples=20):
@@ -1406,7 +961,6 @@ def extract_decorrelation_metrics(temporal_coherence_val, tau_S_val):
     
     return (decorrelation_time, autocorr_tau)
 
-# ============== EXPORT DES MÉTRIQUES ==============
 
 # ============== MÉTRIQUES DE COHÉRENCE TEMPORELLE ==============
 
