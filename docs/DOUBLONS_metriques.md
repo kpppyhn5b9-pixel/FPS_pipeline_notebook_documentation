@@ -329,6 +329,60 @@ fenêtre qui se remplit. Un vrai test du radar demande une rampe interne de la
 FPS (un paramètre qui dérive lentement vers une transition), pas une injection
 qui s'allume ; c'est une campagne à part, côté dynamique.
 
+### Suite 20/09/2026 (sexies) — rampe interne : le radar sur une vraie approche de transition
+
+Question restée ouverte : le radar (montée graduelle de l'autocorr + de la
+variance) n'avait été vu que sur la fenêtre qui se remplit. Il fallait une
+dérive LENTE d'un mécanisme interne de la FPS vers un temps de retour plus long.
+
+**Ce qui n'a pas de prise.** Multiplier le couplage αₙ par 3, 10 ou 30 ne
+change rien à fₙ (stats identiques à la 3ᵉ décimale) : avec Aₙ ≈ 0.03, le terme
+αₙ·Sᵢ = αₙ·Σ wⱼ Oⱼ est négligeable devant f₀. Dans ce régime, le couplage inter-
+strates n'est pas un levier sur la couche lente.
+
+**Le mécanisme à mémoire de la couche lente, c'est la latence.** fₙ = f₀·(1 +
+βₙ·γ) et γ (adaptive_aware) converge vers sa cible par lissage exponentiel
+(`dynamics.py:1002`, taux 0.1). Un taux de rappel qui faiblit = un temps de
+retour qui s'allonge = le ralentissement critique de Scheffer, littéralement.
+Campagne (`run_ramp_gamma.py`, scratch de session) : on enveloppe
+`compute_gamma_adaptive_aware` : γ ← (1−λ)·γ + λ·γ_cible + σ·ε, ε ~ N(0,1) par
+pas (perturbation FIXE sur l'état, σ = 0.005), λ dérivant linéairement de 0.1 à
+0.005 entre t = 250 et 450 (T = 500). Contrôle : même bruit, λ = 0.1 constant.
+
+**Résultats** (W=2000, lag 10, médiane de `resilience_ac` et alertes par tranche
+de 25 u.t.) :
+
+| t | 275 | 300 | 325 | 350 | 375 | 400 | 425 | 450 | 475 |
+|---|---|---|---|---|---|---|---|---|---|
+| λ (rampe) | .082 | .070 | .058 | .047 | .035 | .023 | .011 | .005 | .005 |
+| contrôle : ac | .78 | .75 | .76 | .76 | .77 | .78 | .77 | .68 | .63 |
+| contrôle : alertes | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| rampe 12345 : ac | .75 | .75 | .77 | .78 | .79 | .81 | .83 | **.94** | **.97** |
+| rampe 12345 : alertes | 9 | 0 | 0 | 0 | 0 | 0 | **31** | **250** | **129** |
+| rampe 7 : ac | .75 | .76 | .67 | .66 | .67 | .66 | .72 | **.79** | **.89** |
+| rampe 7 : alertes | 0 | 0 | 0 | 0 | 0 | 0 | **80** | **171** | **129** |
+
+Variance des résidus : ×5 sur la rampe (0.001 → 0.005), stable au contrôle.
+Score : 2 sur le plateau (les deux runs), 1 en fin de rampe.
+
+Lecture. (1) **Le radar fait son travail** : il sonne sur les deux seeds pendant
+la montée (dernier quart de la rampe, puis le plateau lent), et jamais sur le
+contrôle une fois la lecture installée. (2) Il sonne TARD : l'autocorr de base
+de fₙ sous ce bruit est déjà ≈ 0.75 (deux lissages en cascade, celui de la FPS
+et le nôtre, plus la contrainte spiralée), et la dérive ne domine qu'une fois
+1/λ au-delà de la mémoire interne (λ ≲ 0.02). La colonne « attendu (1−λ)^lag »
+du script ne vaut que pour notre lissage seul : c'est le contrôle qui donne la
+base. (3) La bouffée d'alertes du contrôle à t ∈ [250, 275) (145) est, encore,
+la fenêtre qui se remplit après le premier verdict (t=200) ; la convention
+« pas de lecture du radar avant une longueur de fenêtre après le premier
+verdict » tient, et ici c'est t ≥ 400 : toutes les alertes de la rampe sont
+après. (4) Le seed 7 montre une baisse d'autocorr (0.76 → 0.66) entre t = 325 et
+400 sans alerte : le radar ne lit qu'une MONTÉE, une descente est du calme.
+
+Ce que ça ne dit pas : la rampe est imposée sur le taux de rappel de γ, pas
+produite par la FPS elle-même. Le jour où un régime interne (régulation, effort
+chronique, φ adaptatif) fera dériver ce taux, le radar est prêt à le lire.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*
