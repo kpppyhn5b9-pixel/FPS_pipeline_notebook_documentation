@@ -553,12 +553,128 @@ class TestResilienceCSD(unittest.TestCase):
     def test_contract_none_and_direction(self):
         self.assertIsNone(metrics.compute_resilience_csd([0.0, 1.0] * 20, 0.1))       # trop court
         self.assertIsNone(metrics.compute_resilience_csd([1.0] * 300, 0.1))           # plat
-        self.assertIsNone(metrics.compute_resilience_csd(np.sin(2 * np.pi * np.arange(400) / 20), 0.1))  # sinus pur : résidus nuls
+        r = metrics.compute_resilience_csd(np.sin(2 * np.pi * np.arange(400) / 20), 0.1)  # sinus pur : résidus nuls → quiet
+        self.assertTrue(r['quiet']); self.assertEqual(r['ac'], 0.0)
         # Barème monotone unilatéral : autocorr basse = 5, haute = 1
         self.assertEqual(metrics.score_from_brackets(0.33, 'resilience'), 5)
         self.assertEqual(metrics.score_from_brackets(0.50, 'resilience'), 4)
         self.assertEqual(metrics.score_from_brackets(0.95, 'resilience'), 1)
         self.assertEqual(metrics.SCORE_BRACKETS['resilience']['direction'], 'lower')
+
+    def test_bareme_anchored_on_slowing_factors(self):
+        # Seuils = exp(−1/k) : au lag calibré sur la relaxation calme τ₀, un retour
+        # exponentiel de temps τ = k·τ₀ donne une autocorr exp(−1/k).
+        thr = metrics.SCORE_BRACKETS['resilience']['thresholds']
+        for k, v in zip(metrics.RESILIENCE_SLOWING_FACTORS, thr):
+            self.assertAlmostEqual(v, np.exp(-1.0 / k), places=3)
+        # Ancrage 1/e sur AR(1) : lag = relaxation du processus calme, puis le
+        # même lag appliqué à des processus ralentis ×k → score décroissant.
+        n = 60000
+        tau0 = 12.0
+        x_calm = self._ar1(np.exp(-1.0 / tau0), n=n, seed=3)
+        lag = metrics.relaxation_steps(x_calm)
+        self.assertTrue(9 <= lag <= 15, lag)
+        ac_calm = metrics.lag_autocorrelation(x_calm, lag)
+        self.assertAlmostEqual(ac_calm, np.exp(-lag / tau0), delta=0.05)
+        self.assertEqual(metrics.score_from_brackets(ac_calm, 'resilience'), 5)
+        expected = {1.7: 4, 2.5: 3, 4.0: 2, 8.0: 1}
+        for k, score in expected.items():
+            x_slow = self._ar1(np.exp(-1.0 / (k * tau0)), n=n, seed=int(10 * k))
+            ac = metrics.lag_autocorrelation(x_slow, lag)
+            self.assertAlmostEqual(ac, np.exp(-lag / (k * tau0)), delta=0.06)
+            self.assertEqual(metrics.score_from_brackets(ac, 'resilience'), score, (k, ac))
+
+    def test_smoothed_ac_is_what_the_scorer_reads(self):
+        rng = np.random.RandomState(0)
+        raw = list(0.30 + 0.2 * rng.randn(200))
+        sm = metrics.smooth_resilience_ac(raw, lag=10, n_lags=3)
+        self.assertAlmostEqual(sm, float(np.median(raw[-30:])))
+        self.assertIsNone(metrics.smooth_resilience_ac([None, float('nan')], lag=10))
+        hist = TestReferenceScores._history()[-50:]
+        for i, h in enumerate(hist):
+            h['resilience_ac'] = 0.9            # brute bruitée : ignorée par le scoreur
+            h['resilience_ac_smooth'] = 0.30    # lissée : lue par le scoreur
+        raw_m = metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)
+        self.assertAlmostEqual(raw_m['resilience'], 0.30)
+        for h in hist:
+            h.pop('resilience_ac_smooth')
+        self.assertAlmostEqual(metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)['resilience'], 0.9)  # repli CSV ancien
+
+    @staticmethod
+    def _fps_like_envelope(n, tau=None, rel=0.05, seed=0):
+        # Enveloppe fₙ « façon FPS » : périodique (période 200 pas + harmoniques),
+        # éventuellement modulée par une fluctuation AR(1) de temps τ (en pas).
+        t = np.arange(n)
+        env = 1 + 0.3 * np.sin(2 * np.pi * t / 200) + 0.05 * np.sin(4 * np.pi * t / 200) + 0.01 * np.sin(6 * np.pi * t / 200)
+        if tau is None:
+            return env, None
+        rng = np.random.RandomState(seed)
+        phi = np.exp(-1.0 / tau)
+        a = np.zeros(n + 800)
+        for i in range(1, n + 800):
+            a[i] = phi * a[i - 1] + rng.randn()
+        a = a[800:] * np.sqrt(1 - phi ** 2)
+        return env * (1 + rel * a), a
+
+    def test_detrend_periodic_keeps_slow_fluctuations(self):
+        # Le détrend retire les RAIES (forçage + harmoniques) et laisse la
+        # fluctuation lente intacte : les résidus sont la fluctuation injectée.
+        env, _ = self._fps_like_envelope(2000)
+        resid, n_lines = metrics.detrend_periodic(env)
+        self.assertGreaterEqual(n_lines, 3)
+        self.assertLess(np.var(resid) / np.var(env), 1e-8)          # périodique pur → reste numérique
+        y, a = self._fps_like_envelope(2000, tau=160, seed=1)
+        resid, n_lines = metrics.detrend_periodic(y)
+        self.assertGreaterEqual(n_lines, 2)
+        self.assertGreater(abs(np.corrcoef(resid, a)[0, 1]), 0.9)   # fluctuation τ=160 préservée
+        # Bruit rouge pur (AR(1)) : aucune raie, quel que soit τ
+        for tau in (5, 40, 160):
+            _, a = self._fps_like_envelope(2000, tau=tau, seed=tau)
+            self.assertEqual(metrics.detrend_periodic(a)[1], 0, tau)
+
+    def test_in_situ_calibration_reads_slowing_factor(self):
+        # Table de calibration (20/09) : fenêtre 2000 pas, lag 10 → l'autocorr
+        # mesurée in-situ vaut exp(−1/k) à ~0.06 près pour τ = k·lag, et le score
+        # tombe à ±1 cran du nominal ; monotone décroissant en k.
+        W, lag = 2000, 10
+        means = []
+        for k in (1.0, 2.0, 5.0):
+            acs = []
+            for seed in range(8):
+                y, _ = self._fps_like_envelope(W, tau=k * lag, seed=100 * int(k) + seed)
+                r = metrics.compute_resilience_csd(y, 0.1, lag=lag)
+                self.assertFalse(r['quiet'])
+                acs.append(r['ac'])
+                nominal = metrics.score_from_brackets(float(np.exp(-1.0 / k)), 'resilience')
+                self.assertLessEqual(abs(metrics.score_from_brackets(r['ac'], 'resilience') - nominal), 1, (k, seed, r['ac']))
+            means.append(float(np.mean(acs)))
+            self.assertAlmostEqual(means[-1], np.exp(-1.0 / k), delta=0.08, msg=(k, means[-1]))
+        self.assertTrue(means[0] < means[1] < means[2], means)
+
+    def test_auto_lag_is_capped_by_window(self):
+        # Le lag auto (relaxation 1/e de l'enveloppe brute ≈ 40 pas pour une
+        # période de 200) est plafonné à W/min_lags_per_window : le biais de
+        # fenêtre (≈ 2τ/W) rendrait un lag de 40 illisible sur 2000 pas.
+        y, _ = self._fps_like_envelope(2000, tau=20, seed=5)
+        self.assertTrue(30 <= metrics.relaxation_steps(y) <= 50)
+        self.assertEqual(metrics.compute_resilience_csd(y, 0.1)['lag'], 10)
+        self.assertEqual(metrics.compute_resilience_csd(y, 0.1, min_lags_per_window=1)['lag'], metrics.relaxation_steps(y))
+        self.assertEqual(metrics.compute_resilience_csd(y, 0.1, lag=25)['lag'], 25)   # fourni = figé
+
+    def test_quiet_floor_no_verdict_on_numerical_residue(self):
+        # Enveloppe quasi périodique sans fluctuation : les résidus sont un reste
+        # numérique → quiet, ac = 0 par convention (rien ne ralentit), score 5.
+        env = 4.0 + np.sin(2 * np.pi * np.arange(800) / 20) * (1 + 0.3 * np.sin(2 * np.pi * np.arange(800) / 200))
+        r = metrics.compute_resilience_csd(env, 0.1)
+        self.assertIsNotNone(r); self.assertTrue(r['quiet']); self.assertEqual(r['ac'], 0.0)
+        self.assertEqual(metrics.score_from_brackets(r['ac'], 'resilience'), 5)
+        # La même enveloppe avec une fluctuation réelle (AR(1) 1 % de l'amplitude) : mesurée
+        rng = np.random.RandomState(0)
+        ar = np.zeros(800)
+        for i in range(1, 800):
+            ar[i] = 0.9 * ar[i - 1] + rng.randn()
+        r2 = metrics.compute_resilience_csd(env + 0.01 * ar / ar.std(), 0.1)
+        self.assertFalse(r2['quiet']); self.assertTrue(-1 <= r2['ac'] <= 1)
 
     def test_radar_alert_rule(self):
         # Calme stationnaire : jamais d'alerte. Montée conjointe ac+var : alerte.

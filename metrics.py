@@ -320,43 +320,129 @@ def relaxation_steps(x, default: int = 10) -> int:
     return int(below[0]) if len(below) else default
 
 
-def detrend_spectral_peaks(x, peak_ratio: float = 10.0, max_peaks: int = 5):
+def _refine_line_freq(resid, k, n, tol_bins: float = 1e-4):
     """
-    Retire adaptativement les pics spectraux DOMINANTS (la composante
-    déterministe / périodique : le forçage) et renvoie (résidus, nb_pics).
+    Affine la fréquence d'une raie repérée au bin k du spectre des résidus :
+    recherche du nombre d'or sur [k-1, k+1]/n de la fréquence minimisant la SSE
+    d'un ajustement sin/cos (+ constante) sur ces résidus. La raie est ajustée
+    seule sur les résidus courants (les raies déjà retenues en sont absentes),
+    puis toutes sont réajustées conjointement par l'appelant.
+    """
+    t = np.arange(n, dtype=float)
+    def sse(f):
+        w = 2 * np.pi * f * t
+        A = np.column_stack([np.ones(n), np.sin(w), np.cos(w)])
+        coef, *_ = np.linalg.lstsq(A, resid, rcond=None)
+        r = resid - A @ coef
+        return float(np.dot(r, r))
+    a, b = max(1e-9, (k - 1.0) / n), min(0.5 - 1e-9, (k + 1.0) / n)
+    g = (np.sqrt(5.0) - 1.0) / 2.0
+    c, d = b - g * (b - a), a + g * (b - a)
+    fc, fd = sse(c), sse(d)
+    while (b - a) * n > tol_bins:
+        if fc < fd:
+            b, d, fd = d, c, fc
+            c = b - g * (b - a); fc = sse(c)
+        else:
+            a, c, fc = c, d, fd
+            d = a + g * (b - a); fd = sse(d)
+    return float((a + b) / 2.0)
 
-    Un pic est une RAIE : sa puissance dépasse peak_ratio × la médiane de son
-    voisinage spectral (±neigh bins, les 3 bins centraux exclus). Un spectre
-    rouge lisse (AR(1)) n'a pas de raie et n'est donc pas touché ; un forçage
-    périodique en a une par harmonique. Au plus max_peaks raies ; chaque raie
-    est retirée avec ses deux voisins de bin (fuite spectrale). Sur l'enveloppe
-    fₙ de la FPS, une seule raie domine (cahier) ; la règle reste adaptative.
+
+def _refine_lines_joint(x, freqs, iters: int = 6):
+    """
+    Affinage CONJOINT des fréquences de raies par Gauss-Newton (moindres carrés
+    non linéaires sur amplitudes + fréquences). Part des fréquences trouvées une
+    à une (précises à ~1e-3 bin, biais de fuite mutuelle) et converge
+    quadratiquement ; un pas n'est gardé que s'il réduit la SSE.
+    Renvoie (freqs affinées, résidus).
+    """
+    n = len(x)
+    t = np.arange(n, dtype=float)
+    f = np.array(freqs, dtype=float)
+    def design(fr):
+        cols = [np.ones(n)]
+        for fj in fr:
+            w = 2 * np.pi * fj * t
+            cols += [np.sin(w), np.cos(w)]
+        return np.column_stack(cols)
+    A = design(f)
+    c, *_ = np.linalg.lstsq(A, x, rcond=None)
+    r = x - A @ c
+    sse = float(np.dot(r, r))
+    for _ in range(iters):
+        D = []
+        for j, fj in enumerate(f):
+            w = 2 * np.pi * fj * t
+            D.append(2 * np.pi * t * (c[1 + 2 * j] * np.cos(w) - c[2 + 2 * j] * np.sin(w)))
+        J = np.column_stack([A] + D)
+        step, *_ = np.linalg.lstsq(J, r, rcond=None)
+        f_new = f + step[len(c):]
+        if not (np.all(f_new > 0) and np.all(f_new < 0.5)):
+            break
+        A_new = design(f_new)
+        c_new, *_ = np.linalg.lstsq(A_new, x, rcond=None)
+        r_new = x - A_new @ c_new
+        sse_new = float(np.dot(r_new, r_new))
+        if sse_new >= sse:
+            break
+        f, A, c, r = f_new, A_new, c_new, r_new
+        if sse - sse_new < 1e-12 * sse:
+            sse = sse_new
+            break
+        sse = sse_new
+    return [float(v) for v in f], r
+
+
+def detrend_periodic(x, max_lines: int = 8, peak_ratio: float = 10.0,
+                     neigh: Optional[int] = None):
+    """
+    Retire la composante PÉRIODIQUE (le forçage déterministe) par ajustement
+    paramétrique itératif de RAIES : à chaque tour, le bin dominant du spectre
+    des résidus est testé comme raie ; si c'en est une, sa fréquence est
+    affinée et toutes les raies retenues sont réajustées conjointement (sin/cos
+    + constante, moindres carrés). Renvoie (résidus, nb_raies).
+
+    Pourquoi pas un évidement de bins : dans une fenêtre courte, l'enveloppe
+    fₙ n'a que quelques périodes ; la raie et ses voisins couvrent alors tout
+    ce qui est plus lent que quelques dizaines de pas, exactement là où vivent
+    les fluctuations lentes qu'on veut mesurer (campagne 20/09 : une
+    fluctuation injectée de τ=160 pas était effacée). L'ajustement retire la
+    sinusoïde à sa fréquence exacte et laisse le reste du contenu basse
+    fréquence intact. Harmoniques et bandes latérales sont des raies comme les
+    autres, trouvées tour à tour.
+
+    Critère de raie, robuste au bruit rouge : une raie est ÉTROITE et dépasse
+    son voisinage DES DEUX CÔTÉS. P[k] doit excéder peak_ratio × la médiane
+    des bins de gauche ET celle des bins de droite (±neigh bins, le lobe
+    principal k±1 exclu), avec au moins deux bins de chaque côté. Un spectre
+    rouge (AR(1)) est monotone : son maximum est près de DC, sans côté gauche,
+    et partout ailleurs son côté gauche est au moins aussi haut que P[k] → il
+    n'est jamais touché. Corollaire assumé : une raie plus lente que ~W/4 n'est
+    pas séparable d'une fluctuation lente dans une fenêtre W (cf. W_res_t).
     """
     x = np.asarray(x, dtype=float).ravel()
     n = len(x)
     xc = x - x.mean()
-    if n < 8 or float(np.dot(xc, xc)) < 1e-12:
+    if n < 16 or float(np.dot(xc, xc)) < 1e-12:
         return xc, 0
-    X = np.fft.rfft(xc)
-    P = np.abs(X) ** 2
-    P[0] = 0.0
-    neigh = max(5, len(P) // 20)
-    n_peaks = 0
-    for _ in range(max_peaks):
+    neigh = int(neigh) if neigh else max(4, n // 50)
+    freqs: List[float] = []
+    resid = xc
+    for _ in range(max_lines):
+        P = np.abs(np.fft.rfft(resid - resid.mean())) ** 2
+        P[0] = 0.0
         k = int(np.argmax(P))
-        if k == 0 or P[k] <= 0:
+        left = P[max(1, k - neigh):k - 1]
+        right = P[k + 2:min(len(P), k + neigh + 1)]
+        if len(left) < 2 or len(right) < 2 or P[k] <= 0:
             break
-        lo, hi = max(1, k - neigh), min(len(P), k + neigh + 1)
-        around = np.concatenate([P[lo:max(lo, k - 1)], P[min(hi, k + 2):hi]])
-        around = around[around > 0]
-        if len(around) < 3 or P[k] <= peak_ratio * float(np.median(around)):
+        floor = max(float(np.median(left)), float(np.median(right)))
+        if floor <= 0 or P[k] <= peak_ratio * floor:
             break
-        for j in (k - 1, k, k + 1):
-            if 1 <= j < len(P):
-                X[j] = 0.0
-                P[j] = 0.0
-        n_peaks += 1
-    return np.fft.irfft(X, n=n), n_peaks
+        freqs.append(_refine_line_freq(resid, k, n))
+        freqs, resid = _refine_lines_joint(x, freqs)
+    return resid, len(freqs)
 
 
 def lag_autocorrelation(x, lag: int) -> Optional[float]:
@@ -375,14 +461,25 @@ def lag_autocorrelation(x, lag: int) -> Optional[float]:
 
 def compute_resilience_csd(fn_mean_window, dt: float, lag: Optional[int] = None,
                            min_points: int = 200, peak_ratio: float = 10.0,
-                           max_peaks: int = 5) -> Optional[Dict[str, float]]:
+                           max_peaks: int = 8,
+                           quiet_floor_rel: float = 1e-6,
+                           min_lags_per_window: int = 200) -> Optional[Dict[str, float]]:
     """
     Résilience (score 'resilience') = ralentissement critique sur la couche
     lente : autocorrélation à lag des résidus détrendés de l'enveloppe fₙ.
 
-    Étapes : (1) détrend adaptatif des pics spectraux dominants ; (2) lag =
-    celui fourni (figé après calibration, cf. simulate) ou la relaxation 1/e de
-    l'enveloppe brute ; (3) autocorrélation des résidus à ce lag + leur variance.
+    Étapes : (1) détrend paramétrique de la composante périodique (detrend_
+    periodic : raies ajustées, fondamentale + harmoniques) ; (2) lag = celui
+    fourni (figé après calibration, cf. simulate) ou auto : la relaxation 1/e de
+    l'enveloppe brute, PLAFONNÉE à len/min_lags_per_window ; (3) autocorrélation
+    des résidus à ce lag + leur variance.
+
+    Pourquoi plafonner le lag (campagne 20/09, table de calibration) : l'estimateur
+    d'autocorrélation à lag L sur une fenêtre W est biaisé vers le bas d'environ
+    2τ/W et son étalement croît en √(τ/W). Pour qu'un ralentissement τ = 8·L
+    (score 1) reste lisible à ±1 cran du barème, il faut W ≳ 200·L. Le lag est
+    donc l'échelle de temps de référence (τ_ref) à laquelle le barème compare
+    le temps de retour : facteurs de ralentissement 1.4/2/3/5 × lag.
 
     Pourquoi figer le lag une fois calibré : si on le re-dérivait à chaque
     fenêtre depuis le même signal, l'autocorrélation à « son propre 1/e »
@@ -394,24 +491,56 @@ def compute_resilience_csd(fn_mean_window, dt: float, lag: Optional[int] = None,
         dt: pas de temps (signature homogène ; l'échelle vient du signal)
         lag: décalage en pas, ou None → auto (relaxation)
 
+    Plancher « rien ne fluctue » (quiet) : si la variance des résidus est sous
+    quiet_floor_rel × la variance de l'enveloppe, il n'y a AUCUNE fluctuation
+    spontanée à mesurer (enveloppe quasi périodique : les résidus sont un reste
+    numérique du détrend, pas une dynamique). Lire une autocorrélation dessus
+    serait un faux verdict (campagne 20/09 : ratio ≈ 1e-9, un seed flottait
+    entre 4 et 5 sur du vide). On renvoie alors ac = 0.0 avec quiet = True :
+    rien ne s'éloigne, rien ne ralentit, aucune alarme (score 5, barème
+    « alarme latente ») ; le radar ignore ces échantillons.
+
     Returns:
         {'ac': autocorr [-1, 1], 'var': variance des résidus, 'lag': int,
-         'relax': int, 'n_peaks': int} ou None (fenêtre trop courte, signal plat).
+         'relax': int, 'n_peaks': int (harmoniques retirées), 'quiet': bool}
+        ou None (fenêtre trop courte, signal plat).
     """
     x = np.asarray(fn_mean_window, dtype=float).ravel()
     if len(x) < min_points:
         return None
+    var_env = float(np.var(x))
+    if var_env < 1e-15:
+        return None  # enveloppe plate : pas de couche lente vivante
     relax = relaxation_steps(x)
-    resid, n_peaks = detrend_spectral_peaks(x, peak_ratio, max_peaks)
-    if float(np.var(resid)) < 1e-15:
-        return None  # rien ne fluctue : pas de retour à mesurer, verdict suspendu
-    L = int(lag) if lag is not None else relax
+    resid, n_peaks = detrend_periodic(x, max_lines=max_peaks, peak_ratio=peak_ratio)
+    var_res = float(np.var(resid))
+    if lag is not None:
+        L = int(lag)
+    else:
+        L = min(int(relax), max(1, len(x) // max(1, int(min_lags_per_window))))
     L = int(min(max(1, L), max(1, len(x) // 4)))
+    if var_res < quiet_floor_rel * var_env:
+        return {'ac': 0.0, 'var': var_res, 'lag': L, 'relax': int(relax),
+                'n_peaks': int(n_peaks), 'quiet': True}
     ac = lag_autocorrelation(resid, L)
     if ac is None:
         return None
-    return {'ac': float(ac), 'var': float(np.var(resid)), 'lag': L,
-            'relax': int(relax), 'n_peaks': int(n_peaks)}
+    return {'ac': float(ac), 'var': var_res, 'lag': L,
+            'relax': int(relax), 'n_peaks': int(n_peaks), 'quiet': False}
+
+
+def smooth_resilience_ac(ac_series, lag: int, n_lags: int = 3) -> Optional[float]:
+    """
+    Autocorr CSD lissée : médiane des n_lags × lag dernières valeurs brutes.
+    Une fenêtre de résilience ne porte que ~len/lag échantillons indépendants :
+    la médiane sur quelques lags lit une tendance sans retarder d'un run entier.
+    None tant qu'aucune valeur n'est disponible.
+    """
+    vals = [v for v in ac_series if v is not None and np.isfinite(v)]
+    if not vals:
+        return None
+    k = max(1, int(n_lags) * max(1, int(lag)))
+    return float(np.median(vals[-k:]))
 
 
 def resilience_alert(ac_series, var_series, calm_n: int = 100, band: float = 0.06,
@@ -498,6 +627,15 @@ def compute_correlation_effort_cpu(effort_history: List[float],
 #                  inoffensif). Le vrai axe "structure" reste ouvert (cahier).
 #   'activite'   (ex-'effort') : churn des paramètres (taux de changement), PAS
 #                  du stress. Compteur d'activité, pas de souffrance.
+# Résilience : seuils en FACTEURS DE RALENTISSEMENT. Pour un retour exponentiel
+# de temps τ, l'autocorrélation au lag calibré sur la relaxation calme τ₀ vaut
+# exp(−τ₀/τ) : 1/e ≈ 0.37 au calme (cahier : 0.34 mesuré), et exp(−1/k) quand
+# le système a ralenti d'un facteur k. Score 5 tant que k < 1.4, 4 jusqu'à ×2,
+# 3 jusqu'à ×3, 2 jusqu'à ×5, 1 au-delà. Le bord 5/4 (0.49) est juste au-dessus
+# de la bande du témoin (0.37 + 2×0.06) : un 4 n'est jamais du bruit de calme.
+RESILIENCE_SLOWING_FACTORS = (1.4, 2.0, 3.0, 5.0)
+RESILIENCE_THRESHOLDS = [round(float(np.exp(-1.0 / k)), 3) for k in RESILIENCE_SLOWING_FACTORS]
+
 SCORE_BRACKETS = {
     'dispersion':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},  # amplitude, pas structure
     'regulation': {'direction': 'lower',  'thresholds': [0.1, 0.3, 0.5, 1.0]},
@@ -506,10 +644,10 @@ SCORE_BRACKETS = {
     # 0,78, monotone) pour que toute l'échelle 1-5 soit atteignable :
     #   repos→5 · bruit1→4 · bruit2→3 · bruit4→2 · bruit≥8→1.
     'fluidity':   {'direction': 'higher', 'thresholds': [0.91, 0.87, 0.83, 0.80], 'ge': False},
-    # resilience : autocorrélation (lag calibré) des résidus détrendés de fₙ.
-    # BASSE = retour rapide = résilient. PROVISOIRE (20/09) : calme FPS ≈ 0.33,
-    # bande du témoin ±0.06 ; la montée CSD observée sur jouet atteint 0.5–0.6.
-    'resilience': {'direction': 'lower',  'thresholds': [0.45, 0.60, 0.75, 0.90]},
+    # resilience : autocorrélation LISSÉE (médiane sur quelques lags) des résidus
+    # détrendés de fₙ, au lag calibré. BASSE = retour rapide = résilient.
+    # Seuils = exp(−1/k), k = RESILIENCE_SLOWING_FACTORS (voir ci-dessus).
+    'resilience': {'direction': 'lower',  'thresholds': RESILIENCE_THRESHOLDS},
     # innovation : complexité statistique C_JS de l'enveloppe fₙ (cloche inversée
     # native — bruit ET ordre → bas ; nouveauté structurée → haut). Métrique
     # d'IDENTITÉ : voyant de santé, ~invariant en régime sain (FPS ~0.30 → 5).
@@ -779,10 +917,14 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
         if e is not None:
             errors.append(e)
     efforts = [v for v in (_num(h.get('effort(t)')) for h in history_window) if v is not None]
-    # résilience = MONITEUR LENT lu dans les logs (autocorr CSD de l'enveloppe fₙ,
-    # calculée sur fenêtre longue dans simulate → 'resilience_ac'), dernière valeur
-    # disponible ; None (warmup / CSV sans la colonne) → score neutre.
-    resil = [v for v in (_num(h.get('resilience_ac')) for h in history_window) if v is not None]
+    # résilience = MONITEUR LENT lu dans les logs : autocorr CSD LISSÉE (médiane
+    # sur quelques lags, 'resilience_ac_smooth' ; repli sur 'resilience_ac' brute
+    # pour un CSV ancien), dernière valeur ; None (warmup) → score neutre. Le
+    # score lit une tendance, jamais un point (cahier : ~10 échantillons
+    # indépendants par fenêtre, la valeur pas à pas est bruitée par construction).
+    resil = [v for v in (_num(h.get('resilience_ac_smooth')) for h in history_window) if v is not None]
+    if not resil:
+        resil = [v for v in (_num(h.get('resilience_ac')) for h in history_window) if v is not None]
     # innovation = MONITEUR LENT lu depuis les logs (C_JS de l'enveloppe fₙ,
     # calculé sur fenêtre longue dans simulate → 'innovation_cjs'). On lit la
     # dernière valeur disponible dans la fenêtre ; None (warmup / CSV sans la

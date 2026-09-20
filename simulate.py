@@ -235,10 +235,15 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'lag': (int(_rcfg['lag']) if _rcfg.get('lag') else None),  # None → auto-calibré
         'ac_hist': [], 'var_hist': [],
         'peak_ratio': float(_rcfg.get('peak_ratio', 10.0)),
-        'max_peaks': int(_rcfg.get('max_peaks', 5)),
+        'max_peaks': int(_rcfg.get('max_peaks', 8)),
         'calm_n': int(_rcfg.get('alert_calm_n', 100)),
         'band': float(_rcfg.get('alert_band', 0.06)),
         'n_windows': int(_rcfg.get('alert_windows', 3)),
+        'smooth_lags': int(_rcfg.get('smooth_lags', 3)),  # médiane sur k lags pour le SCORE
+        'quiet_floor_rel': float(_rcfg.get('quiet_floor_rel', 1e-6)),  # plancher « rien ne fluctue »
+        'min_lags_per_window': int(_rcfg.get('min_lags_per_window', 200)),  # plafond du lag auto (biais fenêtre)
+        'stride': max(1, int(_rcfg.get('stride', 5))),  # cadence de calcul (pas) : la fenêtre est longue, inutile de refaire chaque pas
+        'last': None,  # dernier verdict (ac, ac_smooth, var, lag, alert, quiet), reporté entre deux calculs
     }
     # Filtres de perception (spec 15/07/2026) — état du switch
     _pcfg = config.get('perception', {})
@@ -846,28 +851,49 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # UNE quantité (New_Attention.md) : autocorrélation à lag calibré des
             # résidus détrendés de l'enveloppe fₙ + variance des résidus + radar.
             resilience_ac = None
+            resilience_ac_smooth = None
             resilience_var = None
             resilience_lag = resilience_state['lag']
             resilience_alert_flag = 0
+            resilience_quiet = 0
             if len(fn_history) >= _W_res:
-                _csd = metrics.compute_resilience_csd(
-                    _fn_env_long[-_W_res:], dt, lag=resilience_state['lag'],
-                    min_points=_W_res, peak_ratio=resilience_state['peak_ratio'],
-                    max_peaks=resilience_state['max_peaks'])
-                if _csd is not None:
-                    if resilience_state['lag'] is None:
-                        resilience_state['lag'] = _csd['lag']  # calibré une fois, figé ensuite
-                    resilience_lag = _csd['lag']
-                    resilience_ac, resilience_var = _csd['ac'], _csd['var']
-                    resilience_state['ac_hist'].append(resilience_ac)
-                    resilience_state['var_hist'].append(resilience_var)
-                    resilience_alert_flag = metrics.resilience_alert(
-                        resilience_state['ac_hist'], resilience_state['var_hist'],
-                        calm_n=resilience_state['calm_n'], band=resilience_state['band'],
-                        n_windows=resilience_state['n_windows'], stride=resilience_lag)
-            # UN SEUL barème (SCORE_BRACKETS['resilience']) ; None = verdict suspendu → neutre
-            resilience_score = (metrics.NEUTRAL_SCORE if resilience_ac is None
-                                else metrics.score_from_brackets(float(resilience_ac), 'resilience'))
+                _rs = resilience_state
+                if (len(fn_history) - _W_res) % _rs['stride'] == 0:
+                    _csd = metrics.compute_resilience_csd(
+                        _fn_env_long[-_W_res:], dt, lag=_rs['lag'],
+                        min_points=_W_res, peak_ratio=_rs['peak_ratio'],
+                        max_peaks=_rs['max_peaks'],
+                        quiet_floor_rel=_rs['quiet_floor_rel'],
+                        min_lags_per_window=_rs['min_lags_per_window'])
+                    if _csd is not None:
+                        if _rs['lag'] is None:
+                            _rs['lag'] = _csd['lag']  # calibré une fois, figé ensuite
+                        _lag = _csd['lag']
+                        if not _csd['quiet']:
+                            # Le radar ne lit que des fluctuations RÉELLES : les pas
+                            # « quiet » ne nourrissent ni la référence calme ni la tendance.
+                            _rs['ac_hist'].append(_csd['ac'])
+                            _rs['var_hist'].append(_csd['var'])
+                        # L'historique est échantillonné tous les `stride` pas : un lag
+                        # vaut lag/stride entrées (lissage du score, cadence du radar).
+                        _lag_entries = max(1, int(round(_lag / _rs['stride'])))
+                        _ac_for_smooth = _rs['ac_hist'][-(_rs['smooth_lags'] * _lag_entries):]
+                        _ac_smooth = (0.0 if _csd['quiet'] and not _ac_for_smooth
+                                      else metrics.smooth_resilience_ac(
+                                          _rs['ac_hist'] if _ac_for_smooth else [_csd['ac']],
+                                          _lag_entries, _rs['smooth_lags']))
+                        _alert = metrics.resilience_alert(
+                            _rs['ac_hist'], _rs['var_hist'],
+                            calm_n=_rs['calm_n'], band=_rs['band'],
+                            n_windows=_rs['n_windows'], stride=_lag_entries)
+                        _rs['last'] = (_csd['ac'], _ac_smooth, _csd['var'], _lag, _alert, int(_csd['quiet']))
+                if _rs['last'] is not None:
+                    (resilience_ac, resilience_ac_smooth, resilience_var,
+                     resilience_lag, resilience_alert_flag, resilience_quiet) = _rs['last']
+            # UN SEUL barème (SCORE_BRACKETS['resilience']) sur la valeur LISSÉE ;
+            # None = verdict suspendu → neutre
+            resilience_score = (metrics.NEUTRAL_SCORE if resilience_ac_smooth is None
+                                else metrics.score_from_brackets(float(resilience_ac_smooth), 'resilience'))
             
             # NOUVEAU: Calcul des moyennes En, On et gamma pour le logging
             En_mean_t = np.mean(En_t) if isinstance(En_t, np.ndarray) else En_t
@@ -901,10 +927,12 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'mean_high_effort': mean_high_effort,
                 'd_effort_dt': d_effort_dt,
                 'mu_Rloc(t)': mu_Rloc_t,
-                'resilience_ac': resilience_ac,        # autocorr CSD des résidus de fₙ (moniteur lent)
+                'resilience_ac': resilience_ac,        # autocorr CSD des résidus de fₙ (moniteur lent, brute)
+                'resilience_ac_smooth': resilience_ac_smooth,  # médiane sur quelques lags : ce que le score lit
                 'resilience_var': resilience_var,      # variance des résidus (radar : monte avec l'ac)
                 'resilience_lag': resilience_lag,      # lag calibré (figé), en pas
                 'resilience_alert': resilience_alert_flag,  # radar CSD : 1 = alerte précoce
+                'resilience_quiet': resilience_quiet,       # 1 = aucune fluctuation mesurable (ac=0 par convention)
                 'resilience_score': resilience_score,
                 'perception_filter': perception_state['filter'],
                 'En_mean(t)': En_mean_t,
@@ -932,7 +960,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('resilience_ac', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H'):
+            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -940,8 +968,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # SAUF les champs textuels et ceux où NaN est intentionnel
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
-                                 'resilience_ac', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H',
-                                 'perception_filter'}
+                                 'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
+                                 'innovation_cjs', 'innovation_H', 'perception_filter'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -950,8 +978,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # ----------- 4. VÉRIFICATION NaN/Inf SYSTÉMATIQUE -------------
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
-                             'resilience_ac', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H',
-                             'perception_filter'}
+                             'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
+                             'innovation_cjs', 'innovation_H', 'perception_filter'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -1068,9 +1096,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'fn_mean(t)': f_mean_t,
                 'mu_Rloc(t)': mu_Rloc_t,
                 'resilience_ac': resilience_ac,
+                'resilience_ac_smooth': resilience_ac_smooth,
                 'resilience_var': resilience_var,
                 'resilience_lag': resilience_lag,
                 'resilience_alert': resilience_alert_flag,
+                'resilience_quiet': resilience_quiet,
                 'resilience_score': resilience_score,
                 'perception_filter': perception_state['filter'],
                 'gamma': gamma_t,
@@ -1186,8 +1216,14 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience CSD : None = verdict suspendu (run trop court) → NaN, jamais un 0/1 trompeur.
             'resilience_ac': float(res_ac_values[-1]) if res_ac_values else float('nan'),
             'resilience_ac_mean': float(np.mean(res_ac_values)) if res_ac_values else float('nan'),
+            'resilience_ac_smooth': (float(resilience_ac_smooth)
+                                     if 'resilience_ac_smooth' in locals() and resilience_ac_smooth is not None
+                                     else float('nan')),
             'resilience_lag': (int(resilience_state['lag']) if resilience_state['lag'] else None),
             'resilience_alerts': res_alerts,
+            'resilience_quiet_share': (float(np.mean([1.0 if h.get('resilience_quiet') else 0.0
+                                                      for h in history if h.get('resilience_ac') is not None]))
+                                       if any(h.get('resilience_ac') is not None for h in history) else float('nan')),
             'resilience_score': int(resilience_score) if 'resilience_score' in locals() else metrics.NEUTRAL_SCORE,
             'total_steps': len(t_array),
             'recorded_steps': len(S_history),
