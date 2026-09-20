@@ -237,7 +237,7 @@ médiane de `resilience_ac` par seed) :
 | 20 | 0.607 | 0.590 – 0.625 | 3/4 (τ = 2·lag, sur le seuil) | 3 et 4 |
 | 80 | 0.882 | 0.863 – 0.892 | 1 | 1 (2 en bordure) |
 | 160 | 0.939 | 0.909 – 0.942 | 1 | 1 |
-| calme (rien d'injecté) | — | quiet | 5 | voir ci-dessous |
+| calme (rien d'injecté) | — | quiet (ac = 0) | 5 | 5 |
 
 La métrique lit maintenant le temps de retour injecté à ~0.02 près, dans le
 pipeline complet, à travers l'enveloppe périodique. Radar : 0 alerte sur 3 seeds
@@ -246,7 +246,14 @@ sous fluctuation STATIONNAIRE (correct : pas de montée) ; le seed 12345 alerte
 la fin du transitoire, plus basse que le régime — la règle du cahier suppose une
 référence représentative ; `alert_calm_n` est à régler avec le début du régime.
 
-CALME_PLACEHOLDER
+**Calme, après correction du lissage** (seed 12345, T=350, W=2000, lag 10) : dès
+que le transitoire est sorti de la fenêtre (t ≥ 230), quiet = 100 %, ac = 0,
+0 alerte, score 5 sur tout le régime (quiet_share du run 0.94). Entre t = 200 et
+230 la fenêtre contient encore la queue du transitoire : 72 % quiet, quelques
+scores 1–2 (la fluctuation du transitoire est lente, et c'est vrai). Avant
+correction, la médiane lissée restait figée sur ces valeurs du transitoire
+(0.41, score 4) pour tout le run : le score lit maintenant TOUS les derniers
+verdicts, quiet compris.
 
 **Coût.** Le détrend vaut ~50 ms par appel à W=2000 : calcul tous les `stride`
 = 5 pas (le dernier verdict est reporté entre deux), ~50 s par run T=500.
