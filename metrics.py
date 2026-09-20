@@ -644,6 +644,11 @@ FILTER_TO_SCORE_KEY = {
 }
 SCORE_KEY_TO_FILTER = {v: k for k, v in FILTER_TO_SCORE_KEY.items()}
 REFERENCE_SCORE_KEYS = ('dispersion', 'regulation', 'fluidity', 'resilience', 'innovation', 'activite')
+# Filtres « sens, pas mains » (Attention.md) : notés, visibles du switch et de
+# gamma, mais JAMAIS engagés comme remède (aucun poids de perception n'en
+# découle). L'innovation est une métrique d'IDENTITÉ : on l'observe, on
+# n'intervient pas dessus. Le geste « relâcher » n'existe pas encore.
+OBSERVE_ONLY_FILTERS = ('innovation',)
 # Libellés des figures et rapports, dans l'ordre d'affichage.
 SCORE_KEY_LABELS = {
     'dispersion': 'Stabilité',
@@ -699,16 +704,18 @@ def compute_fluidity(fn_mean_window) -> float:
     return 1.0 / (1.0 + float(np.std(d2) / (np.std(d1) + 1e-12)))
 
 
-def compute_innovation_cjs(fn_mean_window, dt: float, d: int = 4,
-                           min_points: int = 200) -> Optional[float]:
+def compute_innovation_plane(fn_mean_window, dt: float, d: int = 4,
+                             min_points: int = 200) -> Optional[Dict[str, float]]:
     """
-    Innovation (score 'innovation') = complexité statistique de Jensen-Shannon
-    (Rosso/MPR) de l'enveloppe fₙ.
+    Plan entropie–complexité (Rosso / MPR) de l'enveloppe fₙ :
+      H  = entropie de permutation normalisée dans [0, 1]
+      C  = complexité statistique de Jensen-Shannon C_JS = Q_J · H
 
-    C'est une CLOCHE inversée native : ~0 pour l'ordre pur (sinus) ET pour le
-    bruit pur, maximale pour la nouveauté *structurée* (chaos déterministe).
-    Le bruit score donc BAS — contrairement à l'entropie, qui le note "innovant"
-    (défaut validé au banc de référence).
+    C est LA métrique d'innovation (score 'innovation', cf. compute_innovation_cjs).
+    H dit de quel côté de la cloche on est (Attention.md, « diagnostic
+    d'action ») : H bas = trop ordonné, H haut = trop bruité, H moyen avec C
+    haut = nouveauté structurée. Les deux sont calculés d'un seul geste ; on
+    logge les deux ('innovation_cjs', 'innovation_H').
 
     Métrique d'IDENTITÉ, pas d'attention : un MONITEUR lent. τ est auto-calibré
     depuis la relaxation (1/e de l'autocorrélation) de l'enveloppe, de sorte que
@@ -722,7 +729,7 @@ def compute_innovation_cjs(fn_mean_window, dt: float, d: int = 4,
         min_points: longueur minimale pour un C_JS stable (défaut 200)
 
     Returns:
-        float dans [0, ~0.5] (C_JS), ou None si la fenêtre est trop courte.
+        {'H': float dans [0, 1], 'C': float dans [0, ~0.5]} ou None si trop court.
     """
     from itertools import permutations
     x = np.asarray(fn_mean_window, dtype=float).ravel()
@@ -730,7 +737,7 @@ def compute_innovation_cjs(fn_mean_window, dt: float, d: int = 4,
         return None
     xc = x - x.mean()
     if float(np.dot(xc, xc)) < 1e-12:
-        return 0.0  # signal plat : ordre pur → innovation nulle
+        return {'H': 0.0, 'C': 0.0}  # signal plat : ordre pur → innovation nulle
     ac = np.correlate(xc, xc, mode='full')[len(x) - 1:]
     ac = ac / ac[0]
     below = np.where(ac < 1.0 / np.e)[0]
@@ -743,11 +750,14 @@ def compute_innovation_cjs(fn_mean_window, dt: float, d: int = 4,
     n = len(x) - (d - 1) * tau
     if n <= 0:
         return None
+    # NB ex æquo : argsort est stable (l'index le plus ancien passe devant). Sur
+    # l'enveloppe fₙ de la FPS, aucun pas consécutif n'est strictement égal
+    # (vérifié 20/09 sur run réel) : pas de traitement spécial nécessaire.
     for i in range(n):
         counts[idx[tuple(np.argsort(x[i:i + d * tau:tau]))]] += 1
     s = counts.sum()
     if s <= 0:
-        return 0.0
+        return {'H': 0.0, 'C': 0.0}
     p = counts / s
     Nc = len(p)
     pe = np.ones(Nc) / Nc
@@ -760,7 +770,23 @@ def compute_innovation_cjs(fn_mean_window, dt: float, d: int = 4,
     js = _sh((p + pe) / 2) - 0.5 * _sh(p) - 0.5 * _sh(pe)
     delta = np.zeros(Nc); delta[0] = 1.0
     js_max = _sh((delta + pe) / 2) - 0.5 * _sh(delta) - 0.5 * _sh(pe)
-    return float((js / js_max) * H) if js_max > 0 else 0.0
+    C = float((js / js_max) * H) if js_max > 0 else 0.0
+    return {'H': float(H), 'C': C}
+
+
+def compute_innovation_cjs(fn_mean_window, dt: float, d: int = 4,
+                           min_points: int = 200) -> Optional[float]:
+    """
+    Innovation (score 'innovation') = complexité statistique C_JS de l'enveloppe
+    fₙ — la coordonnée C de compute_innovation_plane (une seule implémentation).
+
+    Cloche native : ~0 pour le bruit pur, maximale pour la nouveauté structurée.
+    NB (banc 20/09, τ auto) : un sinus pur score aussi haut que le chaos (~0.30) ;
+    c'est H, pas C, qui distingue « trop ordonné » de « nouveauté ».
+    Renvoie None si la fenêtre est trop courte (→ score neutre).
+    """
+    plane = compute_innovation_plane(fn_mean_window, dt, d, min_points)
+    return None if plane is None else plane['C']
 
 
 def innovation_deficit(c_js: Optional[float]) -> float:

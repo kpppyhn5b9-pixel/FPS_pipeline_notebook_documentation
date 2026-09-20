@@ -532,6 +532,31 @@ class TestReferenceScores(unittest.TestCase):
         d = dynamics.compute_perception_deficit('innovation', short, short, short, 0.1, fn_long_win=long_flat)
         self.assertTrue(np.all(d == 1.0))  # plat : C_JS = 0 → déficit maximal
 
+    def test_innovation_plane_H_reads_the_side_of_the_bell(self):
+        # Une seule implémentation : C de compute_innovation_cjs == C du plan.
+        rng = np.random.RandomState(0)
+        noise = list(rng.randn(2000))
+        t = np.linspace(0, 40 * np.pi, 2000)
+        sine = list(np.sin(t))
+        p_noise = metrics.compute_innovation_plane(noise, 0.1)
+        p_sine = metrics.compute_innovation_plane(sine, 0.1)
+        self.assertEqual(metrics.compute_innovation_cjs(noise, 0.1), p_noise['C'])
+        self.assertEqual(metrics.compute_innovation_cjs(sine, 0.1), p_sine['C'])
+        # H distingue les deux côtés : bruit → H proche de 1, ordre → H nettement plus bas
+        self.assertGreater(p_noise['H'], 0.95)
+        self.assertLess(p_sine['H'], p_noise['H'] - 0.2)
+        self.assertTrue(0.0 <= p_sine['H'] <= 1.0)
+        self.assertIsNone(metrics.compute_innovation_plane([1.0, 2.0], 0.1))
+        self.assertEqual(metrics.compute_innovation_plane([1.0] * 300, 0.1), {'H': 0.0, 'C': 0.0})
+
+    def test_observe_only_filters_are_scored_but_never_remedies(self):
+        # L'innovation reste dans les six scores et dans le mapping des filtres…
+        self.assertIn('innovation', metrics.FILTER_TO_SCORE_KEY)
+        self.assertIn('innovation', metrics.REFERENCE_SCORE_KEYS)
+        # … mais est déclarée « observation seule » : jamais un remède du switch.
+        self.assertIn('innovation', metrics.OBSERVE_ONLY_FILTERS)
+        self.assertTrue(set(metrics.OBSERVE_ONLY_FILTERS) <= set(metrics.FILTER_TO_SCORE_KEY))
+
     def test_innovation_cjs_contract(self):
         # Fenêtre trop courte → None (score neutre en aval).
         self.assertIsNone(metrics.compute_innovation_cjs([0.0, 1.0, 0.0], 0.1))

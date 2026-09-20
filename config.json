@@ -23,6 +23,7 @@
         "fn_mean(t)",
         "fluidity",
         "innovation_cjs",
+        "innovation_H",
         "mean_abs_error",
         "mean_high_effort",
         "d_effort_dt",

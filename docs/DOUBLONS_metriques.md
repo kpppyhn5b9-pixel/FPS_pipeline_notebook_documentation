@@ -93,12 +93,29 @@ l'enveloppe fₙ, moniteur lent, fenêtre ≥ 200 pas, τ auto-calibré) et la c
 Validation : 49 tests verts, pipeline complet sur T=60 (`innovation_cjs` rempli sur
 401/600 pas, FPS ≈ 0.26–0.30, Kuramoto 0.0, comparaison et rapport OK).
 
-Points d'attention sur C_JS (voir discussion du 20/09) : avec le τ auto-calibré, un
-sinus pur score ≈ 0.30 comme le chaos logistique (≈ 0.29) ; la « cloche » ne
-sépare donc que bruit ↔ structure, pas ordre ↔ nouveauté. Le plan (H, C) décrit
-dans `Attention.md` demande de logger aussi H pour lire la direction (relâcher /
-lier). Le déficit du filtre `innovation` pointe les strates peu complexes ; le geste
-« relâcher » reste à câbler.
+Points d'attention sur C_JS (banc du 20/09) : avec le τ auto-calibré, un sinus pur
+score ≈ 0.30 comme le chaos logistique (≈ 0.29) ; C seule ne sépare donc que
+bruit ↔ structure, pas ordre ↔ nouveauté. D'où les deux compléments ci-dessous.
+Les ex æquo dans `argsort` ont été vérifiés sur run réel : 0 % de pas consécutifs
+égaux dans fₙ, aucun traitement spécial nécessaire.
+
+### Suite 20/09/2026 (bis) — plan (H, C) loggé, innovation « sens, pas main »
+
+- `metrics.compute_innovation_plane(fn, dt)` renvoie `{'H', 'C'}` (entropie de
+  permutation normalisée et C_JS) d'un seul geste ; `compute_innovation_cjs` en est
+  la coordonnée C (une seule implémentation). Colonne `innovation_H` loggée à côté
+  de `innovation_cjs` (config `log_metrics`, `METRIQUES_VALIDES`, résumé de run).
+  Lecture : H bas = trop ordonné, H haut = trop bruité, H moyen avec C haut =
+  nouveauté structurée (`Attention.md`).
+- `metrics.OBSERVE_ONLY_FILTERS = ('innovation',)` : l'innovation reste l'un des six
+  scores (switch, gamma, figures, analyse) mais le switch ne l'engage **jamais**
+  comme remède : aucun poids de perception n'en découle. Métrique d'identité, à
+  observer. `compute_perception_deficit('innovation')` reste disponible comme sens
+  (saillance par strate) pour le futur geste « relâcher ».
+
+Validation : 51 tests verts ; run FPS T=60 : H ∈ [0.35, 0.65] (médiane 0.51,
+côté « structuré »), C ∈ [0.26, 0.30] ; filtres engagés par le switch : neutre,
+fluidité, effort, résilience, jamais innovation.
 
 ---
 
