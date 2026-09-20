@@ -621,7 +621,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
                                     perception_state['filter'] = 'neutre'
                                     perception_state['last_switch_t'] = t
                                     perception_state['weights'] = np.ones(N)
-                            _cands = {k: v for k, v in _o_scores.items() if k not in _bl}
+                            # SENS, PAS MAINS : un filtre « observation seule » (innovation,
+                            # métrique d'identité) est noté et visible, jamais engagé.
+                            _cands = {k: v for k, v in _o_scores.items()
+                                      if k not in _bl and k not in metrics.OBSERVE_ONLY_FILTERS}
                             _cur = perception_state['filter']
                             _can_switch = (t - perception_state['last_switch_t']) >= perception_state['dwell']
                             _target = _cur
@@ -762,9 +765,12 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # C'est LA colonne d'innovation : plus d'entropie spectrale.
             if len(fn_history) >= 200:
                 _fn_env = [float(np.mean(f)) for f in fn_history[-_W_innov:]]
-                innovation_cjs = metrics.compute_innovation_cjs(_fn_env, dt)
+                _plane = metrics.compute_innovation_plane(_fn_env, dt)
+                innovation_cjs = None if _plane is None else _plane['C']
+                innovation_H = None if _plane is None else _plane['H']  # côté de la cloche
             else:
                 innovation_cjs = None
+                innovation_H = None
 
             # === TAU MULTI-ÉCHELLES D'ABORD (tau_S requis par decorrelation après) ===
             if len(S_history) >= 20 and len(history) >= 20:
@@ -906,6 +912,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,  # jerk de l'enveloppe fₙ (métrique de référence)
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
+                'innovation_H': innovation_H,  # entropie de permutation : H bas = ordre, H haut = bruit
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
                 'autocorr_tau': autocorr_tau,  # Temps de décorrélation
                 'decorrelation_time': decorrelation_time,  # Alias pour cohérence
@@ -953,7 +960,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('adaptive_resilience', 'continuous_resilience', 'innovation_cjs'):
+            for _rk in ('adaptive_resilience', 'continuous_resilience', 'innovation_cjs', 'innovation_H'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -961,7 +968,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # SAUF les champs textuels et ceux où NaN est intentionnel
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
-                                 'adaptive_resilience', 'continuous_resilience', 'innovation_cjs',
+                                 'adaptive_resilience', 'continuous_resilience', 'innovation_cjs', 'innovation_H',
                                  'resilience_env(t)', 'resilience_metric_used', 'perception_filter'}
             for key in all_metrics:
                 if key in skip_safe_convert:
@@ -971,7 +978,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # ----------- 4. VÉRIFICATION NaN/Inf SYSTÉMATIQUE -------------
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
-                             'adaptive_resilience', 'continuous_resilience', 'innovation_cjs',
+                             'adaptive_resilience', 'continuous_resilience', 'innovation_cjs', 'innovation_H',
                              'resilience_env(t)', 'resilience_metric_used', 'perception_filter'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
@@ -1073,6 +1080,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'G_values_array': G_values_array,  # AJOUT PR: G par strate (array numpy)
                 'C': C_t, 'A_spiral': A_spiral_t,
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
+                'innovation_H': innovation_H,
                 'delta_fn': delta_fn_t, 'S(t)': S_t, 'C(t)': C_t,
                 'effort(t)': effort_t, 'cpu_step(t)': cpu_step,
                 'A_mean(t)': A_mean_t, 'f_mean(t)': f_mean_t,
@@ -1197,6 +1205,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
         # Innovation (moniteur lent) : dernière valeur et moyenne des verdicts rendus
         innov_values = [h['innovation_cjs'] for h in history
                         if h.get('innovation_cjs') is not None and np.isfinite(h['innovation_cjs'])]
+        innov_H_values = [h['innovation_H'] for h in history
+                          if h.get('innovation_H') is not None and np.isfinite(h['innovation_H'])]
         
         metrics_summary = {
             'mean_S': np.mean(S_history) if S_history else 0.0,
@@ -1206,6 +1216,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'mean_cpu_step': np.mean(cpu_steps) if cpu_steps else 0.0,
             'innovation_cjs': float(innov_values[-1]) if innov_values else float('nan'),
             'innovation_cjs_mean': float(np.mean(innov_values)) if innov_values else float('nan'),
+            'innovation_H': float(innov_H_values[-1]) if innov_H_values else float('nan'),
             'final_fluidity': float(fluidity) if 'fluidity' in locals() and fluidity is not None else 0.0,
             'final_mean_abs_error': float(mean_abs_error) if mean_abs_error is not None else 0.0,
             'mean_C': float(np.mean(C_history)) if C_history else float('nan'),

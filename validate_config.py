@@ -6,7 +6,7 @@ from datetime import datetime
 # 1. — METRIQUES VALIDES —
 METRIQUES_VALIDES = {
     "t", "S(t)", "A_mean(t)", "f_mean(t)", "effort(t)", "cpu_step(t)",
-    "C(t)", "E(t)", "L(t)", "fluidity", "innovation_cjs", "effort_status",
+    "C(t)", "E(t)", "L(t)", "fluidity", "innovation_cjs", "innovation_H", "effort_status",
     "mean_abs_error", "mean_high_effort", "d_effort_dt", "t_retour",
     "A_spiral(t)", "continuous_resilience", "mu_Rloc(t)", "resilience_env(t)", "D_excursion(t)", "D_mean(t)", "D_max(t)", "D_rms(t)", "resilience_metric_used", "perception_filter", "adaptive_resilience", "adaptive_resilience_score",
     "En_mean(t)", "On_mean(t)", "gamma", "gamma_mean(t)", "In_mean(t)",
