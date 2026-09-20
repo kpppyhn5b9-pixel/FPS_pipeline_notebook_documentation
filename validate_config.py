@@ -5,7 +5,7 @@ from datetime import datetime
 # 1. — METRIQUES VALIDES —
 # 1. — METRIQUES VALIDES —
 METRIQUES_VALIDES = {
-    "t", "S(t)", "A_mean(t)", "f_mean(t)", "effort(t)", "cpu_step(t)",
+    "t", "S(t)", "A_mean(t)", "f_mean(t)", "effort(t)", "activite_ref", "activite_rel", "cpu_step(t)",
     "C(t)", "E(t)", "L(t)", "fluidity", "innovation_cjs", "innovation_H", "effort_status",
     "mean_abs_error", "mean_high_effort", "d_effort_dt",
     "A_spiral(t)", "mu_Rloc(t)", "resilience_ac", "resilience_ac_smooth", "resilience_var", "resilience_lag", "resilience_alert", "resilience_quiet", "resilience_score", "perception_filter",
@@ -30,8 +30,6 @@ CRITERES_VALIDES = {
 SEUILS_THEORIQUES_INITIAUX = {
     "mean_high_effort": 2,       # Effort chronique : moyenne haute
     "d_effort_dt": 5,            # Effort transitoire : dérivée (en σ)
-    "effort_chronique_threshold": 75.0,    # compute_effort_status (taux, lot v3)
-    "effort_transitoire_threshold": 150.0, # compute_effort_status (taux, lot v3)
     "gamma_n": 1.0,              # Latence par strate
     "env_n": "gaussienne",       # Type enveloppe
     "sigma_n": 0.1               # Écart-type enveloppe
@@ -287,8 +285,8 @@ def validate_to_calibrate(tc, collector):
     if tc.get("d_effort_dt", 0) <= 0:
         collector.add_error("to_calibrate.d_effort_dt doit être > 0")
     for key in ("effort_chronique_threshold", "effort_transitoire_threshold"):
-        if key in tc and not (is_float(tc[key]) and tc[key] > 0):
-            collector.add_error(f"to_calibrate.{key} doit être > 0")
+        if key in tc:
+            collector.add_warning(f"to_calibrate.{key} est obsolète : les statuts d'activité se lisent en facteurs du repos du run (bloc 'activite')")
     if tc.get("gamma_n", 0) <= 0:
         collector.add_error("to_calibrate.gamma_n doit être > 0")
     if tc.get("env_n") not in ["gaussienne", "sigmoide"]:

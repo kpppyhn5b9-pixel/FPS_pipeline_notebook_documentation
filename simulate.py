@@ -247,6 +247,17 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'stride': max(1, int(_rcfg.get('stride', 5))),  # cadence de calcul (pas) : la fenêtre est longue, inutile de refaire chaque pas
         'last': None,  # dernier verdict (ac, ac_smooth, var, lag, alert, quiet), reporté entre deux calculs
     }
+    # Activité : repos de référence du run (20/09/2026), calibré UNE fois sur
+    # [calib_start_t, calib_start_t + calib_window_t] (après l'exploration
+    # initiale de γ et G) puis FIGÉ ; le score 'activite' et les statuts
+    # stable/transitoire/chronique se lisent en facteurs de ce repos.
+    _acfg = config.get('activite', {})
+    activite_state = {
+        'ref': None,
+        't_start': float(_acfg.get('calib_start_t', 20.0)),
+        't_end': float(_acfg.get('calib_start_t', 20.0)) + float(_acfg.get('calib_window_t', 20.0)),
+        'window_steps': max(1, int(round(float(_acfg.get('calib_window_t', 20.0)) / dt))),  # une respiration
+    }
     # Filtres de perception (spec 15/07/2026) — état du switch
     _pcfg = config.get('perception', {})
     perception_mode = _pcfg.get('filter_mode', 'static')
@@ -768,7 +779,15 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 np.mean(An_t), np.mean(fn_t), gamma_t) / dt
 
             effort_history.append(effort_t)
-            effort_status = metrics.compute_effort_status(effort_t, effort_history, config) if hasattr(metrics, 'compute_effort_status') else "stable"
+            if activite_state['ref'] is None and t >= activite_state['t_end']:
+                activite_state['ref'] = metrics.activity_reference(
+                    [h.get('t') for h in history] + [t], effort_history,
+                    activite_state['t_start'], activite_state['t_end'])  # calibré une fois, figé
+            activite_ref = activite_state['ref']
+            _level = metrics.activity_level(effort_history, activite_state['window_steps']) if activite_ref else None
+            activite_rel = (float(_level / activite_ref) if (_level is not None and activite_ref) else None)
+            effort_status = metrics.compute_effort_status(effort_t, effort_history, config,
+                                                          ref=activite_ref, window=activite_state['window_steps'])
             
             # FLUIDITÉ loggée par pas : la fonction de RÉFÉRENCE (metrics.
             # compute_fluidity = jerk de l'enveloppe fₙ) sur la fenêtre W_f.
@@ -915,6 +934,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'L(t)': L_t,
                 'cpu_step(t)': cpu_step,
                 'effort(t)': effort_t,
+                'activite_ref': activite_ref,  # repos de référence du run (figé), None en calibration
+                'activite_rel': activite_rel,  # niveau (médiane sur une respiration) / repos : ce que le score lit
                 'A_mean(t)': A_mean_t,
                 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,  # jerk de l'enveloppe fₙ (métrique de référence)
@@ -964,7 +985,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H'):
+            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -973,7 +994,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                                  'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                                 'innovation_cjs', 'innovation_H', 'perception_filter'}
+                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -983,7 +1004,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                              'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                             'innovation_cjs', 'innovation_H', 'perception_filter'}
+                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -1086,7 +1107,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'innovation_H': innovation_H,
                 'delta_fn': delta_fn_t, 'S(t)': S_t, 'C(t)': C_t,
-                'effort(t)': effort_t, 'cpu_step(t)': cpu_step,
+                'effort(t)': effort_t, 'activite_ref': activite_ref, 'activite_rel': activite_rel, 'cpu_step(t)': cpu_step,
                 'A_mean(t)': A_mean_t, 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,
                 'mean_abs_error': mean_abs_error,
@@ -1208,6 +1229,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
         metrics_summary = {
             'mean_S': np.mean(S_history) if S_history else 0.0,
             'std_S': np.std(S_history) if S_history else 0.0,
+            'activite_ref': (float(activite_state['ref']) if activite_state['ref'] is not None else None),
+            'activite_rel': (float(activite_rel) if 'activite_rel' in locals() and activite_rel is not None else None),
             'mean_effort': np.mean(effort_history) if effort_history else 0.0,
             'max_effort': np.max(effort_history) if effort_history else 0.0,
             'mean_cpu_step': np.mean(cpu_steps) if cpu_steps else 0.0,

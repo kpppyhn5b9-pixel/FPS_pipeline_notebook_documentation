@@ -121,69 +121,81 @@ def compute_effort(delta_An_array: np.ndarray, delta_fn_array: np.ndarray,
     return effort
 
 
-def compute_effort_status(effort_t: float, effort_history: List[float], 
-                          config: Dict) -> str:
+def activity_reference(t_series, effort_series, t_start: float, t_end: float) -> Optional[float]:
     """
-    Détermine le statut de l'effort : stable, transitoire ou chronique.
-    
-    Args:
-        effort_t: effort actuel
-        effort_history: historique des efforts
-        config: configuration (seuils)
-    
-    Returns:
-        str: "stable", "transitoire" ou "chronique"
-    
-    Logique:
-        - stable: effort dans la norme
-        - transitoire: pic temporaire (adaptation ponctuelle)
-        - chronique: effort élevé persistant (système en lutte)
+    Repos de référence du run : médiane de l'activité sur [t_start, t_end], à
+    prendre APRÈS l'exploration initiale (γ et G balayent l'espace au début du
+    run : gros pic d'activité qui n'est pas du repos). None tant que la fenêtre
+    n'est pas complète (dernier t < t_end) ou vide.
     """
-    if len(effort_history) < 10:
-        # Pas assez d'historique - on considère stable par défaut
-        return "stable"
-    
-    # Calcul des statistiques sur les 10 derniers pas
-    recent_efforts = effort_history[-10:]
-    mean_recent = np.mean(recent_efforts)
-    
-    # Seuils adaptatifs basés sur l'historique complet
-    if len(effort_history) >= 50:
-        # Moyenne et écart-type sur une fenêtre plus large
-        long_term = effort_history[-50:]
-        mean_long = np.mean(long_term)
-        std_long = np.std(long_term)
-        
-        # Détection transitoire : pic > 2σ
-        if effort_t > mean_long + 2 * std_long:
+    t = np.asarray([v for v in t_series], dtype=float)
+    e = np.asarray([np.nan if v is None else v for v in effort_series], dtype=float)
+    n = min(len(t), len(e))
+    if n == 0 or t[n - 1] < t_end:
+        return None
+    m_ = (t[:n] >= t_start) & (t[:n] <= t_end) & np.isfinite(e[:n])
+    if not m_.any():
+        return None
+    return float(np.median(e[:n][m_]))
+
+
+def activity_ratio(efforts, ref: Optional[float]) -> Optional[float]:
+    """Activité rapportée au repos du run ; None sans référence (ou repos nul)."""
+    vals = [float(v) for v in efforts if v is not None and np.isfinite(v)]
+    if not vals or ref is None or not np.isfinite(ref) or ref <= 0:
+        return None
+    return float(np.mean(vals)) / float(ref)
+
+
+def activity_level(effort_history, window: int) -> Optional[float]:
+    """
+    Niveau d'activité courant : MÉDIANE des `window` derniers pas. L'activité
+    respire avec l'enveloppe fₙ (période ≈ 200 pas au calme : ±20 % autour du
+    repos sur 50 pas, ±2 % sur 200) ; le niveau se lit sur une période entière,
+    sinon la crête de chaque respiration passerait pour de l'agitation.
+    None tant que l'historique est plus court que la fenêtre.
+    """
+    vals = [float(v) for v in effort_history if v is not None and np.isfinite(v)]
+    window = max(1, int(window))
+    if len(vals) < window:
+        return None
+    return float(np.median(vals[-window:]))
+
+
+def compute_effort_status(effort_t: float, effort_history: List[float],
+                          config: Dict, ref: Optional[float] = None,
+                          window: int = 200) -> str:
+    """
+    Statut de l'activité : "stable", "transitoire" ou "chronique".
+
+    Avec une référence (repos du run, cf. activity_reference) :
+      - transitoire : le pas courant dépasse ACTIVITY_STATUS_PEAK × repos (pic) ;
+      - chronique   : le niveau (médiane des `window` derniers pas, une
+                      respiration entière) tient au-delà de
+                      ACTIVITY_STATUS_CHRONIC × repos (agitation installée) ;
+      - stable sinon.
+    Sans référence (calibration en cours, c'est-à-dire l'exploration initiale) :
+    seul un pic à +2σ de l'historique récent est signalé « transitoire », jamais
+    « chronique » : on ne juge pas une agitation installée sans repos connu.
+
+    Les anciens seuils fixes de config (effort_chronique_threshold,
+    effort_transitoire_threshold) ne sont plus lus : sous le niveau de repos
+    réel, ils rendaient l'état « stable » inatteignable (calme = 92 % transitoire).
+    """
+    hist = [float(v) for v in effort_history if v is not None and np.isfinite(v)]
+    if ref is not None and np.isfinite(ref) and ref > 0:
+        if effort_t > ACTIVITY_STATUS_PEAK * ref:
             return "transitoire"
-        
-        # Détection chronique : moyenne récente élevée
-        # Si std_long est très petit (effort constant), utiliser un seuil absolu
-        if std_long < 0.01:
-            # Effort constant - utiliser les seuils de config
-            thresholds = config.get('to_calibrate', {})
-            if mean_recent > thresholds.get('effort_chronique_threshold', 75.0):
-                return "chronique"
-        else:
-            # Effort variable - utiliser la logique adaptative
-            if mean_recent > mean_long + std_long:
-                # Vérifier la persistance
-                high_count = sum(1 for e in recent_efforts if e > mean_long + std_long)
-                if high_count >= 7:  # 70% du temps récent
-                    return "chronique"
-    
-    # Sinon, utiliser des seuils fixes depuis config
-    thresholds = config.get('to_calibrate', {})
-    
-    # Seuil transitoire
-    if effort_t > thresholds.get('effort_transitoire_threshold', 150.0):
+        level = activity_level(hist, window)
+        if level is not None and level > ACTIVITY_STATUS_CHRONIC * ref:
+            return "chronique"
+        return "stable"
+    if len(hist) < 10:
+        return "stable"
+    long_term = hist[-50:]
+    mean_long, std_long = float(np.mean(long_term)), float(np.std(long_term))
+    if std_long > 1e-12 and effort_t > mean_long + 2 * std_long:
         return "transitoire"
-    
-    # Seuil chronique sur la moyenne
-    if mean_recent > thresholds.get('effort_chronique_threshold', 75.0):
-        return "chronique"
-    
     return "stable"
 
 
@@ -658,6 +670,10 @@ def compute_correlation_effort_cpu(effort_history: List[float],
 # de la bande du témoin (0.37 + 2×0.06) : un 4 n'est jamais du bruit de calme.
 RESILIENCE_SLOWING_FACTORS = (1.4, 2.0, 3.0, 5.0)
 RESILIENCE_THRESHOLDS = [round(float(np.exp(-1.0 / k)), 3) for k in RESILIENCE_SLOWING_FACTORS]
+# Activité : facteurs d'agitation par rapport au repos du run (voir 'activite').
+ACTIVITY_FACTORS = (1.1, 1.25, 1.5, 2.0)
+ACTIVITY_STATUS_PEAK = 2.0    # statut 'transitoire' : un pas au-delà de ×2 du repos
+ACTIVITY_STATUS_CHRONIC = 1.25  # statut 'chronique' : moyenne récente tenue au-delà de ×1.25
 
 SCORE_BRACKETS = {
     'dispersion':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},  # amplitude, pas structure
@@ -676,12 +692,18 @@ SCORE_BRACKETS = {
     # d'IDENTITÉ : voyant de santé, ~invariant en régime sain (FPS ~0.30 → 5).
     # Monotone en C_JS suffit : C_JS encode déjà la cloche ordre/bruit.
     'innovation': {'direction': 'higher', 'thresholds': [0.28, 0.22, 0.15, 0.08], 'ge': False},
-    # effort : PROVISOIRE (15/07, dossier 4 seeds — médiane repos 59, p75 73,
-    # p90 229, corrélation effort<->erreur +0.54, choc invisible). Le score 1
-    # permanent des anciens seuils était connu faux ; ceux-ci notent la
-    # croisière 3 EN ATTENDANT la certification sur-effort des campagnes
-    # (question OUVERTE : l'effort est un compteur d'activité, pas de stress).
-    'activite':   {'direction': 'lower',  'thresholds': [30.0, 45.0, 75.0, 150.0]},  # ex-'effort' : churn, pas stress
+    # activite : RELATIVE au repos du run (20/09/2026, « la grenouille »). La
+    # valeur notée est le RAPPORT activité / activité de repos du run
+    # (activite_ref, médiane sur une fenêtre de calibration prise APRÈS
+    # l'exploration initiale de γ et G, puis FIGÉE). Seuils = facteurs
+    # ACTIVITY_FACTORS : 5 sous ×1.1 du repos, 4 sous ×1.25, 3 sous ×1.5, 2 sous
+    # ×2, 1 au-delà. Pourquoi relatif : l'activité n'a pas d'unité propre (somme
+    # de variations de paramètres, dépend de N, dt et de la dynamique) ; les
+    # seuils fixes de juillet (repos 59) lisaient 1/5 sur un repos devenu 271.
+    # Pourquoi FIGÉ et non glissant : une référence qui suit absorberait une
+    # montée lente (la grenouille dans l'eau qui chauffe). Sans référence
+    # (calibration en cours) → None → score neutre.
+    'activite':   {'direction': 'lower',  'thresholds': list(ACTIVITY_FACTORS)},
 }
 
 
@@ -750,6 +772,8 @@ COLUMN_LABELS = {
     'd_effort_dt':          'Activité transitoire (d/dt)',
     'd_effort/dt':          'Activité transitoire (d/dt)',
     'effort_status':        "État d'activité",
+    'activite_ref':         'Activité (repos de référence)',
+    'activite_rel':         'Activité / repos',
     'effort_internal':      'Activité chronique',
     'effort_transient':     'Activité transitoire',
     'mean_abs_error':       'Régulation (|E−O|)',
@@ -1014,6 +1038,12 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
         if e is not None:
             errors.append(e)
     efforts = [v for v in (_num(h.get('effort(t)')) for h in history_window) if v is not None]
+    # activité = RAPPORT au repos du run ('activite_ref', calibré une fois par
+    # simulate puis figé, loggé à chaque pas) ; pas de référence → None → neutre.
+    act_ref = [v for v in (_num(h.get('activite_ref')) for h in history_window) if v is not None]
+    # 'activite_rel' = niveau (médiane sur une respiration) / repos, loggé par
+    # simulate : MONITEUR LENT, dernière valeur ; repli : moyenne de la fenêtre / repos.
+    act_rel = [v for v in (_num(h.get('activite_rel')) for h in history_window) if v is not None]
     # résilience = MONITEUR LENT lu dans les logs : autocorr CSD LISSÉE (médiane
     # sur quelques lags, 'resilience_ac_smooth' ; repli sur 'resilience_ac' brute
     # pour un CSV ancien), dernière valeur ; None (warmup) → score neutre. Le
@@ -1034,7 +1064,7 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
         'fluidity':   compute_fluidity(fn_means),
         'innovation': (innov[-1] if innov else None),
         'regulation': float(np.mean(errors)) if errors else 0.0,
-        'activite':   float(np.mean(efforts)) if efforts else 0.0,
+        'activite':   (act_rel[-1] if act_rel else activity_ratio(efforts, act_ref[-1] if act_ref else None)),
         'resilience': (resil[-1] if resil else None),
     }
 
