@@ -85,19 +85,16 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         'fps_vs_neutral_efficiency': (fps_stability - neutral_stability) / (abs(neutral_stability) + 1e-3) * 100
     }
     
-    # 3. Résilience = score de référence 'resilience' sur adaptive_resilience
-    # (FPS) ; pour les contrôles, sur la même normalisation 1/(1+t_retour)
-    # que compute_adaptive_resilience. Neutral : aucun mécanisme → neutre.
-    fps_adaptive_resil = fps_result.get('metrics', {}).get('adaptive_resilience', None)
-    if fps_adaptive_resil is None or not np.isfinite(fps_adaptive_resil):
-        fps_t_retour = fps_result.get('metrics', {}).get('resilience_t_retour', 10.0)
-        fps_adaptive_resil = 1.0 / (1.0 + fps_t_retour) if np.isfinite(fps_t_retour) else None
-    print(f"   Adaptive resilience - FPS: {fps_adaptive_resil}")
-    fps_resilience = _score(fps_adaptive_resil, 'resilience')
-    
-    kura_t_retour = kuramoto_result.get('metrics', {}).get('t_retour', 10.0)
-    kura_resilience = _score(1.0 / (1.0 + kura_t_retour) if np.isfinite(kura_t_retour) else None, 'resilience')
-    neutral_resilience = fps_metrics.NEUTRAL_SCORE
+    # 3. Résilience = score de référence 'resilience' sur resilience_ac (autocorr
+    # CSD des résidus de l'enveloppe fₙ, basse = résilient). Contrôles sans
+    # enveloppe vivante (fréquences fixes) : aucun verdict → neutre.
+    fps_res_ac = fps_result.get('metrics', {}).get('resilience_ac')
+    kura_res_ac = kuramoto_result.get('metrics', {}).get('resilience_ac')
+    neutral_res_ac = neutral_result.get('metrics', {}).get('resilience_ac')
+    print(f"   Résilience (autocorr CSD) - FPS: {fps_res_ac}, Kuramoto: {kura_res_ac}, Neutral: {neutral_res_ac}")
+    fps_resilience = _score(fps_res_ac, 'resilience')
+    kura_resilience = _score(kura_res_ac, 'resilience')
+    neutral_resilience = _score(neutral_res_ac, 'resilience')
     
     metrics['resilience'] = {
         'fps_value': fps_resilience,
@@ -105,29 +102,6 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         'neutral_value': neutral_resilience,
         'fps_vs_kuramoto_efficiency': (fps_resilience - kura_resilience) / (abs(kura_resilience) + 1e-10) * 100,
         'fps_vs_neutral_efficiency': (fps_resilience - neutral_resilience) / (abs(neutral_resilience) + 1e-10) * 100
-    }
-    
-    # 3b. Résilience continue (pour perturbations non-ponctuelles)
-    # Récupérer les valeurs de continuous_resilience depuis les métriques finales
-    def _val(x, default):
-        try:
-            v = float(x)
-        except (TypeError, ValueError):
-            return default
-        return v if np.isfinite(v) else default
-    # None / NaN = pas de verdict (pas de perturbation continue) → valeur neutre 0.5
-    fps_cont_resil = _val(fps_result.get('metrics', {}).get('continuous_resilience'), 0.5)
-    kura_cont_resil = _val(kuramoto_result.get('metrics', {}).get('continuous_resilience'), 0.5)
-    neutral_cont_resil = 0.3  # Neutral n'a pas de mécanisme d'adaptation
-    
-    print(f"   Continuous resilience - FPS: {fps_cont_resil}, Kuramoto: {kura_cont_resil}, Neutral: {neutral_cont_resil}")
-    
-    metrics['continuous_resilience'] = {
-        'fps_value': fps_cont_resil,
-        'kuramoto_value': kura_cont_resil,
-        'neutral_value': neutral_cont_resil,
-        'fps_vs_kuramoto_efficiency': (fps_cont_resil - kura_cont_resil) / (abs(kura_cont_resil) + 1e-10) * 100,
-        'fps_vs_neutral_efficiency': (fps_cont_resil - neutral_cont_resil) / (abs(neutral_cont_resil) + 1e-10) * 100
     }
     
     # 4. Innovation = score de référence 'innovation' sur C_JS (complexité
@@ -202,9 +176,6 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
     resil_values = [metrics['resilience']['fps_value'], metrics['resilience']['kuramoto_value'], metrics['resilience']['neutral_value']]
     resil_min, resil_max = min(resil_values), max(resil_values)
     
-    cont_resil_values = [metrics['continuous_resilience']['fps_value'], metrics['continuous_resilience']['kuramoto_value'], metrics['continuous_resilience']['neutral_value']]
-    cont_resil_min, cont_resil_max = min(cont_resil_values), max(cont_resil_values)
-    
     innov_values = [metrics['innovation']['fps_value'], metrics['innovation']['kuramoto_value'], metrics['innovation']['neutral_value']]
     innov_min, innov_max = min(innov_values), max(innov_values)
     
@@ -218,7 +189,6 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         normalize_metric(metrics['synchronization']['fps_value'], sync_min, sync_max),
         normalize_metric(metrics['stability']['fps_value'], stab_min, stab_max),
         normalize_metric(metrics['resilience']['fps_value'], resil_min, resil_max),
-        normalize_metric(metrics['continuous_resilience']['fps_value'], cont_resil_min, cont_resil_max),
         normalize_metric(metrics['innovation']['fps_value'], innov_min, innov_max),
         normalize_metric(metrics['fluidity']['fps_value'], fluid_min, fluid_max),
         normalize_metric(metrics['cpu_efficiency']['fps_value'], cpu_min, cpu_max)
@@ -228,7 +198,6 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         normalize_metric(metrics['synchronization']['kuramoto_value'], sync_min, sync_max),
         normalize_metric(metrics['stability']['kuramoto_value'], stab_min, stab_max),
         normalize_metric(metrics['resilience']['kuramoto_value'], resil_min, resil_max),
-        normalize_metric(metrics['continuous_resilience']['kuramoto_value'], cont_resil_min, cont_resil_max),
         normalize_metric(metrics['innovation']['kuramoto_value'], innov_min, innov_max),
         normalize_metric(metrics['fluidity']['kuramoto_value'], fluid_min, fluid_max),
         normalize_metric(metrics['cpu_efficiency']['kuramoto_value'], cpu_min, cpu_max)
@@ -238,7 +207,6 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         normalize_metric(metrics['synchronization']['neutral_value'], sync_min, sync_max),
         normalize_metric(metrics['stability']['neutral_value'], stab_min, stab_max),
         normalize_metric(metrics['resilience']['neutral_value'], resil_min, resil_max),
-        normalize_metric(metrics['continuous_resilience']['neutral_value'], cont_resil_min, cont_resil_max),
         normalize_metric(metrics['innovation']['neutral_value'], innov_min, innov_max),
         normalize_metric(metrics['fluidity']['neutral_value'], fluid_min, fluid_max),
         normalize_metric(metrics['cpu_efficiency']['neutral_value'], cpu_min, cpu_max)

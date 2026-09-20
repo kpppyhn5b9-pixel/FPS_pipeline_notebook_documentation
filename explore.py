@@ -864,7 +864,7 @@ def export_all_correlations(history: List[Dict],
             'An_mean(t)', 'fn_mean(t)',
             'En_mean(t)', 'On_mean(t)', 'In_mean(t)',
             'tau_A_mean', 'tau_f_mean', 'tau_S', 'tau_gamma', 'tau_C',
-            'temporal_coherence', 'adaptive_resilience', 'continuous_resilience',
+            'temporal_coherence', 'resilience_ac', 'resilience_var',
             'best_pair_score', 'best_pair_gamma',
             'decorrelation_time', 'autocorr_tau',
             'mean_high_effort', 'd_effort_dt'

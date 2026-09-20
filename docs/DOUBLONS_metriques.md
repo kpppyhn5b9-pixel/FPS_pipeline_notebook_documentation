@@ -117,6 +117,61 @@ Validation : 51 tests verts ; run FPS T=60 : H ∈ [0.35, 0.65] (médiane 0.51,
 côté « structuré »), C ∈ [0.26, 0.30] ; filtres engagés par le switch : neutre,
 fluidité, effort, résilience, jamais innovation.
 
+### Suite 20/09/2026 (ter) — résilience : UNE quantité, le ralentissement critique
+
+Spec : `New_Attention.md` (Scheffer 2009, banc AR(1), sonde de calibration,
+règle de décision anti-faux-positif). Les cinq couches de résilience de la
+CARTE sont dissoutes dans une seule :
+
+- **`metrics.compute_resilience_csd(fn_env, dt, lag)`** : autocorrélation, à lag
+  calibré, des résidus **détrendés** de l'enveloppe fₙ (couche lente), plus la
+  variance des résidus. Détrend adaptatif par raies spectrales (`detrend_spectral_
+  peaks`, proéminence locale : un spectre rouge lisse n'est pas touché, un forçage
+  périodique l'est raie par raie). Lag = `relaxation_steps` (1/e, source unique
+  partagée avec le τ de l'innovation), **calibré une fois puis figé** dans le run :
+  re-dériver le lag à chaque fenêtre depuis le même signal donnerait ~1/e par
+  construction et rendrait toute montée invisible. `None` si fenêtre < 200 pas,
+  signal plat ou résidus nuls (verdict suspendu → score neutre).
+- **`metrics.resilience_alert`** : radar CSD codifiant la règle du cahier — bande
+  de référence (médiane du calme + max(0.06, 2σ)), tendance sur plusieurs fenêtres
+  distinctes (échantillonnées au lag), convergence (autocorr ET variance montent),
+  jamais d'alerte sans référence calme complète.
+- **Barème** `SCORE_BRACKETS['resilience']` : direction `lower`, seuils
+  provisoires `[0.45, 0.60, 0.75, 0.90]` (calme FPS ≈ 0.33, montée CSD observée
+  sur jouet 0.5–0.6). Autocorr basse = retour rapide = 5.
+- **Colonnes** : `resilience_ac`, `resilience_var`, `resilience_lag`,
+  `resilience_alert`, `resilience_score`. Le scoreur de référence lit la dernière
+  `resilience_ac` de la fenêtre (moniteur lent, comme l'innovation).
+- **Supprimé** : `compute_t_retour`, `compute_continuous_resilience`,
+  `compute_adaptive_resilience`, `init_/update_resilience_envelope`, `_robust_iqr`,
+  le bloc config `resilience_v2` (→ bloc `resilience`), `t_choc`, les colonnes
+  `t_retour`, `continuous_resilience`, `resilience_env(t)`, `D_*`,
+  `resilience_metric_used`, `adaptive_resilience(_score)`, la figure
+  `plot_adaptive_resilience` (→ `plot_resilience_csd`), l'entrée
+  `continuous_resilience` de `compare_modes`. `mu_Rloc(t)` reste loggée (cohérence
+  locale, futur gardien σ). Le déficit par strate `'resilience'` (excursion IQR)
+  reste : c'est la résilience-excursion, métrique d'attention.
+
+Banc (tests `TestResilienceCSD`) : AR(1) φ = 0.6 / 0.8 / 0.9 / 0.95 → lag-1 pur
+0.602 / 0.786 / 0.900 / 0.949 ; avec forçage sinusoïdal ×5 : brut 0.96–0.99
+(aveugle), détrendé 0.600 / 0.784 / 0.896 / 0.936 (table du cahier reproduite).
+Enveloppe FPS réelle : lag auto 39–40, autocorr ≈ 0.33 (cahier : 38, 0.339).
+
+Validation : 54 tests verts ; pipeline complet T=80 : `resilience_ac` sur 401/800
+pas, lag 40, 0 alerte, score 5 sur 400 pas (3 en warmup).
+
+Points d'attention : (1) l'estimateur par fenêtre glissante de 400 pas au lag 40
+n'a que ~10 échantillons indépendants, la valeur pas à pas oscille (−0.46 … 0.47
+sur le run) ; le cahier recommande de lire une tendance lissée, pas un point —
+le radar le fait, le score lit encore le point ; (2) les seuils du barème sont
+provisoires, à recaler sur plusieurs seeds ; (3) `W_res_t` (40 u.t.) et
+`alert_calm_n` sont des réglages, pas des vérités ; (4) en régime établi et sans
+bruit d'entrée, l'enveloppe fₙ de la FPS est quasi périodique : une fois le
+transitoire sorti de la fenêtre, la variance des résidus tombe près de zéro et
+l'autocorr (≈ 0.15–0.25) lit un reste de détrend plus qu'une turbulence spontanée.
+La métrique prend tout son sens quand quelque chose fluctue (bruit, perturbation
+continue, rampe interne) — exactement les régimes que le cahier a testés.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*

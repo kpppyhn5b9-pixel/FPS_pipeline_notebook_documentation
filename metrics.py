@@ -289,258 +289,157 @@ def compute_mean_abs_error(En_array: np.ndarray, On_array: np.ndarray) -> float:
     return np.mean(np.abs(En_array - On_array))
 
 
-# ============== MÉTRIQUES DE RÉSILIENCE ==============
+# ============== MÉTRIQUES DE RÉSILIENCE : RALENTISSEMENT CRITIQUE ==============
+#
+# Décision 20/09/2026 (New_Attention.md) : UNE seule quantité remplace t_retour,
+# la résilience continue, l'aiguillage adaptatif et les enveloppes de santé :
+# le ralentissement critique (Scheffer 2009) mesuré comme l'autocorrélation, à
+# un lag calibré sur la relaxation, des RÉSIDUS DÉTRENDÉS de la couche lente
+# (l'enveloppe fₙ). Près d'un point de bascule, un système récupère plus
+# lentement de ses propres fluctuations : autocorrélation ET variance montent.
+#   - sans config : lit la turbulence spontanée, aucun choc à induire ;
+#   - valable sous perturbation continue ;
+#   - orthogonal à l'innovation (vitesse de retour, pas richesse).
+# Validé au banc (cahier) : AR(1) à pôle connu retrouvé ; AR(1) + forçage
+# périodique → le lag-1 brut est aveugle (~0.96 partout), le détrend le répare.
+# Lecture : autocorr BASSE = retour rapide = résilient (score 5) ; qui MONTE =
+# alarme latente (barème monotone unilatéral).
 
-def compute_t_retour(S_history: List[float], t_choc: int, dt: float, 
-                     threshold: float = 0.95) -> float:
+def relaxation_steps(x, default: int = 10) -> int:
     """
-    Calcule le temps de retour à l'équilibre après perturbation.
-    
-    Temps pour revenir à 95% de l'état pré-choc.
-    
-    Args:
-        S_history: historique du signal
-        t_choc: indice temporel du choc
-        dt: pas de temps
-        threshold: seuil de retour (0.95 = 95%)
-    
-    Returns:
-        float: temps de retour en unités de temps
-    
-    Note (v2, settling-time) : on mesure le retour de l'ENVELOPPE (|S| lissé, le
-    NIVEAU) vers la bande pré-choc, et non le |S| INSTANTANÉ vers sa moyenne — un
-    signal oscillant ne se pose jamais sur sa moyenne, l'ancienne version ratait
-    donc le retour (validé sur signaux fabriqués : un retour rapide était noté au
-    pire). Le lissage ajoute ~1 u.t. de latence, intégrée dans les barèmes.
+    Temps de relaxation en pas : premier passage de l'autocorrélation sous 1/e.
+    Source unique de l'échelle de temps (innovation τ, lag de résilience).
     """
-    if t_choc >= len(S_history) or t_choc < 10:
-        return 0.0
-
-    S_abs = np.abs(np.asarray(S_history, dtype=float))
-    # Enveloppe causale = |S| lissé sur ~une période (le niveau, pas l'oscillation).
-    w = max(5, int(round(1.2 / dt)))
-    env = np.array([float(np.mean(S_abs[max(0, i-w):i+1])) for i in range(len(S_abs))])
-
-    # Niveau de référence pré-choc (sur la même fenêtre de lissage).
-    base = float(np.mean(env[max(0, t_choc-w):t_choc]))
-    if base < 1e-6:
-        base = float(np.max(env[max(0, t_choc-w):t_choc]))
-    if base < 1e-6:
-        # Signal quasi nul avant le choc : pas de retour mesurable → pénalité max.
-        return (len(S_history) - t_choc) * dt
-
-    tolerance = (1 - threshold) * base
-    for i in range(t_choc + 1, len(env)):
-        if abs(env[i] - base) <= tolerance:
-            return (i - t_choc) * dt
-
-    # Pas encore revenu à l'équilibre
-    return (len(S_history) - t_choc) * dt
+    x = np.asarray(x, dtype=float).ravel()
+    xc = x - x.mean()
+    if len(xc) < 3 or float(np.dot(xc, xc)) < 1e-12:
+        return default
+    ac = np.correlate(xc, xc, mode='full')[len(xc) - 1:]
+    ac = ac / ac[0]
+    below = np.where(ac < 1.0 / np.e)[0]
+    return int(below[0]) if len(below) else default
 
 
-def compute_continuous_resilience(C_history: List[float], S_history: List[float],
-                                 perturbation_active: bool = True) -> Optional[float]:
+def detrend_spectral_peaks(x, peak_ratio: float = 10.0, max_peaks: int = 5):
     """
-    Calcule la résilience sous perturbation continue.
+    Retire adaptativement les pics spectraux DOMINANTS (la composante
+    déterministe / périodique : le forçage) et renvoie (résidus, nb_pics).
 
-    Pour une perturbation continue (ex: sinusoïdale), mesure la capacité
-    du système à maintenir sa cohérence et stabilité.
-
-    Args:
-        C_history: historique de la cohérence C(t)
-        S_history: historique du signal S(t)
-        perturbation_active: si une perturbation est active
-
-    Returns:
-        float: score de résilience continue [0, 1]
-        - 1.0 = excellente résilience (maintien de cohérence)
-        - 0.0 = mauvaise résilience (perte de cohérence)
-        None = verdict suspendu (sous perturbation mais pas encore assez vécu)
-
-    Note:
-        Métrique complémentaire à t_retour pour perturbations non-ponctuelles.
-        Sans perturbation, cette métrique ne s'applique pas (None) : la tenue
-        de soi au repos est mesurée par μ_Rloc en boucle (lot v2), jamais
-        décrétée. Sous perturbation mais avec moins de 20 points, on ne sait
-        PAS encore juger → verdict suspendu (None, humilité de démarrage).
+    Un pic est une RAIE : sa puissance dépasse peak_ratio × la médiane de son
+    voisinage spectral (±neigh bins, les 3 bins centraux exclus). Un spectre
+    rouge lisse (AR(1)) n'a pas de raie et n'est donc pas touché ; un forçage
+    périodique en a une par harmonique. Au plus max_peaks raies ; chaque raie
+    est retirée avec ses deux voisins de bin (fuite spectrale). Sur l'enveloppe
+    fₙ de la FPS, une seule raie domine (cahier) ; la règle reste adaptative.
     """
-    if not perturbation_active:
-        # Pas de perturbation : la tenue de soi est MESURÉE ailleurs (μ_Rloc
-        # en boucle, lot v2), jamais décrétée. Verdict non applicable ici.
-        return None
-    if len(C_history) < 20:
-        # Sous perturbation mais pas assez vécu pour juger : verdict suspendu.
-        return None
-    
-    # Utiliser une fenêtre récente
-    window_size = min(100, len(C_history))
-    C_recent = C_history[-window_size:]
-    S_recent = S_history[-window_size:]
-    
-    # 1. Stabilité de la cohérence sous perturbation
-    # Une bonne résilience = C(t) reste élevé malgré la perturbation
-    C_mean = np.mean(C_recent)
-    C_std = np.std(C_recent)
-    
-    # Score de stabilité de C(t)
-    C_stability_score = C_mean / (1 + C_std) if C_mean > 0 else 0.0
-    
-    # 2. Stabilité ET expressivité de S(t)
-    S_mean = np.mean(S_recent)
-    S_std = np.std(S_recent)
-    S_power = np.mean(np.abs(S_recent))
-    
-    if S_power > 0:
-        # Coefficient de variation - mesure de stabilité relative
-        S_cv = S_std / S_power
-        
-        # Score de stabilité de S(t) : CV faible = signal stable
-        if S_cv < 0.5:  # Très stable
-            S_stability_score = 1.0
-        elif S_cv < 1.0:  # Stable
-            S_stability_score = 0.9 - 0.2 * (S_cv - 0.5)
-        elif S_cv < 2.0:  # Moyennement stable
-            S_stability_score = 0.7 - 0.3 * (S_cv - 1.0)
-        else:  # Instable
-            S_stability_score = 0.4
-        
-        # Score d'expressivité : le signal garde son amplitude
-        expressivity_score = np.tanh(2 * S_power)  # Saturation douce
-        
-        # Combiner stabilité et expressivité de S(t)
-        S_combined_score = 0.6 * S_stability_score + 0.4 * expressivity_score
-    else:
-        # Signal effondré
-        S_combined_score = 0.0
-    
-    # 3. Résilience combinée
-    # Pondération : C(t) reste le plus important, mais S(t) compte significativement
-    continuous_resilience = 0.6 * C_stability_score + 0.4 * S_combined_score
-    
-    return float(np.clip(continuous_resilience, 0.0, 1.0))
-
-
-# ── PANNEAU (lisibilité, 15/07/2026) ────────────────────────────────────────
-# Tu cherches le calcul de résilience par ENVELOPPES (μ_Rloc / effort / erreur,
-# médiane ± k·IQR, gel pendant épisodes, recalibration prudente) ? Il vit dans
-# init_resilience_envelope_state (l.~1592) et update_resilience_envelope
-# (l.~1653). La fonction ci-dessous est L'AUTRE BRANCHE de l'aiguillage
-# (simulate l.~868) : resilience_v2.mode='auto' sert les enveloppes AU REPOS
-# et bascule ici PENDANT les perturbations déclarées (machinerie t_retour /
-# récupération d'épisode). Deux juges, chacun son régime — pas un doublon.
-# ─────────────────────────────────────────────────────────────────────────────
-def compute_adaptive_resilience(config: Dict, metrics: Dict,
-                               C_history: List[float] = None,
-                               S_history: List[float] = None,
-                               t_choc: int = None, dt: float = None) -> Dict[str, Any]:
-    """
-    Calcule la résilience adaptative selon le type de perturbation.
-    
-    Cette fonction unifie t_retour et continuous_resilience en sélectionnant
-    automatiquement la métrique appropriée selon le type de perturbation configuré.
-    
-    Args:
-        config: configuration complète
-        metrics: métriques déjà calculées (pour t_retour existant)
-        C_history: historique de cohérence (pour continuous_resilience)
-        S_history: historique du signal
-        t_choc: indice temporel du choc (pour t_retour)
-        dt: pas de temps
-    
-    Returns:
-        Dict contenant:
-        - 'type': 'punctual' ou 'continuous'
-        - 'value': valeur de résilience [0, 1] ou temps
-        - 'score': score normalisé [1-5]
-        - 'metric_used': 't_retour' ou 'continuous_resilience'
-    """
-    # dt : utiliser l'horloge réelle de la config, jamais un défaut fantôme.
-    # (L'ancien défaut 0.05 ≠ dt=0.1 de la config faussait t_retour si un
-    # appelant oubliait de passer dt.)
-    if dt is None:
-        dt = config.get('system', {}).get('dt', 0.1) if config else 0.1
-
-    # Déterminer le type de perturbation
-    has_continuous_perturbation = False
-    perturbation_type = 'none'
-    
-    # Nouvelle structure avec input.perturbations
-    input_cfg = config.get('system', {}).get('input', {})
-    perturbations = input_cfg.get('perturbations', [])
-    
-    for pert in perturbations:
-        pert_type = pert.get('type', 'none')
-        if pert_type in ['sinus', 'bruit', 'rampe']:
-            has_continuous_perturbation = True
-            perturbation_type = 'continuous'
+    x = np.asarray(x, dtype=float).ravel()
+    n = len(x)
+    xc = x - x.mean()
+    if n < 8 or float(np.dot(xc, xc)) < 1e-12:
+        return xc, 0
+    X = np.fft.rfft(xc)
+    P = np.abs(X) ** 2
+    P[0] = 0.0
+    neigh = max(5, len(P) // 20)
+    n_peaks = 0
+    for _ in range(max_peaks):
+        k = int(np.argmax(P))
+        if k == 0 or P[k] <= 0:
             break
-        elif pert_type == 'choc':
-            perturbation_type = 'punctual'
-    
-    # Si pas trouvé dans la nouvelle structure, vérifier l'ancienne (compatibilité)
-    if perturbation_type == 'none' and config:
-        old_pert = config.get('system', {}).get('perturbation', {})
-        old_type = old_pert.get('type', 'none')
-        if old_type in ['sinus', 'bruit', 'rampe']:
-            has_continuous_perturbation = True
-            perturbation_type = 'continuous'
-        elif old_type == 'choc':
-            perturbation_type = 'punctual'
-    
-    result = {
-        'type': perturbation_type,
-        'metric_used': None,
-        'value': None,
-        'score': 3,  # Score par défaut
-        'raw_value': None
-    }
-    
-    if has_continuous_perturbation:
-        # Utiliser continuous_resilience
-        result['metric_used'] = 'continuous_resilience'
-        
-        # Préférer la valeur moyenne si disponible
-        cont_resilience = metrics.get('continuous_resilience_mean', 
-                                     metrics.get('continuous_resilience', None))
-        
-        # Si pas disponible, calculer
-        if cont_resilience is None and C_history is not None and S_history is not None:
-            cont_resilience = compute_continuous_resilience(C_history, S_history, True)
-        
-        if cont_resilience is not None:
-            result['value'] = cont_resilience
-            result['raw_value'] = cont_resilience
-            # UN SEUL barème : celui du switch (SCORE_BRACKETS['resilience']).
-            result['score'] = score_from_brackets(float(cont_resilience), 'resilience')
-    
-    else:
-        # Utiliser t_retour pour perturbation ponctuelle ou absence
-        result['metric_used'] = 't_retour'
-        
-        # Récupérer t_retour existant
-        t_retour = metrics.get('resilience_t_retour', 
-                               metrics.get('t_retour', None))
-        
-        # Si pas disponible et qu'on a les données nécessaires, calculer
-        if t_retour is None and S_history is not None and t_choc is not None:
-            t_retour = compute_t_retour(S_history, t_choc, dt)
-        
-        if t_retour is not None:
-            result['raw_value'] = t_retour
-            # Normaliser t_retour en score [0, 1] pour cohérence
-            # Plus t_retour est petit, meilleure est la résilience
-            if t_retour == 0:
-                result['value'] = 1.0
-            else:
-                result['value'] = 1.0 / (1.0 + t_retour)
-            # UN SEUL barème : celui du switch, appliqué à la valeur normalisée
-            # (c'est ce que le switch et les scoreurs consomment). NB : avec
-            # 1/(1+t_retour) et le plancher ~2 du settling-time, l'échelle
-            # 4-5 n'est pas atteignable — calibration de la normalisation à
-            # faire côté barème, pas par un second barème ici.
-            result['score'] = score_from_brackets(result['value'], 'resilience')
-    
-    return result
+        lo, hi = max(1, k - neigh), min(len(P), k + neigh + 1)
+        around = np.concatenate([P[lo:max(lo, k - 1)], P[min(hi, k + 2):hi]])
+        around = around[around > 0]
+        if len(around) < 3 or P[k] <= peak_ratio * float(np.median(around)):
+            break
+        for j in (k - 1, k, k + 1):
+            if 1 <= j < len(P):
+                X[j] = 0.0
+                P[j] = 0.0
+        n_peaks += 1
+    return np.fft.irfft(X, n=n), n_peaks
+
+
+def lag_autocorrelation(x, lag: int) -> Optional[float]:
+    """Autocorrélation de x au décalage lag (None si dégénérée)."""
+    x = np.asarray(x, dtype=float).ravel()
+    lag = int(lag)
+    if lag < 1 or len(x) <= lag + 2:
+        return None
+    a, b = x[:-lag], x[lag:]
+    a = a - a.mean(); b = b - b.mean()
+    den = float(np.sqrt(np.dot(a, a) * np.dot(b, b)))
+    if den < 1e-15:
+        return None
+    return float(np.dot(a, b) / den)
+
+
+def compute_resilience_csd(fn_mean_window, dt: float, lag: Optional[int] = None,
+                           min_points: int = 200, peak_ratio: float = 10.0,
+                           max_peaks: int = 5) -> Optional[Dict[str, float]]:
+    """
+    Résilience (score 'resilience') = ralentissement critique sur la couche
+    lente : autocorrélation à lag des résidus détrendés de l'enveloppe fₙ.
+
+    Étapes : (1) détrend adaptatif des pics spectraux dominants ; (2) lag =
+    celui fourni (figé après calibration, cf. simulate) ou la relaxation 1/e de
+    l'enveloppe brute ; (3) autocorrélation des résidus à ce lag + leur variance.
+
+    Pourquoi figer le lag une fois calibré : si on le re-dérivait à chaque
+    fenêtre depuis le même signal, l'autocorrélation à « son propre 1/e »
+    vaudrait ~1/e par construction et ne pourrait jamais monter. Le radar CSD
+    n'existe qu'à lag FIXE (c'est ainsi que le cahier l'a validé).
+
+    Args:
+        fn_mean_window: moyenne de fₙ par pas, fenêtre LONGUE (≥ min_points)
+        dt: pas de temps (signature homogène ; l'échelle vient du signal)
+        lag: décalage en pas, ou None → auto (relaxation)
+
+    Returns:
+        {'ac': autocorr [-1, 1], 'var': variance des résidus, 'lag': int,
+         'relax': int, 'n_peaks': int} ou None (fenêtre trop courte, signal plat).
+    """
+    x = np.asarray(fn_mean_window, dtype=float).ravel()
+    if len(x) < min_points:
+        return None
+    relax = relaxation_steps(x)
+    resid, n_peaks = detrend_spectral_peaks(x, peak_ratio, max_peaks)
+    if float(np.var(resid)) < 1e-15:
+        return None  # rien ne fluctue : pas de retour à mesurer, verdict suspendu
+    L = int(lag) if lag is not None else relax
+    L = int(min(max(1, L), max(1, len(x) // 4)))
+    ac = lag_autocorrelation(resid, L)
+    if ac is None:
+        return None
+    return {'ac': float(ac), 'var': float(np.var(resid)), 'lag': L,
+            'relax': int(relax), 'n_peaks': int(n_peaks)}
+
+
+def resilience_alert(ac_series, var_series, calm_n: int = 100, band: float = 0.06,
+                     n_windows: int = 3, stride: int = 1) -> int:
+    """
+    Radar CSD, règle de décision conservatrice (cahier, anti-faux-positif) :
+      1. bande de référence : ac doit dépasser nettement la variabilité du calme
+         (médiane des calm_n premières valeurs + max(band, 2·σ_calme)) ;
+      2. tendance, pas un point : n_windows échantillons consécutifs croissants
+         (échantillonnés tous les `stride` pas, pour lire des fenêtres distinctes) ;
+      3. convergence : la variance monte aussi, sur les mêmes échantillons.
+    Renvoie 1 (alerte) ou 0. Jamais d'alerte sans référence calme complète.
+    """
+    ac = np.asarray([v for v in ac_series if v is not None and np.isfinite(v)], dtype=float)
+    var = np.asarray([v for v in var_series if v is not None and np.isfinite(v)], dtype=float)
+    stride = max(1, int(stride))
+    need = calm_n + n_windows * stride
+    if len(ac) < need or len(var) < need:
+        return 0
+    calm_ac, calm_var = ac[:calm_n], var[:calm_n]
+    thr_ac = float(np.median(calm_ac)) + max(band, 2.0 * float(np.std(calm_ac)))
+    thr_var = float(np.median(calm_var))
+    s_ac = ac[-1 - (n_windows - 1) * stride::stride] if n_windows > 1 else ac[-1:]
+    s_var = var[-1 - (n_windows - 1) * stride::stride] if n_windows > 1 else var[-1:]
+    rising_ac = all(np.diff(s_ac) > 0) if len(s_ac) > 1 else True
+    rising_var = all(np.diff(s_var) > 0) if len(s_var) > 1 else True
+    return int(rising_ac and rising_var and s_ac[-1] > thr_ac and s_var[-1] > thr_var)
+
 
 
 # ============== FONCTIONS SPÉCIALISÉES ==============
@@ -607,7 +506,10 @@ SCORE_BRACKETS = {
     # 0,78, monotone) pour que toute l'échelle 1-5 soit atteignable :
     #   repos→5 · bruit1→4 · bruit2→3 · bruit4→2 · bruit≥8→1.
     'fluidity':   {'direction': 'higher', 'thresholds': [0.91, 0.87, 0.83, 0.80], 'ge': False},
-    'resilience': {'direction': 'higher', 'thresholds': [0.90, 0.75, 0.60, 0.40], 'ge': True},
+    # resilience : autocorrélation (lag calibré) des résidus détrendés de fₙ.
+    # BASSE = retour rapide = résilient. PROVISOIRE (20/09) : calme FPS ≈ 0.33,
+    # bande du témoin ±0.06 ; la montée CSD observée sur jouet atteint 0.5–0.6.
+    'resilience': {'direction': 'lower',  'thresholds': [0.45, 0.60, 0.75, 0.90]},
     # innovation : complexité statistique C_JS de l'enveloppe fₙ (cloche inversée
     # native — bruit ET ordre → bas ; nouveauté structurée → haut). Métrique
     # d'IDENTITÉ : voyant de santé, ~invariant en régime sain (FPS ~0.30 → 5).
@@ -738,10 +640,7 @@ def compute_innovation_plane(fn_mean_window, dt: float, d: int = 4,
     xc = x - x.mean()
     if float(np.dot(xc, xc)) < 1e-12:
         return {'H': 0.0, 'C': 0.0}  # signal plat : ordre pur → innovation nulle
-    ac = np.correlate(xc, xc, mode='full')[len(x) - 1:]
-    ac = ac / ac[0]
-    below = np.where(ac < 1.0 / np.e)[0]
-    relax = int(below[0]) if len(below) else 10
+    relax = relaxation_steps(x)  # source unique de l'échelle de temps
     tau = max(1, int(round(relax / (d - 1))))
     # garde : la fenêtre ordinale doit tenir largement dans le signal
     tau = min(tau, max(1, (len(x) // 2) // (d - 1)))
@@ -859,8 +758,8 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
                     moniteur lent lu dans la colonne innovation_cjs)
       regulation  = moyenne de mean_abs_error par pas  (compute_mean_abs_error)
       activite    = moyenne de effort(t)               (compute_effort)
-      resilience  = moyenne de adaptive_resilience     (compute_adaptive_resilience
-                    ou enveloppes) ; None si aucun verdict dans la fenêtre
+      resilience  = dernière valeur de resilience_ac    (compute_resilience_csd,
+                    moniteur lent lu dans les logs) ; None si aucun verdict
 
     Args:
         history_window: liste de dicts par pas (history[-W:])
@@ -880,7 +779,10 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
         if e is not None:
             errors.append(e)
     efforts = [v for v in (_num(h.get('effort(t)')) for h in history_window) if v is not None]
-    resil = [v for v in (_num(h.get('adaptive_resilience')) for h in history_window) if v is not None]
+    # résilience = MONITEUR LENT lu dans les logs (autocorr CSD de l'enveloppe fₙ,
+    # calculée sur fenêtre longue dans simulate → 'resilience_ac'), dernière valeur
+    # disponible ; None (warmup / CSV sans la colonne) → score neutre.
+    resil = [v for v in (_num(h.get('resilience_ac')) for h in history_window) if v is not None]
     # innovation = MONITEUR LENT lu depuis les logs (C_JS de l'enveloppe fₙ,
     # calculé sur fenêtre longue dans simulate → 'innovation_cjs'). On lit la
     # dernière valeur disponible dans la fenêtre ; None (warmup / CSV sans la
@@ -894,7 +796,7 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
         'innovation': (innov[-1] if innov else None),
         'regulation': float(np.mean(errors)) if errors else 0.0,
         'activite':   float(np.mean(efforts)) if efforts else 0.0,
-        'resilience': float(np.mean(resil)) if resil else None,
+        'resilience': (resil[-1] if resil else None),
     }
 
 
@@ -1187,215 +1089,4 @@ def compute_multiple_tau(signals_dict: Dict[str, List[float]], dt: float) -> Dic
     
     return result
 
-# ============================================================================
-# RÉSILIENCE SIGNAL-DRIVEN PAR ENVELOPPES DE SANTÉ (étage 2, spec 13/07/2026)
-# État EXPLICITE passé en argument (jamais d'attribut de fonction caché).
-# Entièrement déterministe : aucun RNG, aucun temps mur.
-# ============================================================================
 
-from collections import deque as _deque
-
-
-def init_resilience_envelope_state(config: Dict) -> Dict:
-    """Initialise l'état de la résilience par enveloppes (bloc resilience_v2)."""
-    cfg = (config or {}).get('resilience_v2', {})
-    # Fenêtres en UNITÉS DE TEMPS (hygiène sans-dimension, 14/07/2026) :
-    # les clés *_t priment et sont converties en pas via dt ; les anciennes
-    # clés en pas restent acceptées (rétro-compatibilité). Les défauts en
-    # temps reconvertissent EXACTEMENT aux anciens pas à dt=0.1 (neutre).
-    _dt = (config or {}).get('system', {}).get('dt', 0.1)
-    def _steps(key_t, default_t, key_steps, default_steps):
-        if key_t in cfg:
-            return max(1, int(round(cfg[key_t] / _dt)))
-        if key_steps in cfg:
-            return int(cfg[key_steps])
-        return max(1, int(round(default_t / _dt)))
-    W_env = _steps('W_env_t', 10.0, 'W_env', 100)
-    signals = ['mu_Rloc', 'effort', 'mean_abs_error']
-    directions = {'mu_Rloc': ['low'], 'effort': ['high'], 'mean_abs_error': ['high']}
-    if cfg.get('rigidity_watch', False):
-        directions['mu_Rloc'] = ['low', 'high']
-    return {
-        'cfg': {
-            'W_env': W_env,
-            'k_iqr': float(cfg.get('k_iqr', 1.5)),
-            'iqr_floor_rel': float(cfg.get('iqr_floor_rel', 0.05)),
-            'iqr_floor_abs': float(cfg.get('iqr_floor_abs', 1e-6)),
-            'warmup': _steps('warmup_t', 2.0, 'warmup', 20),
-            'debounce': _steps('debounce_t', 0.3, 'debounce', 3),
-            'T_recal': _steps('T_recal_t', 20.0, 'T_recal', 200),
-            'W_mem': _steps('W_mem_t', 50.0, 'W_mem', 500),
-            'tau_ref': float(cfg.get('tau_ref', 10.0)),
-            'w_depth': float(cfg.get('w_depth', 0.5)),
-            'w_time': float(cfg.get('w_time', 0.5)),
-            'aggregation': str(cfg.get('aggregation', 'rms')),  # mean|max|rms (rms : campagne 13/07)
-            'depth_memory': str(cfg.get('depth_memory', 'worst')),  # worst|mean (worst : campagne 13/07,
-            # « aussi résilient que sa pire récupération récente » — la moyenne diluait les catastrophes)
-            'depth_compression': str(cfg.get('depth_compression', 'log')),  # log|linear (log : discrimine
-            # mieux les sévérités, la sigmoïde d'entrée saturant déjà les intensités extrêmes)
-            'recal_stability_factor': float(cfg.get('recal_stability_factor', 1.5)),
-            'spike_threshold': float(cfg.get('spike_threshold', 1.0)),  # D >= 1 largeur d'enveloppe
-            # → épisode immédiat (l'anti-rebond filtre le scintillement de bord, pas la violence)
-        },
-        'signals': signals,
-        'directions': directions,
-        'healthy': {s: _deque(maxlen=W_env) for s in signals},   # échantillons sains
-        'raw': {s: _deque(maxlen=W_env) for s in signals},       # bruts (pour recalibration)
-        'pre_iqr': {s: None for s in signals},                   # IQR sain avant épisode
-        'episode': None,          # épisode courant : dict ou None
-        'out_streak': 0,          # pas consécutifs D>0 (anti-rebond début)
-        'pending_Dmax': 0.0,      # pic accumulé PENDANT l'anti-rebond (jamais perdu)
-        'pending_peaks': None,    # pics par signal pendant l'anti-rebond
-        'in_streak': 0,           # pas consécutifs D=0 (anti-rebond fin)
-        'episodes': [],           # épisodes clos : (t_end, D_max, t_ret, recalibrated)
-        'step': 0,
-    }
-
-
-def _robust_iqr(values, med, cfg):
-    q75, q25 = np.percentile(values, [75, 25])
-    return max(q75 - q25, cfg['iqr_floor_rel'] * abs(med), cfg['iqr_floor_abs'])
-
-
-def update_resilience_envelope(env: Dict, signals_t: Dict[str, float],
-                               t: float, dt: float) -> Dict:
-    """
-    Un pas de la résilience par enveloppes.
-
-    Args:
-        env: état (init_resilience_envelope_state), muté in-place
-        signals_t: {'mu_Rloc': ..., 'effort': ..., 'mean_abs_error': ...}
-        t: temps courant ; dt: pas de temps
-
-    Returns dict:
-        D, D_mean, D_max, D_rms : profondeurs d'excursion (les 3 agrégations loggées)
-        value : résilience [0,1] ou None (warmup)
-        metric_used : 'episodes' | 'tenue_de_soi' | None
-        in_episode : bool ; recalibrated : bool (ce pas)
-    """
-    cfg = env['cfg']
-    env['step'] += 1
-    for s in env['signals']:
-        env['raw'][s].append(float(signals_t[s]))
-
-    # --- Enveloppes et profondeurs par signal ---
-    depths = {}
-    envelopes = {}
-    ready = all(len(env['healthy'][s]) >= cfg['warmup'] for s in env['signals'])
-    if ready:
-        for s in env['signals']:
-            vals = np.asarray(env['healthy'][s], dtype=float)
-            med = float(np.median(vals))
-            iqr = _robust_iqr(vals, med, cfg)
-            half = cfg['k_iqr'] * iqr
-            lo, hi = med - half, med + half
-            envelopes[s] = (lo, hi, half)
-            x = float(signals_t[s]); d = 0.0
-            if 'low' in env['directions'][s] and x < lo:
-                d = max(d, (lo - x) / half)
-            if 'high' in env['directions'][s] and x > hi:
-                d = max(d, (x - hi) / half)
-            depths[s] = d
-        dv = np.array([depths[s] for s in env['signals']], dtype=float)
-        D_mean = float(np.mean(dv)); D_max = float(np.max(dv))
-        D_rms = float(np.sqrt(np.mean(dv ** 2)))
-        D = {'mean': D_mean, 'max': D_max, 'rms': D_rms}[cfg['aggregation']]
-    else:
-        depths = {s: 0.0 for s in env['signals']}
-        D_mean = D_max = D_rms = D = 0.0
-
-    recalibrated_now = False
-    ep = env['episode']
-
-    if ep is None:
-        # Hors épisode : les pas sains nourrissent les buffers
-        if D <= 0.0:
-            for s in env['signals']:
-                env['healthy'][s].append(float(signals_t[s]))
-            env['out_streak'] = 0
-            env['pending_Dmax'] = 0.0
-            env['pending_peaks'] = None
-        elif ready:
-            env['out_streak'] += 1
-            env['pending_Dmax'] = max(env['pending_Dmax'], D)
-            if env['pending_peaks'] is None:
-                env['pending_peaks'] = dict(depths)
-            else:
-                for s in env['signals']:
-                    env['pending_peaks'][s] = max(env['pending_peaks'][s], depths[s])
-            if env['out_streak'] >= cfg['debounce'] or D >= cfg['spike_threshold']:
-                # Début d'épisode : gel, snapshot des IQR sains.
-                # D_max initialisé au PIC accumulé (le sommet d'un choc bref
-                # tombé pendant l'anti-rebond n'est jamais perdu).
-                for s in env['signals']:
-                    vals = np.asarray(env['healthy'][s], dtype=float)
-                    env['pre_iqr'][s] = _robust_iqr(vals, float(np.median(vals)), cfg)
-                env['episode'] = {'t_start': t - env['out_streak'] * dt,
-                                  'D_max': env['pending_Dmax'],
-                                  'peak_by_signal': dict(env['pending_peaks']),
-                                  'steps': env['out_streak']}
-                env['out_streak'] = 0
-                env['pending_Dmax'] = 0.0
-                env['pending_peaks'] = None
-    else:
-        ep['steps'] += 1
-        ep['D_max'] = max(ep['D_max'], D)
-        for s in env['signals']:
-            ep['peak_by_signal'][s] = max(ep['peak_by_signal'][s], depths[s])
-        if D <= 0.0:
-            env['in_streak'] += 1
-            if env['in_streak'] >= cfg['debounce']:
-                # Fin d'épisode : retour dans l'enveloppe
-                t_ret = (t - cfg['debounce'] * dt) - ep['t_start']
-                env['episodes'].append({'t_end': t, 'D_max': ep['D_max'],
-                                        't_ret': max(t_ret, dt), 'recalibrated': False})
-                env['episode'] = None
-                env['in_streak'] = 0
-        else:
-            env['in_streak'] = 0
-            # Recalibration (régime légitime) : temps ET santé ET stabilité
-            # (condition d'Andréa : on ne normalise jamais une lutte).
-            if ep['steps'] >= cfg['T_recal']:
-                excursing = [s for s in env['signals'] if depths[s] > 0.0]
-                others_ok = all(depths[s] <= 0.0 for s in env['signals'] if s not in excursing)
-                settled = True
-                for s in excursing:
-                    recent = np.asarray(list(env['raw'][s])[-max(cfg['W_env'] // 2, cfg['warmup']):], dtype=float)
-                    rec_iqr = _robust_iqr(recent, float(np.median(recent)), cfg)
-                    if env['pre_iqr'][s] and rec_iqr > cfg['recal_stability_factor'] * env['pre_iqr'][s]:
-                        settled = False
-                        break
-                if others_ok and settled:
-                    for s in env['signals']:
-                        env['healthy'][s] = _deque(env['raw'][s], maxlen=cfg['W_env'])
-                    t_ret = min(ep['steps'] * dt, cfg['T_recal'] * dt)
-                    env['episodes'].append({'t_end': t, 'D_max': ep['D_max'],
-                                            't_ret': t_ret, 'recalibrated': True})
-                    env['episode'] = None
-                    recalibrated_now = True
-
-    # Borne mémoire des épisodes (par temps)
-    env['episodes'] = [e for e in env['episodes'] if (t - e['t_end']) <= cfg['W_mem'] * dt]
-
-    # --- Valeur de résilience ---
-    if not ready:
-        value, metric_used = None, None
-    elif env['episodes']:
-        _g = (lambda x: np.log1p(x)) if cfg['depth_compression'] == 'log' else (lambda x: x)
-        if cfg['depth_memory'] == 'worst':
-            r_depth = float(1.0 / (1.0 + _g(max(e['D_max'] for e in env['episodes']))))
-        else:
-            r_depth = float(np.mean([1.0 / (1.0 + _g(e['D_max'])) for e in env['episodes']]))
-        r_time = float(np.mean([1.0 / (1.0 + e['t_ret'] / cfg['tau_ref']) for e in env['episodes']]))
-        value = cfg['w_depth'] * r_depth + cfg['w_time'] * r_time
-        metric_used = 'episodes'
-    else:
-        # Aucun épisode en mémoire : résilience non testée → tenue de soi (étage 1)
-        mu_hist = list(env['raw']['mu_Rloc'])
-        value = float(np.mean(mu_hist[-min(100, len(mu_hist)):]))
-        metric_used = 'tenue_de_soi'
-
-    return {'D': D, 'D_mean': D_mean, 'D_max': D_max, 'D_rms': D_rms,
-            'value': value, 'metric_used': metric_used,
-            'in_episode': env['episode'] is not None,
-            'recalibrated': recalibrated_now}
