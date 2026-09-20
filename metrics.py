@@ -677,9 +677,29 @@ RESILIENCE_THRESHOLDS = [round(float(np.exp(-1.0 / k)), 3) for k in RESILIENCE_S
 ACTIVITY_FACTORS = (1.1, 1.25, 1.5, 2.0)
 ACTIVITY_STATUS_PEAK = 2.0    # statut 'transitoire' : un pas au-delà de ×2 du repos
 ACTIVITY_STATUS_CHRONIC = 1.25  # statut 'chronique' : moyenne récente tenue au-delà de ×1.25
+# Dispersion : CLOCHE autour de l'amplitude de la chimère saine (20/09/2026).
+# Valeur notée = écart-type du signal NORMALISÉ par √N (voir compute_reference_
+# metrics). Pourquoi √N : le signal est ΣOₙ, somme de N contributions ~centrées
+# et faiblement corrélées, donc std(ΣO) ≈ k·√N. Mesuré in-situ (régime sain) :
+# std/√N ≈ 0.0157, remarquablement stable — N=20→0.0157, N=50→0.0147, N=100→
+# 0.0157 (bande saine par fenêtre [0.0126, 0.0197]). C'est un INVARIANT de la
+# chimère saine, une métrique d'IDENTITÉ : la cloche note 5 dans la bande, et
+# baisse des DEUX côtés — gel (σ→0, le système fige) ET emballement (σ≫, il
+# explose). Facteurs = écarts multiplicatifs (repli en log) : 5 tant que la
+# distance-repli max(v/c, c/v) < 1.35, puis 4/3/2/1. Bord 5 calé au-dessus du
+# repli sain max (~1.26) : une chimère saine ne quitte jamais le 5.
+# NB régime : centre calibré sur l'entrée standard (scale 1.2, couplage spiral
+# c=0.1). Discriminateur FAIBLE par nature (l'effondrement freq-uniforme ne
+# déplace l'amplitude que modérément) ; d'où « observation seule ». Si un jour
+# d'autres régimes divergent, l'escalade est une référence figée par run (comme
+# 'activite'/'la grenouille'), pas un centre en dur.
+DISPERSION_NORM_CENTER = 0.0157
+DISPERSION_FOLD_FACTORS = (1.35, 1.7, 2.5, 4.0)
 
 SCORE_BRACKETS = {
-    'dispersion':  {'direction': 'lower',  'thresholds': [0.5, 1.0, 2.0, 3.0]},  # amplitude, pas structure
+    # cloche (voir DISPERSION_NORM_CENTER) : 5 à l'amplitude saine, baisse des deux côtés.
+    'dispersion':  {'direction': 'bell', 'center': DISPERSION_NORM_CENTER,
+                    'thresholds': list(DISPERSION_FOLD_FACTORS)},
     'regulation': {'direction': 'lower',  'thresholds': [0.1, 0.3, 0.5, 1.0]},
     # fluidity : mesurée par le JERK de l'enveloppe fₙ (cf. cahier de validation).
     # Seuils calibrés in-situ par balayage d'intensité (repos 0,94 → bruit fort
@@ -714,6 +734,14 @@ def score_from_brackets(value: float, key: str) -> int:
     """Score 1-5 depuis la table unique SCORE_BRACKETS."""
     b = SCORE_BRACKETS[key]
     t = b['thresholds']
+    if b['direction'] == 'bell':
+        # Cloche : 5 près du centre, baisse des deux côtés. Distance = repli
+        # multiplicatif max(v/c, c/v) ≥ 1 (symétrique en log). t = facteurs de repli.
+        c = b['center']
+        if value <= 0 or c <= 0:
+            return 1
+        r = max(value / c, c / value)
+        return 5 if r < t[0] else 4 if r < t[1] else 3 if r < t[2] else 2 if r < t[3] else 1
     if b['direction'] == 'lower':
         return 5 if value < t[0] else 4 if value < t[1] else 3 if value < t[2] else 2 if value < t[3] else 1
     if b.get('ge', False):
@@ -734,9 +762,10 @@ SCORE_KEY_TO_FILTER = {v: k for k, v in FILTER_TO_SCORE_KEY.items()}
 REFERENCE_SCORE_KEYS = ('dispersion', 'regulation', 'fluidity', 'resilience', 'innovation', 'activite')
 # Filtres « sens, pas mains » (Attention.md) : notés, visibles du switch et de
 # gamma, mais JAMAIS engagés comme remède (aucun poids de perception n'en
-# découle). L'innovation est une métrique d'IDENTITÉ : on l'observe, on
-# n'intervient pas dessus. Le geste « relâcher » n'existe pas encore.
-OBSERVE_ONLY_FILTERS = ('innovation',)
+# découle). Innovation ET dispersion sont des métriques d'IDENTITÉ : on les
+# observe (voyants de santé de la chimère), on n'intervient pas dessus. Le geste
+# « relâcher » (innovation) et un remède d'amplitude (dispersion) n'existent pas.
+OBSERVE_ONLY_FILTERS = ('innovation', 'stabilite')
 # ============================================================================
 # NOMS AFFICHÉS (nettoyage 20/09/2026) — SOURCE UNIQUE pour le terminal, les
 # rapports, les figures et les exports lisibles. Les CLÉS (scores, filtres,
@@ -1014,7 +1043,8 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
     Valeurs brutes des six métriques de référence sur une fenêtre d'historique.
 
     Mêmes calculs que le switch de perception, à l'identique :
-      dispersion  = std(signal)                       (compute_dispersion)
+      dispersion  = std(signal) / √N  (cloche autour de l'amplitude saine ;
+                    compute_dispersion, normalisé — voir DISPERSION_NORM_CENTER)
       fluidity    = jerk de la moyenne de fₙ           (compute_fluidity)
       innovation  = complexité statistique C_JS de fₙ  (compute_innovation_cjs,
                     moniteur lent lu dans la colonne innovation_cjs)
@@ -1032,6 +1062,18 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
     """
     series = [v for v in signal_series(history_window, signal, N) if np.isfinite(v)]
     fn_means = _fn_mean_series(history_window)
+    # N pour la normalisation de la dispersion (std(ΣO) ≈ k·√N) : celui passé,
+    # sinon déduit d'un vecteur Oₙ de la fenêtre (chemin live gamma, sans N).
+    N_eff = N
+    if N_eff is None:
+        for h in history_window:
+            O = h.get('O')
+            if O is not None and np.ndim(O) > 0:
+                N_eff = len(O)
+                break
+    disp_raw = compute_dispersion(series) if series else None
+    # cloche sur l'écart-type normalisé √N ; N inconnu → verdict suspendu (neutre).
+    dispersion = (disp_raw / np.sqrt(N_eff)) if (disp_raw is not None and N_eff) else None
 
     errors = []
     for h in history_window:
@@ -1063,7 +1105,7 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
     innov = [v for v in (_num(h.get('innovation_cjs')) for h in history_window) if v is not None]
 
     return {
-        'dispersion': compute_dispersion(series) if series else 0.0,
+        'dispersion': dispersion,
         'fluidity':   compute_fluidity(fn_means),
         'innovation': (innov[-1] if innov else None),
         'regulation': float(np.mean(errors)) if errors else 0.0,
