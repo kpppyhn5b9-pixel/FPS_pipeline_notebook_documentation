@@ -237,7 +237,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'ac_recent': [],  # tous les verdicts calculés, quiet → 0.0 (lissage du score)
         'peak_ratio': float(_rcfg.get('peak_ratio', 10.0)),
         'max_peaks': int(_rcfg.get('max_peaks', 8)),
-        'calm_n': int(_rcfg.get('alert_calm_n', 100)),
+        'calm_lags': int(_rcfg.get('alert_calm_lags', 20)),  # référence du radar : longueur, en lags
+        'gap_lags': int(_rcfg.get('alert_gap_lags', 20)),    # écart référence → présent, en lags
         'band': float(_rcfg.get('alert_band', 0.06)),
         'n_windows': int(_rcfg.get('alert_windows', 3)),
         'smooth_lags': int(_rcfg.get('smooth_lags', 3)),  # médiane sur k lags pour le SCORE
@@ -886,8 +887,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             _rs['ac_recent'], _lag_entries, _rs['smooth_lags'])
                         _alert = metrics.resilience_alert(
                             _rs['ac_hist'], _rs['var_hist'],
-                            calm_n=_rs['calm_n'], band=_rs['band'],
-                            n_windows=_rs['n_windows'], stride=_lag_entries)
+                            calm_n=_rs['calm_lags'] * _lag_entries, band=_rs['band'],
+                            n_windows=_rs['n_windows'], stride=_lag_entries,
+                            gap=_rs['gap_lags'] * _lag_entries)
                         _rs['last'] = (_csd['ac'], _ac_smooth, _csd['var'], _lag, _alert, int(_csd['quiet']))
                 if _rs['last'] is not None:
                     (resilience_ac, resilience_ac_smooth, resilience_var,

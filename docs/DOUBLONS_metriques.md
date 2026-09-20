@@ -266,6 +266,69 @@ lit un NIVEAU de lenteur, le radar lit une TENDANCE ; les deux lectures sont
 complémentaires, pas redondantes. (3) Les premiers verdicts arrivent à t = 200
 (fenêtre pleine) : sur un run T=500, 60 % du run est lu.
 
+### Suite 20/09/2026 (quinquies) — radar : référence glissante
+
+Suite du point ouvert de la campagne quater : sur le seed 12345, le radar
+sonnait 220–410 pas sous fluctuation STATIONNAIRE parce que sa référence calme
+(les 100 premiers verdicts du run) tombait sur la queue du transitoire, plus
+basse que le régime. Trois options étaient sur la table (décaler le début de la
+référence ; référence glissante ; montée relative au dernier calme). Retenue :
+la **référence glissante**, la plus juste par rapport au cahier — un signal
+précoce lit une MONTÉE, pas un niveau.
+
+**Règle** (`metrics.resilience_alert`, param `gap`) : la référence est faite des
+`calm_n` verdicts qui se terminent `gap` verdicts avant les échantillons de
+tendance, et non des `calm_n` premiers du run. Bande, tendance sur n_windows
+fenêtres distinctes et convergence ac + variance : inchangées. Conséquences :
+
+- une fluctuation stationnaire, même lente (score 1), ne sonne pas : le présent
+  ressemble au passé récent ;
+- une montée sonne PENDANT qu'elle a lieu (le gap la sépare de sa propre
+  référence), puis se tait une fois le plateau atteint. Le score, lui, reste bas
+  sur le plateau : niveau (score) et tendance (radar) sont deux lectures ;
+- jamais d'alerte sans calm_n + gap + tendance verdicts derrière soi.
+
+**Config** : `alert_calm_n` (en entrées) → `alert_calm_lags` = 20 et
+`alert_gap_lags` = 20, en LAGS, convertis en entrées d'historique par simulate
+(un lag = lag/stride entrées). Avec lag 10 et stride 5 : référence de 200 pas,
+séparée du présent par 200 pas ; premier verdict possible ~430 pas après la
+première fluctuation lue.
+
+**Tests** (`test_radar_reference_slides_with_the_run`) : transitoire bas puis
+plateau stationnaire → 0 alerte en régime ; montée à mi-parcours → 0 avant,
+alerte pendant la montée, 0 sur le plateau.
+
+**Campagne in-situ** (`run_fn_noise.py`, τ = 80 pas, 5 %, W=2000, lag 10) :
+
+| run | seed | alertes (avant) | alertes (glissante) | où |
+|---|---|---|---|---|
+| stationnaire dès t=0, T=350 | 12345 | 410, tout le run | 250 | t ∈ [200, 300) puis 0 |
+| stationnaire dès t=0, T=350 | 2024 | 0 | 55 | t ∈ [250, 300) puis 0 |
+| démarrage à t=300, T=500 | 12345 | — | 80 | t ∈ [330, 360) puis 0 |
+| démarrage à t=300, T=500 | 7 | — | 0 | — |
+
+Lecture. (1) Le faux positif persistant a disparu : sous fluctuation
+stationnaire, plus aucune alerte une fois la lecture installée (t ≥ 300). (2) Les
+alertes restantes entre t = 200 et 300 sont la fenêtre qui se remplit : au
+premier verdict (t=200) la fenêtre contient encore le transitoire, et
+l'autocorr monte vers son plateau à mesure qu'il en sort ; pour le radar, c'est
+une montée, et il a raison — c'est la mesure qui s'installe, pas le système.
+Convention à retenir : ne pas lire le radar avant une longueur de fenêtre après
+le premier verdict (t ≥ W_res_t + première fenêtre). (3) Le démarrage brutal
+d'une fluctuation lente n'est PAS une montée graduelle : l'autocorr saute de 0
+(quiet) à ~0.9 en un verdict (seed 7 : 0.88 à t=300, 0.96 à t=310) puis
+REDESCEND vers son plateau (0.86) à mesure que la fenêtre se remplit. Le radar
+(3 fenêtres croissantes, ac ET variance) ne voit pas un saut suivi d'une
+descente : 0 alerte sur le seed 7, 80 sur le seed 12345 (qui a mis deux verdicts
+à sauter). C'est le SCORE qui attrape le démarrage, immédiatement (5 → 1 en un
+verdict) ; le radar est fait pour l'approche graduelle d'une transition
+(Scheffer), pas pour un interrupteur. Les deux lectures se complètent.
+
+Point ouvert : le seul signal graduel qu'on ait produit in-situ est celui de la
+fenêtre qui se remplit. Un vrai test du radar demande une rampe interne de la
+FPS (un paramètre qui dérive lentement vers une transition), pas une injection
+qui s'allume ; c'est une campagne à part, côté dynamique.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*

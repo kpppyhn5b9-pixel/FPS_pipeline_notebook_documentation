@@ -553,24 +553,37 @@ def smooth_resilience_ac(ac_series, lag: int, n_lags: int = 3) -> Optional[float
     return float(np.median(vals[-k:]))
 
 
-def resilience_alert(ac_series, var_series, calm_n: int = 100, band: float = 0.06,
-                     n_windows: int = 3, stride: int = 1) -> int:
+def resilience_alert(ac_series, var_series, calm_n: int = 40, band: float = 0.06,
+                     n_windows: int = 3, stride: int = 1, gap: int = 40) -> int:
     """
     Radar CSD, règle de décision conservatrice (cahier, anti-faux-positif) :
-      1. bande de référence : ac doit dépasser nettement la variabilité du calme
-         (médiane des calm_n premières valeurs + max(band, 2·σ_calme)) ;
+      1. bande de référence : ac doit dépasser nettement la variabilité d'une
+         référence PASSÉE (médiane + max(band, 2·σ_ref)) ;
       2. tendance, pas un point : n_windows échantillons consécutifs croissants
-         (échantillonnés tous les `stride` pas, pour lire des fenêtres distinctes) ;
+         (échantillonnés tous les `stride` entrées, pour lire des fenêtres distinctes) ;
       3. convergence : la variance monte aussi, sur les mêmes échantillons.
-    Renvoie 1 (alerte) ou 0. Jamais d'alerte sans référence calme complète.
+    Renvoie 1 (alerte) ou 0. Jamais d'alerte sans référence complète.
+
+    Référence GLISSANTE (campagne 20/09) : les calm_n entrées qui se terminent
+    `gap` entrées avant le présent, et non les calm_n premières du run. Une
+    référence figée sur le début du run compare tout le régime à la queue du
+    transitoire : sur un seed, la bande était trop basse et le radar sonnait
+    des centaines de pas sous fluctuation STATIONNAIRE. Avec une référence qui
+    suit, le radar ne lit qu'une MONTÉE par rapport au passé récent : une
+    fluctuation stationnaire, même lente, ne sonne pas ; une montée sonne
+    pendant qu'elle a lieu (le gap la sépare de sa propre référence), puis se
+    tait une fois le plateau atteint. C'est le sens d'un signal précoce.
     """
     ac = np.asarray([v for v in ac_series if v is not None and np.isfinite(v)], dtype=float)
     var = np.asarray([v for v in var_series if v is not None and np.isfinite(v)], dtype=float)
     stride = max(1, int(stride))
-    need = calm_n + n_windows * stride
+    calm_n, gap = max(2, int(calm_n)), max(0, int(gap))
+    n_trend = 1 + (n_windows - 1) * stride
+    need = calm_n + gap + n_trend
     if len(ac) < need or len(var) < need:
         return 0
-    calm_ac, calm_var = ac[:calm_n], var[:calm_n]
+    ref_end = len(ac) - n_trend - gap
+    calm_ac, calm_var = ac[ref_end - calm_n:ref_end], var[ref_end - calm_n:ref_end]
     thr_ac = float(np.median(calm_ac)) + max(band, 2.0 * float(np.std(calm_ac)))
     thr_var = float(np.median(calm_var))
     s_ac = ac[-1 - (n_windows - 1) * stride::stride] if n_windows > 1 else ac[-1:]

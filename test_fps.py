@@ -685,8 +685,31 @@ class TestResilienceCSD(unittest.TestCase):
         self.assertEqual(metrics.resilience_alert(rise_ac, rise_var, calm_n=100, band=0.06, n_windows=3, stride=10), 1)
         # Un seul indicateur qui monte = suspect, pas d'alerte (convergence exigée)
         self.assertEqual(metrics.resilience_alert(rise_ac, calm_var + [1e-3] * 60, calm_n=100, band=0.06, n_windows=3, stride=10), 0)
-        # Sans référence calme complète : jamais d'alerte
-        self.assertEqual(metrics.resilience_alert(rise_ac[:50], rise_var[:50], calm_n=100), 0)
+        # Sans référence calme complète (calm_n + gap + tendance) : jamais d'alerte
+        self.assertEqual(metrics.resilience_alert(rise_ac[:120], rise_var[:120], calm_n=100, gap=40), 0)
+
+    def test_radar_reference_slides_with_the_run(self):
+        # Campagne 20/09 : une référence figée sur le début du run compare tout le
+        # régime à la queue du transitoire → le radar sonnait des centaines de pas
+        # sous fluctuation STATIONNAIRE. La référence glissante (calm_n entrées,
+        # terminées `gap` entrées avant le présent) ne lit qu'une MONTÉE.
+        rng = np.random.RandomState(2)
+        kw = dict(calm_n=40, band=0.06, n_windows=3, stride=2, gap=40)
+        # (a) transitoire bas puis plateau stationnaire : aucune alerte en régime
+        ac = list(0.20 + 0.02 * rng.randn(50)) + list(0.60 + 0.02 * rng.randn(400))
+        var = list(1e-3 + 1e-4 * rng.randn(50)) + list(3e-3 + 2e-4 * rng.randn(400))
+        regime = [metrics.resilience_alert(ac[:i], var[:i], **kw) for i in range(200, 451)]
+        self.assertEqual(sum(regime), 0, sum(regime))
+        # (b) montée à mi-parcours : le radar sonne PENDANT la montée…
+        ac = list(0.30 + 0.01 * rng.randn(200)) + list(np.linspace(0.30, 0.85, 150)) + list(0.85 + 0.01 * rng.randn(200))
+        var = list(1e-3 + 5e-5 * rng.randn(200)) + list(np.linspace(1e-3, 4e-3, 150)) + list(4e-3 + 5e-5 * rng.randn(200))
+        before = [metrics.resilience_alert(ac[:i], var[:i], **kw) for i in range(100, 201)]
+        during = [metrics.resilience_alert(ac[:i], var[:i], **kw) for i in range(250, 351)]
+        after = [metrics.resilience_alert(ac[:i], var[:i], **kw) for i in range(450, 551)]
+        self.assertEqual(sum(before), 0)
+        self.assertGreater(sum(during), 50, sum(during))
+        # … et se tait une fois le plateau atteint (la référence a rejoint le présent)
+        self.assertEqual(sum(after), 0, sum(after))
 
 
 class TestValidateConfig(unittest.TestCase):
