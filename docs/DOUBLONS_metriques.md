@@ -464,7 +464,25 @@ Ce que ça ne dit pas : un run agité dès sa naissance a une référence agité
 lit 5 — « pas plus qu'à son repos », ce qui est vrai, mais pas « calme ». Pour
 ce cas, la valeur brute `effort(t)` reste loggée et se compare entre runs.
 
-**Vérification in-situ** : en cours (run calme, run avec bruit d'entrée fort à partir de t = 60), chiffres ci-dessous dès disponibles.
+**Vérification in-situ** (seed 12345, T = 140, repos calibré sur [40, 60] ;
+`activite_rel` = niveau sur une respiration / repos, par tranche de 20 u.t.) :
+
+| run | repos (`activite_ref`) | t ∈ [60, 80) | [80, 100) | [100, 120) | [120, 140) |
+|---|---|---|---|---|---|
+| calme | 265 | 1.01 · score 5 · stable 100 % | 1.02 · 5 · stable | 1.01 · 5 · stable | 1.01 · 5 · stable |
+| bruit d'entrée fort dès t = 70 | 265 | 1.01 · 5 · stable (transitoire 34 % : premiers pics) | 2.22 · 1 (69 %) · chronique 95 % | 2.70 · 1 · chronique 100 % | 2.38 · 1 · chronique |
+| bruit d'entrée fort dès t = 0 | 398 | 0.93 · 5 · stable | 0.92 · 5 · stable | 0.97 · 5 · stable | 1.00 · 5 · stable |
+
+Lecture : au calme, 5 et « stable » sans exception (avant : 1 et 92 %
+« transitoire ») ; l'agitation qui s'installe après la calibration est lue en
+une respiration (×2.2 → score 1, statut chronique) ; l'agitation présente dès
+la naissance donne un repos agité (398) et un score 5 — c'est la limite
+annoncée, vraie au sens de la métrique (« pas plus qu'à son repos »), à lire
+avec `effort(t)` brut entre runs. Pourquoi le repos se calibre à 40 u.t. : la
+médiane par tranche de 20 u.t. au calme vaut 204, 234, puis 270 ± 1 % à partir
+de t = 40 (4 seeds) ; et pourquoi le niveau se lit sur 200 pas : sur 50 pas le
+rapport oscille entre 0.86 et 1.28 (la respiration de l'enveloppe fₙ), sur 200
+entre 0.98 et 1.02.
 
 ---
 

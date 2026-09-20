@@ -169,10 +169,11 @@ def compute_effort_status(effort_t: float, effort_history: List[float],
     Statut de l'activité : "stable", "transitoire" ou "chronique".
 
     Avec une référence (repos du run, cf. activity_reference) :
-      - transitoire : le pas courant dépasse ACTIVITY_STATUS_PEAK × repos (pic) ;
       - chronique   : le niveau (médiane des `window` derniers pas, une
                       respiration entière) tient au-delà de
                       ACTIVITY_STATUS_CHRONIC × repos (agitation installée) ;
+      - transitoire : sinon, le pas courant dépasse ACTIVITY_STATUS_PEAK × repos
+                      (pic ponctuel) ;
       - stable sinon.
     Sans référence (calibration en cours, c'est-à-dire l'exploration initiale) :
     seul un pic à +2σ de l'historique récent est signalé « transitoire », jamais
@@ -184,11 +185,13 @@ def compute_effort_status(effort_t: float, effort_history: List[float],
     """
     hist = [float(v) for v in effort_history if v is not None and np.isfinite(v)]
     if ref is not None and np.isfinite(ref) and ref > 0:
-        if effort_t > ACTIVITY_STATUS_PEAK * ref:
-            return "transitoire"
+        # L'installé prime sur le ponctuel : sous agitation soutenue, chaque pas
+        # est aussi un pic, et « transitoire » masquerait le « chronique ».
         level = activity_level(hist, window)
         if level is not None and level > ACTIVITY_STATUS_CHRONIC * ref:
             return "chronique"
+        if effort_t > ACTIVITY_STATUS_PEAK * ref:
+            return "transitoire"
         return "stable"
     if len(hist) < 10:
         return "stable"
