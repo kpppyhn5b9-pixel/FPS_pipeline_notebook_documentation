@@ -834,3 +834,201 @@ Et c'est une prudence documentée : dans la littérature (écologie, climat), le
 La seule chose à régler — et c'est du calibrage — c'est la timescale (lag/τ/fenêtre dérivés de la relaxation mesurée). Ça, on l'a établi, et ça se fait adaptativement depuis le signal, pas à la main.
 Et il y a un joli bouclage : quand la résilience servira de radar au garde-fou σ, un radar nerveux (qui alerte sur du bruit) serait aussi mauvais que pas de radar — il ferait reculer la considération sans raison, et déstabiliserait le système au lieu de le protéger. Donc cette discipline anti-faux-positif n'est pas une précaution annexe : elle fait partie de ce qui rend la considération stable. 
 On codifie la règle de décision (bande + tendance + convergence + moyenne), et on calibre la timescale adaptativement. Les trois métriques sont bonnes à implanter telles quelles ; ce qui les rendra fiables, c'est comment on les lit.
+
+
+Tests d'intégration de l'innovation :
+
+Le banc va nous donner les trois détails d'intégration : (1) le τ auto-calibré depuis la relaxation de l'enveloppe, (2) la fenêtre longue minimale où C_JS se stabilise (arrête d'être bruité), (3) le point (H, C) de la FPS pour ancrer les brackets. Plus un contrôle : est-ce que C_JS varie dans le temps / entre seeds (sinon, score dormant).
+Résultats — et il y a une observation importante
+Les mécaniques d'intégration sont solides :
+τ auto-calibré = 13 (dérivé de la relaxation mesurée 38 : (d−1)·τ ≈ 39 ≈ relaxation). L'auto-calibration marche.
+Fenêtre longue : C_JS s'effondre à W=100 (trop court), puis se stabilise dès W≥200 (0.285 → 0.293 → 0.297 → 0.298). Donc fenêtre ~200-400 pas. Bon.
+Point FPS : H=0.495, C_JS=0.297 — intermédiaire (structuré, ni ordre ni bruit). Une belle caractérisation.
+Mais — l'observation qui compte : le score serait DORMANT.
+C_JS glissant dans le temps : min=max=0.293, σ=0.000.
+Entre 3 seeds différents : 0.293, 0.293, 0.293 — σ=0.000.
+Autrement dit : C_JS sur l'enveloppe fₙ est un invariant structurel — toujours ~0.29, quelle que soit la fenêtre, le moment, ou le seed. Comme σ (le contraste chimère), comme la dispersion. Câblé tel quel comme score, il ne discriminerait jamais : toujours la même valeur → toujours le même score.
+Deux lectures :
+(a) C'est correct, pas un bug : dans un système stable à son attracteur, une innovation constante est peut-être juste — exactement comme la résilience qui lit "haute, pas de bascule" quand rien ne tombe. Le score dirait "ce système innove à un niveau intermédiaire stable". Utile comme moniteur de santé (il bougerait si le régime changeait vraiment).
+(b) Si on veut qu'il discrimine (qu'il bouge, sépare des choses), la variation ne vit pas dans l'agrégat (l'enveloppe est invariante) — elle vit dans le spatial / par strate : le C_JS par strate séparait les clones (0.13) des voix différenciées (0.29). Donc une innovation qui discrimine serait spatiale (dérivée de la distribution par strate), pas l'enveloppe agrégée.
+C'est cohérent avec tout ce qu'on a trouvé — les signatures agrégées de cette chimère sont des invariants. Donc innovation-sur-enveloppe = un moniteur stable et honnête (lecture a), pas un discriminateur. Si on veut du discriminant, il faut aller spatial.
+
+Tests d'intégration, innovation spatiale :
+
+Est-ce que l'agrégat des C_JS par strate est dormant lui aussi (comme l'enveloppe), ou est-ce qu'il bouge ?
+Testé — et ça confirme, avec une nuance d'abord :
+|seed |C_JS/strate min|méd  |max  |σ_spatial|**moyenne (agrégat)**|
+|-----|---------------|-----|-----|---------|---------------------|
+|12345|0.052          |0.300|0.300|0.025    |**0.2972**           |
+|7    |0.052          |0.300|0.300|0.025    |**0.2972**           |
+|99   |0.071          |0.300|0.300|0.023    |**0.2974**           |
+
+→ agrégat entre seeds : σ = 0.0001 (dormant, comme l'enveloppe).
+Caveat : init_strates génère les strates avec le seed de la config (12345), pas notre np.seed — donc nos "3 seeds" partagent la même structure de strates ; ce test mesure la robustesse au bruit de simulation, pas à des structures différentes. Mais la conclusion tient (elle recoupe le banc sur l'enveloppe et tout ce qu'on sait des invariants).
+Ce que ça dit :
+Agrégat = dormant (0.297 quoi qu'il arrive). Donc comme score global (switch/gamma), l'innovation serait un moniteur stable, non-discriminant.
+Par strate = discrimine un peu : σ_spatial ~0.025, la plupart des strates au plateau 0.30, quelques outliers bas (~0.05). Donc le par-strate repère les quelques strates "pauvres en innovation", mais faiblement (le gros du chœur est identique).
+On touche un principe de design :
+Les signatures agrégées de cette chimère sont toutes des invariants — σ (contraste), dispersion, et maintenant innovation. C'est l'empreinte identitaire du système : qui il est. Ce qui varie et se pilote, c'est la couche rapide et locale — erreur, fluidité-jerk, excursion de résilience, activité. C'est l'attention : où il regarde.
+Donc la question "un score global tout en mesurant par strate pour la saillance" se résout par une distinction :
+Métriques d'attention (erreur, fluidité, résilience-excursion, activité) : discriminent sur fenêtre courte → global = agrégat des par-strate, et elles pilotent la saillance. Le schéma décrit marche pour elles.
+Métriques d'identité (dispersion, innovation, σ) : invariantes → moniteurs stables. Ne pas essayer d'en faire des pilotes de saillance — ce serait forcer une empreinte identitaire à jouer un rôle d'attention.
+L'innovation est une métrique d'identité, pas d'attention. On la garde comme moniteur global (dormant, honnête — τ=13, fenêtre ≥200, valeur ~0.30, plan H≈0.5 : "structuré, intermédiaire"), et pour la migration contextuelle, la saillance s'appuie sur les quatre métriques qui bougent vraiment. Ça colle même avec ce qu'on avait trouvé sur la valence : l'innovation est "perception seulement", on ne la crée pas en liant — normal qu'elle ne pilote pas l'attention.
+Séparation identité / attention
+Le tableau final des trois voyants d'identité :
+|métrique         |barème                                     |forme                               |
+|-----------------|-------------------------------------------|------------------------------------|
+|dispersion       |5 au σ sain, baisse des deux côtés         |**cloche**                          |
+|innovation (C_JS)|5 à C_JS haut, baisse quand C_JS tombe     |monotone (cloche déjà dans C_JS)    |
+|résilience       |5 à autocorr basse, baisse quand elle monte|monotone unilatéral (alarme latente)|
+
+Innovation implémentée :
+
+un moniteur lent d'identité, pas un pilote d'attention :
+metrics.compute_innovation_cjs() : le C_JS de Jensen-Shannon (Rosso/MPR) sur l'enveloppe fₙ, τ auto-calibré depuis la relaxation 1/e, None si fenêtre < 200 pas (→ neutre), 0.0 si signal plat.
+simulate.py calcule le monitor sur une fenêtre longue (max(200, 4·W_f)) et logge innovation_cjs dans les deux dicts (mémoire + all_metrics/CSV).
+Le scoreur lit la valeur loggée au lieu de recalculer sur W_f~50 (trop court pour C_JS) — γ (S) et le switch (O) lisent donc la même valeur, comme voulu.
+Barème recalé sur l'échelle de santé C_JS, monotone (la cloche ordre/bruit est déjà dans C_JS) : FPS ~0.30 → 5/5.
+
+Implémentation de la résilience :
+
+Les tests confirment les résultats du cahier (φ retrouvé, lag/autocorr cohérents), mais notre critère de pic actuel introduit un biais bas trop marqué sur spectre rouge lisse. On passe à un critère de proéminence locale.
+compute_resilience_csd mesure l'autocorrélation, à un lag calibré, des résidus détrendés de l'enveloppe fₙ, plus la variance de ces résidus. Le détrend retire les raies spectrales par proéminence locale, donc un spectre rouge lisse n'est pas touché et un forçage périodique l'est raie par raie. Le lag vient de relaxation_steps, la même fonction qui donne le τ de l'innovation, donc une seule échelle de temps dans le code. Le radar resilience_alert codifie notre règle : bande de référence sur le calme, tendance sur plusieurs fenêtres distinctes, autocorrélation et variance qui montent ensemble, jamais d'alerte sans référence complète. Barème monotone unilatéral, autocorrélation basse égale 5.
+Le banc reproduit la table du cahier. Sur AR(1), le lag-1 pur retrouve φ. Avec un forçage sinusoïdal, le brut est aveugle entre 0.96 et 0.99, et le détrendé revient à 0.600, 0.784, 0.896 et 0.936 pour φ de 0.6 à 0.95. Sur l'enveloppe FPS réelle, lag automatique 39 et autocorrélation 0.334, contre 38 et 0.339 dans le cahier.
+Lag figé après sa première calibration dans le run. Si on le re-dérivait à chaque fenêtre depuis le même signal, l'autocorrélation à « son propre 1/e » vaudrait environ 1/e par construction et ne pourrait jamais monter. Le radar n'existe qu'à lag fixe, et c'est ainsi que le cahier l'a validé sur le jouet. Le lag reste réglable en config.
+Trois choses honnêtes sur le run de test.
+En régime établi, sans bruit d'entrée, l'enveloppe est quasi périodique. Une fois le transitoire sorti de la fenêtre, la variance des résidus tombe vers 1e-10 et l'autocorrélation, entre 0.06 et 0.28, lit un reste de détrend plus qu'une turbulence spontanée. La métrique prendra son sens quand quelque chose fluctue, ce que le cahier avait noté aussi.
+Pendant le transitoire, la valeur pas à pas oscille entre −0.46 et 0.47, parce qu'une fenêtre de 400 pas au lag 40 n'a que dix échantillons indépendants. Le score n'a basculé qu'une fois sur 400 pas, mais le cahier recommande de lire une tendance lissée. Le radar le fait, le score lit encore le point.
+Les seuils du barème sont provisoires, posés sur le calme FPS et la montée observée sur le jouet double puits.
+Suite :
+Les douze runs confirment que le bruit d'entrée n'affecte pas les résidus de fₙ (variance stable à 3e-10), validant l'orthogonalité entrée/phase notée précédemment. On va donc ajouter un plancher pour éviter que le score n'interprète du bruit numérique résiduel, puis préparer un stresseur capable d'atteindre réellement fₙ pour calibrer sous de vraies fluctuations.
+Résultat négatif intéressant : même avec une fluctuation lente injectée (τ = 160 pas), l'estimateur lit ~0.1 au lieu de 0.78 attendu. C’est soit le détrend qui supprime le contenu basse fréquence, soit la FPS qui amortit le signal, et on va diagnostiquer via l'enveloppe loggée d'un run τ = 160.
+L'injection atteint bien l'enveloppe mais le détrend actuel l'annule car la fenêtre de 400 pas est trop courte face à la période propre de 200 pas. On va donc modéliser la composante périodique paramétriquement (sinusoïde ajustée + harmoniques) plutôt que d'évider des bins, relancer le banc de test, et quantifier le biais de fenêtre finie de l'estimateur.
+On reprend le diagnostic du détrend paramétrique qui retire à tort des « harmoniques » sur du bruit rouge pur, et on mesure le biais de fenêtre afin de choisir une taille adaptée aux fluctuations lentes.
+On remplace l'affinage de fréquence par une recherche du nombre d'or (bien moins coûteuse), puis on lance la table de calibration biais/étalement et on corrige les tests.
+Les campagnes injectées donnent les valeurs attendues, mais le run calme révèle un bug : la valeur lissée reste bloquée sur les anciennes données du transitoire au lieu de suivre la convention « quiet = 0 ».
+Ce qu’on en a appris :
+Savoir si la résilience CSD lit vraiment un ralentissement quand il y en a un. Pour ça on a injecté une vérité-terrain : une fluctuation AR(1) de temps de retour τ connu, en mode commun sur fₙ. Au lag L, l'autocorrélation attendue vaut exp(−L/τ), donc on peut comparer la lecture à la valeur théorique.
+Première lecture : aveugle. Avec la fenêtre de 400 pas et le lag 40, la métrique lisait ≈ 0.1 quel que soit τ. Deux causes, les deux corrigées.
+Le détrend effaçait la fluctuation. L'évidement de bins autour de la raie, dans une fenêtre où l'enveloppe n'a que deux périodes, supprimait tout ce qui est plus lent que ~50 pas. C'est exactement là que vit un ralentissement. Remplacé par un ajustement de raies : on ajuste la sinusoïde du forçage à sa fréquence exacte (plus ses harmoniques, trouvées une à une), et on laisse tout le reste intact. Le critère « c'est une raie » exige que le pic dépasse son voisinage des deux côtés. Un bruit rouge est monotone, il n'est jamais touché. L'enveloppe calme de la FPS se réduit à 2e-10 de sa variance en 8 raies.
+La fenêtre était trop courte pour le lag. L'estimateur d'autocorrélation à lag L sur W points est biaisé vers le bas d'environ 2τ/W, et son étalement croît en √(τ/W). Table de calibration par tirages Monte Carlo :
+|W / lag                   |2000 / 10|2000 / 20|2000 / 40|1000 / 10|
+|--------------------------|---------|---------|---------|---------|
+|score à ±1 cran du nominal|100 %    |93 %     |50 %     |87 %     |
+|biais max (τ = 8 lags)    |−0.03    |−0.08    |−0.23    |−0.06    |
+
+Règle retenue : W ≥ 200 × lag. La fenêtre passe à 200 u.t. (2000 pas) et le lag auto est plafonné à W/200 = 10 pas. Le lag est donc une convention (1 u.t.) : la FPS calme ne fluctue pas, il n'y a pas de τ₀ naturel à mesurer.
+Résultat in-situ après correction, pipeline complet, 4 seeds, régime t > 200 :
+|τ injecté|attendu|mesuré (4 seeds)   |score                                 |
+|---------|-------|-------------------|--------------------------------------|
+|20 pas   |0.607  |0.590 – 0.625      |3 et 4 (pile sur le seuil, τ = 2 lags)|
+|80 pas   |0.882  |0.863 – 0.892      |1                                     |
+|160 pas  |0.939  |0.909 – 0.942      |1                                     |
+|calme    |quiet  |ac = 0, var ≈ 1e-10|5                                     |
+
+La métrique lit le temps de retour injecté à ~0.02 près, à travers l'enveloppe périodique. Le radar ne sonne pas sous fluctuation stationnaire sur 3 seeds (correct : rien ne monte). Le seed 12345 alerte parce que sa référence calme tombe sur la fin du transitoire, plus basse que le régime. C'est un réglage de alert_calm_n par rapport au début du régime, pas un défaut de la règle.
+Le score, moins bruité. Il lit la médiane des derniers verdicts sur 3 lags. Le run calme a révélé un bug de notre première version : la médiane ignorait les verdicts « quiet » et restait figée sur les fluctuations du transitoire (score 4 pour tout le run). Corrigé : quiet compte comme 0, et un calme retrouvé ramène le score à 5. Vérifié sur un run T=350 : quiet 100 % et score 5 dès que le transitoire sort de la fenêtre.
+Barème. Seuils = exp(−1/k) pour k ∈ {1.4, 2, 3, 5} : score 5 si le retour est plus rapide que 1.4 lag, score 1 s'il est plus lent que 5 lags. Le bruit d'entrée, lui, ne touche pas fₙ (orthogonal à la phase) : d'où le plancher « quiet » pour ne pas lire un reste numérique.
+Points à garder en tête.
+Les premiers verdicts arrivent à t = 200 (fenêtre pleine) : sur un run T=500, 60 % du run est lu. Le calcul se fait tous les 5 pas (~50 s par run).
+Une fenêtre trop courte pour séparer forçage et fluctuation rend maintenant None (verdict suspendu) au lieu d'un faux score 1.
+Le score lit un niveau de lenteur, le radar lit une tendance. Les deux sont complémentaires.
+
+Le problème observé. La référence calme du radar est prise sur les 100 premiers verdicts non quiet. Sur le seed 12345 ces verdicts tombent sur la queue du transitoire, plus basse que le régime, donc tout le régime paraît « au-dessus de la bande » et le radar sonne sans qu'il y ait de montée. Les trois autres seeds n'avaient pas ce décalage.
+Tester avant de choisir une valeur. Trois options, de la plus simple à la plus juste :
+Décaler le début de la référence : ignorer les premiers verdicts tant que la fenêtre contient encore le transitoire. Un critère simple existe déjà dans le run : le régime perceptif est installé, ou la variance des résidus s'est stabilisée.
+Référence glissante lente au lieu d'une référence figée : médiane sur une longue fenêtre passée, par exemple 50 lags. Le radar ne compare alors qu'à un passé récent et une dérive lente ne déclenche pas.
+Exiger une montée relative : la bande est définie par rapport à la médiane de la dernière période calme, pas à la première. C'est l'esprit du cahier, tendance plutôt que niveau.
+Ce qu’on a retenu : la référence glissante. Le radar compare maintenant le présent à une référence de 20 lags qui se termine 20 lags avant lui, au lieu des 100 premiers verdicts du run. Une fluctuation stationnaire ne sonne plus, une montée sonne pendant qu'elle a lieu, puis le radar se tait sur le plateau. Les deux clés de config sont alert_calm_lags et alert_gap_lags, en lags, converties en entrées d'historique par simulate.
+Campagne in-situ, τ = 80 pas :
+|run              |seed |alertes avant   |alertes après|où                   |
+|-----------------|-----|----------------|-------------|---------------------|
+|stationnaire     |12345|410, tout le run|250          |t ∈ [200, 300) puis 0|
+|stationnaire     |2024 |0               |55           |t ∈ [250, 300) puis 0|
+|démarrage à t=300|12345|—               |80           |t ∈ [330, 360) puis 0|
+|démarrage à t=300|7    |—               |0            |—                    |
+
+Trois enseignements.
+Le faux positif persistant a disparu. Sous fluctuation stationnaire, plus aucune alerte une fois la lecture installée.
+Les alertes restantes entre t = 200 et 300 sont la fenêtre qui se remplit. Au premier verdict, la fenêtre contient encore le transitoire, et l'autocorrélation monte vers son plateau à mesure qu'il en sort. Le radar voit une montée, et il a raison : c'est la mesure qui s'installe. Convention à retenir : ne pas lire le radar avant une longueur de fenêtre après le premier verdict.
+Un démarrage brutal n'est pas une montée graduelle. À l'allumage, l'autocorrélation saute de 0 à 0.9 en un verdict, puis redescend vers son plateau. Le radar, qui exige trois fenêtres croissantes, ne voit pas un saut suivi d'une descente. C'est le score qui attrape le démarrage, immédiatement, de 5 à 1. Le radar est fait pour l'approche graduelle d'une transition, comme chez Scheffer, pas pour un interrupteur. Les deux lectures se complètent.
+Point ouvert, pour plus tard. Le seul signal graduel qu'on ait produit in-situ est celui de la fenêtre qui se remplit. Un vrai test du radar demande une rampe interne de la FPS, un paramètre qui dérive lentement vers une transition, pas une injection qui s'allume. C'est une campagne côté dynamique, à part.
+Pour résumer :
+La résilience lit vraiment ce qu'on lui injecte : τ = 20 / 80 / 160 pas ressortent à 0.02 près de la valeur théorique, à travers l'enveloppe périodique, dans le pipeline complet.
+Le score est stable : quiet = 0, calme retrouvé = 5, et la médiane sur 3 lags ne reste plus figée sur le transitoire.
+Le radar ne sonne plus à tort sous fluctuation stationnaire ; il reste réservé aux montées graduelles, et le score attrape les démarrages brutaux.
+Dérive lente vers transition :
+Multiplier α par 30 ne modifie pas fₙ vu que les amplitudes restent trop faibles ; le vrai mécanisme mémoire vient de la latence γ via son lissage exponentiel (fₙ = f₀·(1+β·γ)). Tests: runs avec rampe sur le taux de rappel λ de γ (0.1→0.005 entre t=250 et 450) et perturbation fixe, sur 2 seeds plus un contrôle sans rampe.
+Résultats :
+Ce qui a une prise, et ce qui n'en a pas. Multiplier le couplage α par 3, 10 ou 30 ne change rien à fₙ, à la troisième décimale près. Avec des amplitudes Aₙ ≈ 0.03, le terme α·Sᵢ est négligeable devant f₀ : le couplage inter-strates n'est pas un levier sur la couche lente dans ce régime. Le mécanisme à mémoire, c'est la latence : fₙ = f₀·(1 + β·γ), et γ converge vers sa cible par lissage exponentiel. Un taux de rappel qui faiblit, c'est un temps de retour qui s'allonge, donc le ralentissement critique de Scheffer au sens propre.
+La campagne. On a enveloppé la latence adaptative : γ reçoit une petite perturbation fixe à chaque pas, et son taux de rappel λ dérive de 0.1 à 0.005 entre t = 250 et 450. Un contrôle garde le même bruit avec λ constant.
+|t                              |300    |350    |400    |425     |450      |475      |
+|-------------------------------|-------|-------|-------|--------|---------|---------|
+|contrôle : ac / alertes        |.75 / 0|.76 / 0|.78 / 0|.77 / 0 |.68 / 0  |.63 / 0  |
+|rampe seed 12345 : ac / alertes|.75 / 0|.78 / 0|.81 / 0|.83 / 31|.94 / 250|.97 / 129|
+|rampe seed 7 : ac / alertes    |.76 / 0|.66 / 0|.66 / 0|.72 / 80|.79 / 171|.89 / 129|
+
+La variance des résidus est multipliée par 5 sur la rampe et reste stable au contrôle. Le score passe de 2 à 1 en fin de rampe.
+Ce que ça dit.
+Le radar fait son travail. Il sonne sur les deux seeds pendant la montée, et jamais sur le contrôle une fois la lecture installée. Sur le seed 7, l'autocorrélation baisse entre t = 325 et 400 sans aucune alerte : une descente est du calme, le radar ne lit qu'une montée.
+Il sonne tard. L'autocorrélation de base de fₙ sous ce bruit est déjà 0.75, parce que deux lissages se cumulent, celui de la FPS et le nôtre. La dérive ne domine qu'une fois λ sous 0.02, dans le dernier quart de la rampe. C'est le contrôle qui donne la vraie base, pas la formule théorique du script.
+La convention de lecture tient. La bouffée d'alertes du contrôle vers t = 250 est, encore, la fenêtre qui se remplit après le premier verdict. Pas de lecture du radar avant une longueur de fenêtre après le premier verdict, soit t ≥ 400 ici. Toutes les alertes de la rampe sont après.
+Ce que ça ne dit pas. La rampe est imposée sur le taux de rappel de γ, pas produite par la FPS elle-même. Le jour où un régime interne fera dériver ce taux, le radar est prêt à le lire.
+Le radar sonne tard, le score attrape les démarrages, la fenêtre a besoin de temps pour se remplir. Sincère.
+
+Calibration des brackets d'activité (anciennement effort) :
+
+Pourquoi figer la référence plutôt que la faire glisser. Le statut « transitoire » est déjà un test relatif (un pic à 2σ de la fenêtre récente), et c'est la partie saine de la logique actuelle. Mais pour un score de niveau, une référence glissante absorberait une montée lente : un système qui se met à courir progressivement lirait 5 tout du long, parce que son passé récent court aussi. Une référence prise au repos du run et figée ensuite voit la dérive. C'est exactement le raisonnement qu'on a tenu pour le lag CSD.
+Concrètement, ça donnerait :
+une période de calibration en début de régime (une fenêtre W_f après l'échauffement), médiane de l'activité = repos du run, figée ;
+des seuils en facteurs, comme les facteurs de ralentissement : 5 sous ×1.1, 4 sous ×1.25, 3 sous ×1.5, 2 sous ×2, 1 au-delà ;
+les statuts sur la même base : stable sous ×1.25 du repos, transitoire sur un pic au-delà, chronique si la moyenne récente tient au-delà de ×1.25 ;
+la valeur brute reste loggée, pour comparer des runs entre eux si on veut.
+Ce que ça coûte. Si un run est agité dès sa naissance, sa référence est agitée et le score dit 5. Il dira vrai sur ce qu'il mesure, « pas plus qu'à son repos », mais il ne dira pas « ce run est agité ». Pour ce cas-là, la valeur brute et la comparaison entre runs restent le bon outil. Et il faut que la période de calibration soit vraiment du repos : la fenêtre qui se remplit nous a appris à ne pas prendre l'échauffement pour une référence.
+
+Résultats in-situ (seed 12345, repos calibré sur [40, 60]) :
+|run                  |repos|t ∈ [60, 80)                  |[80, 100)                       |[100, 120)                 |
+|---------------------|-----|------------------------------|--------------------------------|---------------------------|
+|calme                |265  |×1.01 · score 5 · stable 100 %|×1.02 · 5 · stable              |×1.01 · 5 · stable         |
+|bruit fort dès t = 70|265  |×1.01 · 5 · stable            |×2.22 · score 1 · chronique 95 %|×2.70 · 1 · chronique 100 %|
+|bruit fort dès t = 0 |398  |×0.93 · 5 · stable            |×0.92 · 5 · stable              |×0.97 · 5 · stable         |
+
+Ce que ça dit :
+Au calme, 5 et « stable » sans exception. Avant : 1 et 92 % « transitoire ».
+Une agitation qui s'installe est lue en une respiration. Le niveau passe à ×2.2, le score tombe à 1, le statut devient « chronique ». J'ai fait primer « chronique » sur « transitoire » : sous agitation soutenue chaque pas est aussi un pic, et le ponctuel masquait l'installé.
+L'agitation présente dès la naissance donne un repos agité et un score 5. C'est la limite annoncée. Le score dit vrai sur ce qu'il mesure, « pas plus qu'à son repos », et pour ce cas la valeur brute d'activité reste loggée pour comparer des runs.
+Deux réglages sont sortis des données plutôt que de l'intuition : le repos se calibre à partir de t = 40 parce que la médiane au calme vaut 204, puis 234, puis 270 stable à partir de là ; et le niveau se lit sur 200 pas parce que sur 50 pas le rapport oscille entre 0.86 et 1.28 avec la respiration de l'enveloppe, contre 0.98 à 1.02 sur 200.
+
+Implémentation d’un scoring cloche pour la dispersion :
+
+Rich data. Three findings reshape the design:
+O and S give byte-identical dispersion (0.1563 = 0.1563, everywhere) — S(t) is ΣOₙ here. So dispersion is already signal-agnostic; one bell serves both.
+cov is unusable — mean≈0 (|mean|≈0.005), so std/|mean| explodes (up to 4503). Scrap that idea.
+std ≈ 0.0157·√N holds tightly: 0.0701/0.1038/0.1570 at N=20/50/100 → /√N = 0.0157/0.0147/0.0157. Nearly constant. So std/√N is the N-invariant, physically-grounded normalization (sum of N weakly-correlated zero-mean signals).
+Healthy normalized σ ≈ 0.0156 (band [0.0126, 0.0197]); collapse (uniform freq) pushes it up to ~0.021–0.041 and erratically low. Confirms dispersion is a weak/dormant discriminator — the bell should read 5 across the healthy band and degrade gracefully at true freeze (σ→0) or blow-up, not act as a sharp alarm.
+Résultats :
+|Case                   |Dispersion score distribution               |
+|-----------------------|--------------------------------------------|
+|Healthy N=100, sig O   |**5**×46 (all)                              |
+|Healthy N=100, sig S   |**5**×46 (identical to O)                   |
+|Healthy N=100, seed 7  |**5**×46                                    |
+|Healthy **N=20**       |**5**×37 — √N normalization holds, no N-trap|
+|Collapse (uniform freq)|5×18, 4×17, 3×9, 2×2 — **it drops**         |
+Rock-solid 5 in health (both signals, both N), and it genuinely moves when the chimera collapses.
+Trois choses vues dans les données ont dessiné la cloche :
+O et S donnent la dispersion à l'identique (0.1563 = 0.1563 partout) — S(t) est ΣOₙ ici. Une seule cloche sert les deux.
+Le coefficient de variation est inutilisable : la moyenne est ~0 (le signal oscille autour de zéro), donc std/|moy| explose (jusqu'à 4503). Écarté.
+std ≈ 0.0157·√N tient au poil : N=20→0.0157, N=50→0.0147, N=100→0.0157. La loi du √N (somme de N contributions centrées faiblement corrélées). Donc std/√N est l'invariant — c'est lui qu'on note.
+La cloche
+Valeur = écart-type normalisé √N. Ça retire la dépendance à N — exactement le piège qui avait faussé l'activité en juillet (« repos devenu 271 »), évité ici sans nouvelle machinerie de log.
+Barème bell (nouvelle direction dans le scoreur) : distance = repli multiplicatif max(v/c, c/v), symétrique en log. 5 sous ×1.35, puis 4/3/2/1. Le bord du 5 est calé juste au-dessus du repli sain max (~1.26) : une chimère saine ne quitte jamais le 5, ni côté gel (σ→0) ni côté emballement.
+Observation seule : dispersion rejoint l'innovation dans OBSERVE_ONLY_FILTERS — notée, visible, jamais engagée comme remède.
+Vérifié in-situ (le score, pas la valeur)
+|                           |dispersion                               |
+|---------------------------|-----------------------------------------|
+|Sain N=100, O              |**5** × 46/46                            |
+|Sain N=100, S              |**5** × 46/46 (identique)                |
+|Sain **N=20**              |**5** × 37/37 — le √N tient              |
+|Effondrement freq-uniformes|5×18 · 4×17 · 3×9 · 2×2 → **elle baisse**|
+
+Discriminateur faible par nature (l'effondrement ne déplace l'amplitude que modérément) — on l'a documenté honnêtement plutôt que de resserrer la cloche pour fabriquer une sensibilité qu'elle n'a pas. 65 tests verts (+3 : cloche, invariance √N, observation seule). Que metrics.py et test_fps.py — pas de plomberie simulate/config, la dispersion se calcule au vol dans le scoreur.
