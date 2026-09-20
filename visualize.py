@@ -1361,12 +1361,12 @@ def plot_metrics_evolution(history: List[Dict],
     colors = ['#2E86AB', '#87BE3F', '#FFC43D', '#FF6B35', '#C73E1D', 
               '#A23B72', '#6A994E', '#BC4B51', '#5F0F40', '#0FA3B1']
     
-    for group_idx, (group_name, metrics) in enumerate(metric_groups.items()):
+    for group_idx, (group_name, group_metrics) in enumerate(metric_groups.items()):
         ax = axes[group_idx]
         
         # Pour chaque métrique du groupe
         plotted_any = False
-        for metric_idx, metric in enumerate(metrics):
+        for metric_idx, metric in enumerate(group_metrics):
             # Extraire les valeurs
             values = []
             for h in history:
