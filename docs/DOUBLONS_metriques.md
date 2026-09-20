@@ -266,6 +266,40 @@ lit un NIVEAU de lenteur, le radar lit une TENDANCE ; les deux lectures sont
 complémentaires, pas redondantes. (3) Les premiers verdicts arrivent à t = 200
 (fenêtre pleine) : sur un run T=500, 60 % du run est lu.
 
+### Suite 20/09/2026 (quinquies) — radar : référence glissante
+
+Suite du point ouvert de la campagne quater : sur le seed 12345, le radar
+sonnait 220–410 pas sous fluctuation STATIONNAIRE parce que sa référence calme
+(les 100 premiers verdicts du run) tombait sur la queue du transitoire, plus
+basse que le régime. Trois options étaient sur la table (décaler le début de la
+référence ; référence glissante ; montée relative au dernier calme). Retenue :
+la **référence glissante**, la plus juste par rapport au cahier — un signal
+précoce lit une MONTÉE, pas un niveau.
+
+**Règle** (`metrics.resilience_alert`, param `gap`) : la référence est faite des
+`calm_n` verdicts qui se terminent `gap` verdicts avant les échantillons de
+tendance, et non des `calm_n` premiers du run. Bande, tendance sur n_windows
+fenêtres distinctes et convergence ac + variance : inchangées. Conséquences :
+
+- une fluctuation stationnaire, même lente (score 1), ne sonne pas : le présent
+  ressemble au passé récent ;
+- une montée sonne PENDANT qu'elle a lieu (le gap la sépare de sa propre
+  référence), puis se tait une fois le plateau atteint. Le score, lui, reste bas
+  sur le plateau : niveau (score) et tendance (radar) sont deux lectures ;
+- jamais d'alerte sans calm_n + gap + tendance verdicts derrière soi.
+
+**Config** : `alert_calm_n` (en entrées) → `alert_calm_lags` = 20 et
+`alert_gap_lags` = 20, en LAGS, convertis en entrées d'historique par simulate
+(un lag = lag/stride entrées). Avec lag 10 et stride 5 : référence de 200 pas,
+séparée du présent par 200 pas ; premier verdict possible ~430 pas après la
+première fluctuation lue.
+
+**Tests** (`test_radar_reference_slides_with_the_run`) : transitoire bas puis
+plateau stationnaire → 0 alerte en régime ; montée à mi-parcours → 0 avant,
+alerte pendant la montée, 0 sur le plateau.
+
+**Campagne in-situ** : en cours (fluctuation stationnaire τ=80 ; fluctuation démarrant à t=300), résultats ci-dessous dès disponibles.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*
