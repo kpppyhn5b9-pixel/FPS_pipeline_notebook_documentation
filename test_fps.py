@@ -464,6 +464,7 @@ class TestReferenceScores(unittest.TestCase):
                 'mean_abs_error': float(np.mean(np.abs(E - O))),
                 'effort(t)': 20.0 + rng.rand(), 'adaptive_resilience': 0.8,
                 'On_mean(t)': float(np.mean(O)), 'fn_mean(t)': float(np.mean(fn)),
+                'innovation_cjs': 0.25 + 0.0001 * i,  # moniteur lent loggé (C_JS enveloppe fₙ)
             })
         return hist
 
@@ -487,7 +488,9 @@ class TestReferenceScores(unittest.TestCase):
         O_series = [float(np.sum(h['O'])) for h in hist]
         self.assertAlmostEqual(raw['dispersion'], float(np.std(O_series)))
         self.assertAlmostEqual(raw['fluidity'], metrics.compute_fluidity([float(np.mean(h['fn'])) for h in hist]))
-        self.assertAlmostEqual(raw['innovation'], float(metrics.compute_entropy_S(O_series, 10.0)))
+        # innovation = moniteur lent loggé (C_JS enveloppe fₙ) : le scoreur lit la
+        # dernière valeur 'innovation_cjs' disponible dans la fenêtre, il ne la recalcule pas.
+        self.assertAlmostEqual(raw['innovation'], float(hist[-1]['innovation_cjs']))
         self.assertAlmostEqual(raw['regulation'], float(np.mean([h['mean_abs_error'] for h in hist])))
         self.assertAlmostEqual(raw['activite'], float(np.mean([h['effort(t)'] for h in hist])))
         self.assertAlmostEqual(raw['resilience'], 0.8)
@@ -517,6 +520,32 @@ class TestReferenceScores(unittest.TestCase):
         sc = metrics.compute_reference_scores(hist, 0.1, signal='O', N=3)
         self.assertEqual(sc['resilience'], metrics.NEUTRAL_SCORE)
         self.assertEqual(set(metrics.labelled_scores(sc).keys()), set(metrics.SCORE_KEY_LABELS.values()))
+
+    def test_innovation_absent_column_is_neutral(self):
+        # Un CSV / warmup sans 'innovation_cjs' → verdict suspendu, score neutre.
+        hist = self._history()[-50:]
+        for h in hist:
+            h.pop('innovation_cjs', None)
+        raw = metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)
+        self.assertIsNone(raw['innovation'])
+        sc = metrics.compute_reference_scores(hist, 0.1, signal='O', N=3)
+        self.assertEqual(sc['innovation'], metrics.NEUTRAL_SCORE)
+
+    def test_innovation_cjs_contract(self):
+        # Fenêtre trop courte → None (score neutre en aval).
+        self.assertIsNone(metrics.compute_innovation_cjs([0.0, 1.0, 0.0], 0.1))
+        # Signal plat → ordre pur → C_JS nul.
+        self.assertEqual(metrics.compute_innovation_cjs([1.0] * 300, 0.1), 0.0)
+        # Bruit blanc : C_JS bas (contrairement à l'entropie). Ordre pur (sinus)
+        # aussi bas. Les deux dans [0, ~0.5]. C'est la cloche native de C_JS.
+        rng = np.random.RandomState(0)
+        c_noise = metrics.compute_innovation_cjs(list(rng.randn(2000)), 0.1)
+        t = np.linspace(0, 40 * np.pi, 2000)
+        c_sine = metrics.compute_innovation_cjs(list(np.sin(t)), 0.1)
+        for c in (c_noise, c_sine):
+            self.assertIsNotNone(c)
+            self.assertTrue(0.0 <= c <= 0.6)
+        self.assertLess(c_noise, 0.2)  # le bruit N'EST PAS noté "innovant"
 
 
 class TestValidateConfig(unittest.TestCase):

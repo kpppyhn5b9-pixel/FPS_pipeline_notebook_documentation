@@ -684,7 +684,11 @@ SCORE_BRACKETS = {
     #   repos→5 · bruit1→4 · bruit2→3 · bruit4→2 · bruit≥8→1.
     'fluidity':   {'direction': 'higher', 'thresholds': [0.91, 0.87, 0.83, 0.80], 'ge': False},
     'resilience': {'direction': 'higher', 'thresholds': [0.90, 0.75, 0.60, 0.40], 'ge': True},
-    'innovation': {'direction': 'higher', 'thresholds': [0.8, 0.6, 0.4, 0.2], 'ge': False},
+    # innovation : complexité statistique C_JS de l'enveloppe fₙ (cloche inversée
+    # native — bruit ET ordre → bas ; nouveauté structurée → haut). Métrique
+    # d'IDENTITÉ : voyant de santé, ~invariant en régime sain (FPS ~0.30 → 5).
+    # Monotone en C_JS suffit : C_JS encode déjà la cloche ordre/bruit.
+    'innovation': {'direction': 'higher', 'thresholds': [0.28, 0.22, 0.15, 0.08], 'ge': False},
     # effort : PROVISOIRE (15/07, dossier 4 seeds — médiane repos 59, p75 73,
     # p90 229, corrélation effort<->erreur +0.54, choc invisible). Le score 1
     # permanent des anciens seuils était connu faux ; ceux-ci notent la
@@ -771,6 +775,70 @@ def compute_fluidity(fn_mean_window) -> float:
     return 1.0 / (1.0 + float(np.std(d2) / (np.std(d1) + 1e-12)))
 
 
+def compute_innovation_cjs(fn_mean_window, dt: float, d: int = 4,
+                           min_points: int = 200) -> Optional[float]:
+    """
+    Innovation (score 'innovation') = complexité statistique de Jensen-Shannon
+    (Rosso/MPR) de l'enveloppe fₙ.
+
+    C'est une CLOCHE inversée native : ~0 pour l'ordre pur (sinus) ET pour le
+    bruit pur, maximale pour la nouveauté *structurée* (chaos déterministe).
+    Le bruit score donc BAS — contrairement à l'entropie, qui le note "innovant"
+    (défaut validé au banc de référence).
+
+    Métrique d'IDENTITÉ, pas d'attention : un MONITEUR lent. τ est auto-calibré
+    depuis la relaxation (1/e de l'autocorrélation) de l'enveloppe, de sorte que
+    la fenêtre ordinale (d-1)·τ couvre ~un temps de relaxation. Fenêtre longue
+    requise (permutation stable) : renvoie None si < min_points (→ score neutre).
+
+    Args:
+        fn_mean_window: moyenne de fₙ par pas (l'enveloppe), fenêtre LONGUE
+        dt: pas de temps (non utilisé directement ; garde la signature homogène)
+        d: ordre des motifs de permutation (défaut 4 → 24 motifs)
+        min_points: longueur minimale pour un C_JS stable (défaut 200)
+
+    Returns:
+        float dans [0, ~0.5] (C_JS), ou None si la fenêtre est trop courte.
+    """
+    from itertools import permutations
+    x = np.asarray(fn_mean_window, dtype=float).ravel()
+    if len(x) < min_points:
+        return None
+    xc = x - x.mean()
+    if float(np.dot(xc, xc)) < 1e-12:
+        return 0.0  # signal plat : ordre pur → innovation nulle
+    ac = np.correlate(xc, xc, mode='full')[len(x) - 1:]
+    ac = ac / ac[0]
+    below = np.where(ac < 1.0 / np.e)[0]
+    relax = int(below[0]) if len(below) else 10
+    tau = max(1, int(round(relax / (d - 1))))
+    # garde : la fenêtre ordinale doit tenir largement dans le signal
+    tau = min(tau, max(1, (len(x) // 2) // (d - 1)))
+    idx = {p: i for i, p in enumerate(permutations(range(d)))}
+    counts = np.zeros(len(idx))
+    n = len(x) - (d - 1) * tau
+    if n <= 0:
+        return None
+    for i in range(n):
+        counts[idx[tuple(np.argsort(x[i:i + d * tau:tau]))]] += 1
+    s = counts.sum()
+    if s <= 0:
+        return 0.0
+    p = counts / s
+    Nc = len(p)
+    pe = np.ones(Nc) / Nc
+
+    def _sh(q):
+        qq = q[q > 0]
+        return float(-(qq * np.log(qq)).sum())
+
+    H = _sh(p) / np.log(Nc)
+    js = _sh((p + pe) / 2) - 0.5 * _sh(p) - 0.5 * _sh(pe)
+    delta = np.zeros(Nc); delta[0] = 1.0
+    js_max = _sh((delta + pe) / 2) - 0.5 * _sh(delta) - 0.5 * _sh(pe)
+    return float((js / js_max) * H) if js_max > 0 else 0.0
+
+
 def _num(v) -> Optional[float]:
     """float fini ou None (cellule vide d'un CSV, None, NaN, texte)."""
     try:
@@ -849,11 +917,17 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
             errors.append(e)
     efforts = [v for v in (_num(h.get('effort(t)')) for h in history_window) if v is not None]
     resil = [v for v in (_num(h.get('adaptive_resilience')) for h in history_window) if v is not None]
+    # innovation = MONITEUR LENT lu depuis les logs (C_JS de l'enveloppe fₙ,
+    # calculé sur fenêtre longue dans simulate → 'innovation_cjs'). On lit la
+    # dernière valeur disponible dans la fenêtre ; None (warmup / CSV sans la
+    # colonne) → score neutre. Métrique d'identité, signal-agnostique (gamma S
+    # et switch O lisent la même valeur).
+    innov = [v for v in (_num(h.get('innovation_cjs')) for h in history_window) if v is not None]
 
     return {
         'dispersion': compute_dispersion(series) if series else 0.0,
         'fluidity':   compute_fluidity(fn_means),
-        'innovation': float(compute_entropy_S(series, 1.0 / dt)) if series else 0.1,
+        'innovation': (innov[-1] if innov else None),
         'regulation': float(np.mean(errors)) if errors else 0.0,
         'activite':   float(np.mean(efforts)) if efforts else 0.0,
         'resilience': float(np.mean(resil)) if resil else None,
