@@ -298,7 +298,36 @@ première fluctuation lue.
 plateau stationnaire → 0 alerte en régime ; montée à mi-parcours → 0 avant,
 alerte pendant la montée, 0 sur le plateau.
 
-**Campagne in-situ** : en cours (fluctuation stationnaire τ=80 ; fluctuation démarrant à t=300), résultats ci-dessous dès disponibles.
+**Campagne in-situ** (`run_fn_noise.py`, τ = 80 pas, 5 %, W=2000, lag 10) :
+
+| run | seed | alertes (avant) | alertes (glissante) | où |
+|---|---|---|---|---|
+| stationnaire dès t=0, T=350 | 12345 | 410, tout le run | 250 | t ∈ [200, 300) puis 0 |
+| stationnaire dès t=0, T=350 | 2024 | 0 | 55 | t ∈ [250, 300) puis 0 |
+| démarrage à t=300, T=500 | 12345 | — | 80 | t ∈ [330, 360) puis 0 |
+| démarrage à t=300, T=500 | 7 | — | 0 | — |
+
+Lecture. (1) Le faux positif persistant a disparu : sous fluctuation
+stationnaire, plus aucune alerte une fois la lecture installée (t ≥ 300). (2) Les
+alertes restantes entre t = 200 et 300 sont la fenêtre qui se remplit : au
+premier verdict (t=200) la fenêtre contient encore le transitoire, et
+l'autocorr monte vers son plateau à mesure qu'il en sort ; pour le radar, c'est
+une montée, et il a raison — c'est la mesure qui s'installe, pas le système.
+Convention à retenir : ne pas lire le radar avant une longueur de fenêtre après
+le premier verdict (t ≥ W_res_t + première fenêtre). (3) Le démarrage brutal
+d'une fluctuation lente n'est PAS une montée graduelle : l'autocorr saute de 0
+(quiet) à ~0.9 en un verdict (seed 7 : 0.88 à t=300, 0.96 à t=310) puis
+REDESCEND vers son plateau (0.86) à mesure que la fenêtre se remplit. Le radar
+(3 fenêtres croissantes, ac ET variance) ne voit pas un saut suivi d'une
+descente : 0 alerte sur le seed 7, 80 sur le seed 12345 (qui a mis deux verdicts
+à sauter). C'est le SCORE qui attrape le démarrage, immédiatement (5 → 1 en un
+verdict) ; le radar est fait pour l'approche graduelle d'une transition
+(Scheffer), pas pour un interrupteur. Les deux lectures se complètent.
+
+Point ouvert : le seul signal graduel qu'on ait produit in-situ est celui de la
+fenêtre qui se remplit. Un vrai test du radar demande une rampe interne de la
+FPS (un paramètre qui dérive lentement vers une transition), pas une injection
+qui s'allume ; c'est une campagne à part, côté dynamique.
 
 ---
 
