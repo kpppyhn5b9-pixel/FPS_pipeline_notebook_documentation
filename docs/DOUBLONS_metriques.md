@@ -127,7 +127,8 @@ CARTE sont dissoutes dans une seule :
   calibré, des résidus **détrendés** de l'enveloppe fₙ (couche lente), plus la
   variance des résidus. Détrend adaptatif par raies spectrales (`detrend_spectral_
   peaks`, proéminence locale : un spectre rouge lisse n'est pas touché, un forçage
-  périodique l'est raie par raie). Lag = `relaxation_steps` (1/e, source unique
+  périodique l'est raie par raie ; remplacé le 20/09 par `detrend_periodic`, cf.
+  suite quater). Lag = `relaxation_steps` (1/e, source unique
   partagée avec le τ de l'innovation), **calibré une fois puis figé** dans le run :
   re-dériver le lag à chaque fenêtre depuis le même signal donnerait ~1/e par
   construction et rendrait toute montée invisible. `None` si fenêtre < 200 pas,
@@ -138,7 +139,8 @@ CARTE sont dissoutes dans une seule :
   jamais d'alerte sans référence calme complète.
 - **Barème** `SCORE_BRACKETS['resilience']` : direction `lower`, seuils
   provisoires `[0.45, 0.60, 0.75, 0.90]` (calme FPS ≈ 0.33, montée CSD observée
-  sur jouet 0.5–0.6). Autocorr basse = retour rapide = 5.
+  sur jouet 0.5–0.6 ; recalés en facteurs de ralentissement, cf. suite quater).
+  Autocorr basse = retour rapide = 5.
 - **Colonnes** : `resilience_ac`, `resilience_var`, `resilience_lag`,
   `resilience_alert`, `resilience_score`. Le scoreur de référence lit la dernière
   `resilience_ac` de la fenêtre (moniteur lent, comme l'innovation).
@@ -171,6 +173,91 @@ transitoire sorti de la fenêtre, la variance des résidus tombe près de zéro 
 l'autocorr (≈ 0.15–0.25) lit un reste de détrend plus qu'une turbulence spontanée.
 La métrique prend tout son sens quand quelque chose fluctue (bruit, perturbation
 continue, rampe interne) — exactement les régimes que le cahier a testés.
+
+### Suite 20/09/2026 (quater) — résilience : score lissé, barème en facteurs de ralentissement, comportement réel sous bruit
+
+Deux chemins suivis (accord d'Andréa) : un score plus pertinent et moins bruité,
+et des campagnes pour mesurer ce que la métrique lit VRAIMENT sous bruit.
+
+**Ce que le score lit.** `resilience_ac_smooth` = médiane des derniers verdicts
+sur `smooth_lags` × lag (`smooth_resilience_ac`), quiet compris (= 0.0) : un
+calme retrouvé ramène le score à 5. La valeur brute `resilience_ac` reste
+loggée (moniteur), le radar ne lit que les fluctuations réelles.
+
+**Barème.** Seuils = exp(−1/k), k ∈ {1.4, 2, 3, 5} → [0.49, 0.607, 0.717, 0.819]
+(`RESILIENCE_SLOWING_FACTORS`). Sens : au lag L, un temps de retour τ = k·L
+donne une autocorr exp(−1/k). Score 5 = retour plus rapide que 1.4 lag, score 1 =
+plus lent que 5 lags. Le lag est donc l'échelle de référence à laquelle le
+ralentissement est comparé.
+
+**Campagne 1 — bruit d'entrée (`bruit_leger`, `bruit_fort`, 4 seeds).** Le bruit
+sur l'entrée ne touche pas l'enveloppe fₙ (il est orthogonal à la phase) : les
+résidus restent à ~1e-10 de la variance de l'enveloppe. Une autocorr lue
+là-dessus est un reste numérique, pas une dynamique (un seed flottait 4/5 sur du
+vide). → **Plancher quiet** (`quiet_floor_rel` = 1e-6) : ac = 0.0, quiet = 1,
+score 5, le radar ignore l'échantillon.
+
+**Campagne 2 — fluctuation injectée sur fₙ (`run_fn_noise.py`).** Vérité-terrain
+in-situ : bruit AR(1) multiplicatif en mode commun sur fₙ, τ = 20 / 80 / 160 pas,
+5 % d'amplitude ; au lag L, l'autocorr attendue vaut exp(−L/τ). Première lecture
+(fenêtre 400 pas, lag 40) : ≈ 0.1 quel que soit τ. Deux causes, corrigées :
+
+1. *Le détrend effaçait la fluctuation.* L'évidement de bins (raie ± 2 voisins)
+   dans une fenêtre de 400 pas sur une enveloppe de période 200 couvrait tout ce
+   qui est plus lent que ~50 pas. Remplacé par **`detrend_periodic`** : ajustement
+   itératif de raies (bin dominant → fréquence affinée par nombre d'or → réajuste-
+   ment conjoint Gauss-Newton de toutes les raies). Critère de raie **à deux
+   côtés** : P[k] > peak_ratio × médiane à gauche ET à droite (lobe k±1 exclu,
+   ≥ 2 bins de chaque côté). Un spectre rouge (AR(1)) est monotone : jamais
+   touché (faux positifs ≤ 10 %, une raie sur 2000 bins, sans effet). L'enveloppe
+   FPS calme (période 200 + harmoniques jusqu'au bin 14) se réduit à 2e-10 de sa
+   variance en 8 raies ; une fluctuation τ=160 injectée ressort corrélée > 0.9 à
+   la réalisation de bruit.
+2. *La fenêtre était trop courte pour le lag.* Table de calibration
+   (`mc_bias.py`, forçage période 200 + 2 harmoniques, AR(1) 5 %, 30 tirages) :
+   l'estimateur à lag L sur W pas est biaisé vers le bas d'≈ 2τ/W, étalement en
+   √(τ/W). Score à ±1 cran du nominal (τ = k·L, k = 1…8) :
+
+   | W / lag | 1000 / 10 | 1000 / 20 | 1000 / 40 | 2000 / 10 | 2000 / 20 | 2000 / 40 |
+   |---|---|---|---|---|---|---|
+   | ±1 cran (min sur k) | 87 % | 57 % | 17 % | **100 %** | 93 % | 50 % |
+   | biais max (k=8) | −0.06 | −0.16 | −0.34 | **−0.03** | −0.08 | −0.23 |
+
+   → règle : **W ≥ 200 × lag**. `W_res_t` passe à 200 u.t. (2000 pas) et le lag
+   auto (relaxation 1/e de l'enveloppe ≈ 40) est plafonné à W/`min_lags_per_
+   window` = 10 pas. Une fenêtre trop courte pour séparer forçage et fluctuation
+   (W < 20 × relax : la raie n'a pas 4 bins) rend None, verdict suspendu, au lieu
+   de lire l'enveloppe elle-même (W=400 : ac ≈ 0.998, faux score 1).
+
+**Résultat in-situ après correction** (W=2000, lag 10, 4 seeds, régime t > 200,
+médiane de `resilience_ac` par seed) :
+
+| τ injecté (pas) | attendu exp(−10/τ) | mesuré (4 seeds) | score nominal | scores observés |
+|---|---|---|---|---|
+| 20 | 0.607 | 0.590 – 0.625 | 3/4 (τ = 2·lag, sur le seuil) | 3 et 4 |
+| 80 | 0.882 | 0.863 – 0.892 | 1 | 1 (2 en bordure) |
+| 160 | 0.939 | 0.909 – 0.942 | 1 | 1 |
+| calme (rien d'injecté) | — | quiet | 5 | voir ci-dessous |
+
+La métrique lit maintenant le temps de retour injecté à ~0.02 près, dans le
+pipeline complet, à travers l'enveloppe périodique. Radar : 0 alerte sur 3 seeds
+sous fluctuation STATIONNAIRE (correct : pas de montée) ; le seed 12345 alerte
+(220–410 pas) parce que sa référence calme (100 premiers échantillons) tombe sur
+la fin du transitoire, plus basse que le régime — la règle du cahier suppose une
+référence représentative ; `alert_calm_n` est à régler avec le début du régime.
+
+CALME_PLACEHOLDER
+
+**Coût.** Le détrend vaut ~50 ms par appel à W=2000 : calcul tous les `stride`
+= 5 pas (le dernier verdict est reporté entre deux), ~50 s par run T=500.
+
+**Ce qui reste ouvert.** (1) Le lag de référence est une convention (10 pas =
+1 u.t.) : l'enveloppe calme de la FPS ne fluctue pas, il n'y a pas de τ₀ naturel
+à calibrer ; le barème dit « lent par rapport à 1 u.t. ». (2) Sous fluctuation
+stationnaire lente, le score est bas (1) sans que rien ne « monte » : le score
+lit un NIVEAU de lenteur, le radar lit une TENDANCE ; les deux lectures sont
+complémentaires, pas redondantes. (3) Les premiers verdicts arrivent à t = 200
+(fenêtre pleine) : sur un run T=500, 60 % du run est lu.
 
 ---
 

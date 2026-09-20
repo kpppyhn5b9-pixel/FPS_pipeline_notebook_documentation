@@ -463,7 +463,8 @@ def compute_resilience_csd(fn_mean_window, dt: float, lag: Optional[int] = None,
                            min_points: int = 200, peak_ratio: float = 10.0,
                            max_peaks: int = 8,
                            quiet_floor_rel: float = 1e-6,
-                           min_lags_per_window: int = 200) -> Optional[Dict[str, float]]:
+                           min_lags_per_window: int = 200,
+                           min_relax_ratio: int = 20) -> Optional[Dict[str, float]]:
     """
     Résilience (score 'resilience') = ralentissement critique sur la couche
     lente : autocorrélation à lag des résidus détrendés de l'enveloppe fₙ.
@@ -500,9 +501,16 @@ def compute_resilience_csd(fn_mean_window, dt: float, lag: Optional[int] = None,
     rien ne s'éloigne, rien ne ralentit, aucune alarme (score 5, barème
     « alarme latente ») ; le radar ignore ces échantillons.
 
+    Fenêtre trop courte pour DÉTRENDER (None) : une raie n'est séparable d'une
+    fluctuation lente que si elle tombe à ≥ 4 bins du spectre, soit W ≥ 4 périodes
+    de l'enveloppe ; la relaxation 1/e d'une sinusoïde vaut ≈ période/5, donc on
+    exige W ≥ min_relax_ratio × relax. En dessous, le détrend ne peut rien retirer
+    et l'autocorrélation lirait l'enveloppe elle-même (campagne 20/09 : W = 400
+    pas sur une période de 200 → ac ≈ 0.998, faux score 1). Verdict suspendu.
+
     Returns:
         {'ac': autocorr [-1, 1], 'var': variance des résidus, 'lag': int,
-         'relax': int, 'n_peaks': int (harmoniques retirées), 'quiet': bool}
+         'relax': int, 'n_peaks': int (raies retirées), 'quiet': bool}
         ou None (fenêtre trop courte, signal plat).
     """
     x = np.asarray(fn_mean_window, dtype=float).ravel()
@@ -512,6 +520,8 @@ def compute_resilience_csd(fn_mean_window, dt: float, lag: Optional[int] = None,
     if var_env < 1e-15:
         return None  # enveloppe plate : pas de couche lente vivante
     relax = relaxation_steps(x)
+    if len(x) < int(min_relax_ratio) * max(1, int(relax)):
+        return None  # fenêtre trop courte pour séparer forçage et fluctuation
     resid, n_peaks = detrend_periodic(x, max_lines=max_peaks, peak_ratio=peak_ratio)
     var_res = float(np.var(resid))
     if lag is not None:

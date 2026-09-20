@@ -230,10 +230,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
     # choc à induire : elle lit la turbulence spontanée du système.
     _rcfg = config.get('resilience', {})
     _W_res = max(int(_rcfg.get('min_points', 200)),
-                 int(round(float(_rcfg.get('W_res_t', 40.0)) / dt)))
+                 int(round(float(_rcfg.get('W_res_t', 200.0)) / dt)))
     resilience_state = {
         'lag': (int(_rcfg['lag']) if _rcfg.get('lag') else None),  # None → auto-calibré
-        'ac_hist': [], 'var_hist': [],
+        'ac_hist': [], 'var_hist': [],  # fluctuations RÉELLES seulement (radar)
+        'ac_recent': [],  # tous les verdicts calculés, quiet → 0.0 (lissage du score)
         'peak_ratio': float(_rcfg.get('peak_ratio', 10.0)),
         'max_peaks': int(_rcfg.get('max_peaks', 8)),
         'calm_n': int(_rcfg.get('alert_calm_n', 100)),
@@ -876,12 +877,13 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             _rs['var_hist'].append(_csd['var'])
                         # L'historique est échantillonné tous les `stride` pas : un lag
                         # vaut lag/stride entrées (lissage du score, cadence du radar).
+                        # Le score lit la médiane des DERNIERS verdicts, quiet compris
+                        # (= 0.0) : un calme retrouvé ramène le score à 5, il ne reste
+                        # pas figé sur les fluctuations du transitoire.
                         _lag_entries = max(1, int(round(_lag / _rs['stride'])))
-                        _ac_for_smooth = _rs['ac_hist'][-(_rs['smooth_lags'] * _lag_entries):]
-                        _ac_smooth = (0.0 if _csd['quiet'] and not _ac_for_smooth
-                                      else metrics.smooth_resilience_ac(
-                                          _rs['ac_hist'] if _ac_for_smooth else [_csd['ac']],
-                                          _lag_entries, _rs['smooth_lags']))
+                        _rs['ac_recent'].append(_csd['ac'])
+                        _ac_smooth = metrics.smooth_resilience_ac(
+                            _rs['ac_recent'], _lag_entries, _rs['smooth_lags'])
                         _alert = metrics.resilience_alert(
                             _rs['ac_hist'], _rs['var_hist'],
                             calm_n=_rs['calm_n'], band=_rs['band'],
