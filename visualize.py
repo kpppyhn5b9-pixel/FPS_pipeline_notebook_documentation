@@ -798,8 +798,9 @@ def plot_scores_evolution(history: List[Dict], config: Dict = None,
     fig, axes = plt.subplots(len(labels), 1, figsize=(14, 11), sharex=True)
     fig.suptitle(f"Évolution temporelle des scores de référence (cible {signal}(t), fenêtre W_f)",
                  fontsize=16, fontweight='bold', y=0.995)
-    colors = {'Stabilité': '#2E86AB', 'Régulation': '#2E86AB', 'Fluidité': '#2E86AB',
-              'Résilience': '#87BE3F', 'Innovation': '#87BE3F', 'Effort interne': '#FFC43D'}
+    _key_colors = {'dispersion': '#2E86AB', 'regulation': '#2E86AB', 'fluidity': '#2E86AB',
+                   'resilience': '#87BE3F', 'innovation': '#87BE3F', 'activite': '#FFC43D'}
+    colors = {metrics.SCORE_KEY_LABELS[k]: c for k, c in _key_colors.items()}
     for idx, criterion in enumerate(labels):
         ax = axes[idx]
         scores = scores_dict[criterion]

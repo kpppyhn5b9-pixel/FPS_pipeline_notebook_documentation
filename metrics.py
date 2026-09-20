@@ -712,15 +712,45 @@ REFERENCE_SCORE_KEYS = ('dispersion', 'regulation', 'fluidity', 'resilience', 'i
 # découle). L'innovation est une métrique d'IDENTITÉ : on l'observe, on
 # n'intervient pas dessus. Le geste « relâcher » n'existe pas encore.
 OBSERVE_ONLY_FILTERS = ('innovation',)
-# Libellés des figures et rapports, dans l'ordre d'affichage.
+# ============================================================================
+# NOMS AFFICHÉS (nettoyage 20/09/2026) — SOURCE UNIQUE pour le terminal, les
+# rapports, les figures et les exports lisibles. Les CLÉS (scores, filtres,
+# colonnes CSV du run) ne changent pas : elles sont consommées par le code.
+# Chaque nom dit ce que la métrique MESURE, pas ce qu'on aimerait qu'elle dise :
+#   dispersion  → « Dispersion »      (écart-type de S : amplitude, pas structure)
+#   regulation  → « Régulation »      (erreur |E−O| moyenne)
+#   fluidity    → « Fluidité jerk »   (jerk de l'enveloppe fₙ)
+#   resilience  → « Résilience CSD »  (ralentissement critique : autocorr des
+#                                       résidus de fₙ au lag calibré)
+#   innovation  → « Innovation C_JS » (complexité statistique de Rosso)
+#   activite    → « Activité »        (churn des paramètres, pas du stress)
+# ============================================================================
 SCORE_KEY_LABELS = {
-    'dispersion': 'Stabilité',
+    'dispersion': 'Dispersion',
     'regulation': 'Régulation',
-    'fluidity':   'Fluidité',
-    'resilience': 'Résilience',
-    'innovation': 'Innovation',
-    'activite':   'Effort interne',
+    'fluidity':   'Fluidité jerk',
+    'resilience': 'Résilience CSD',
+    'innovation': 'Innovation C_JS',
+    'activite':   'Activité',
 }
+# Même libellé par nom de FILTRE du switch ('stabilite' → « Dispersion », etc.),
+# plus les états non-métriques du switch.
+FILTER_LABELS = {f: SCORE_KEY_LABELS[k] for f, k in FILTER_TO_SCORE_KEY.items()}
+FILTER_LABELS['neutre'] = 'Neutre'
+
+
+def metric_label(name: str) -> str:
+    """
+    Nom affiché d'une métrique, depuis sa clé de score ('fluidity'), son nom de
+    filtre ('fluidite') ou un nom déjà affiché. Inconnu → renvoyé tel quel.
+    """
+    if name in SCORE_KEY_LABELS:
+        return SCORE_KEY_LABELS[name]
+    if name in FILTER_LABELS:
+        return FILTER_LABELS[name]
+    return str(name)
+
+
 NEUTRAL_SCORE = 3
 
 
