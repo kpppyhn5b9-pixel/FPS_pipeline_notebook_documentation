@@ -193,9 +193,7 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
             'innovation_cjs': 0.0,  # fₙ fixe : ordre pur → C_JS nul
             'mean_abs_error': 0.0,  # Pas de régulation
             'mean_high_effort': 0.0,
-            'd_effort_dt': 0.0,
-            't_retour': 0.0,
-            'continuous_resilience': 1.0  # Valeur par défaut
+            'd_effort_dt': 0.0
         }
         
         # Écrire dans le CSV
@@ -244,19 +242,10 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
     innovation_cjs = metrics.compute_innovation_cjs(_fn_env, dt)  # fₙ fixe → 0.0 (None si run < 200 pas)
     final_fluidity = metrics.compute_fluidity(_fn_env[-W:])
     
-    # Temps de retour après perturbation (même settling-time que la FPS)
-    if pert_type != 'none' and pert_t0 < T/2:
-        t_retour = metrics.compute_t_retour(S_history, int(pert_t0 / dt), dt)
-    else:
-        t_retour = 0.0
-    
-    # Résilience continue pour perturbations non-ponctuelles
-    if pert_type in ['sinus', 'bruit', 'rampe']:
-        continuous_resilience = metrics.compute_continuous_resilience(
-            C_history, S_history, perturbation_active=True
-        )
-    else:
-        continuous_resilience = None  # pas de perturbation continue : pas de verdict
+    # Résilience = ralentissement critique sur la couche lente (même fonction que
+    # la FPS). Fréquences fixes → enveloppe plate → aucun verdict (None).
+    _csd = metrics.compute_resilience_csd(_fn_env, dt)
+    resilience_ac = None if _csd is None else _csd['ac']
     
     # Résultats finaux
     results = {
@@ -270,10 +259,9 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
             'final_order': order_params[-1],
             'final_fluidity': float(final_fluidity),
             'innovation_cjs': innovation_cjs,
-            't_retour': t_retour,
+            'resilience_ac': resilience_ac,
             'mean_effort': 0.0,  # Toujours 0 pour Kuramoto
-            'mode': 'Kuramoto',
-            'continuous_resilience': continuous_resilience
+            'mode': 'Kuramoto'
         },
         'history': history,
         'run_id': loggers['run_id'],
@@ -349,10 +337,11 @@ def compare_with_fps(kuramoto_results: Dict, fps_results: Dict) -> Dict[str, Any
                               kuramoto_results['metrics'].get('std_S', float('inf')) else 'kuramoto'
         },
         'resilience': {
-            'kuramoto': kuramoto_results['metrics'].get('t_retour', float('inf')),
-            'fps': fps_results['metrics'].get('t_retour', float('inf')),
-            'winner': 'fps' if fps_results['metrics'].get('t_retour', float('inf')) < 
-                              kuramoto_results['metrics'].get('t_retour', float('inf')) else 'kuramoto'
+            # autocorr CSD : BASSE = retour rapide = résilient ; None = pas de verdict
+            'kuramoto': kuramoto_results['metrics'].get('resilience_ac'),
+            'fps': fps_results['metrics'].get('resilience_ac'),
+            'winner': 'fps' if (fps_results['metrics'].get('resilience_ac') if fps_results['metrics'].get('resilience_ac') is not None else float('inf')) <
+                              (kuramoto_results['metrics'].get('resilience_ac') if kuramoto_results['metrics'].get('resilience_ac') is not None else float('inf')) else 'kuramoto'
         },
         'cpu_efficiency': {
             'kuramoto': kuramoto_results['metrics'].get('mean_cpu_step', float('inf')),

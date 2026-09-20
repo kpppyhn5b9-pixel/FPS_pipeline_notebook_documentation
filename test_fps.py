@@ -360,62 +360,6 @@ class TestMetrics(unittest.TestCase):
         # Sans dimension : invariante à l'échelle
         self.assertAlmostEqual(metrics.compute_fluidity(10 * noisy), f_noisy, places=9)
     
-    def test_compute_adaptive_resilience(self):
-        """Test de la résilience adaptative."""
-        # Configuration avec perturbation continue
-        config_continuous = {
-            'system': {
-                'input': {
-                    'perturbations': [
-                        {'type': 'sinus', 'amplitude': 0.5, 'freq': 0.1}
-                    ]
-                }
-            }
-        }
-        
-        # Configuration avec perturbation ponctuelle
-        config_punctual = {
-            'system': {
-                'input': {
-                    'perturbations': [
-                        {'type': 'choc', 'amplitude': 2.0, 't0': 10}
-                    ]
-                }
-            }
-        }
-        
-        # Test avec perturbation continue
-        metrics_cont = {'continuous_resilience': 0.85}
-        result_cont = metrics.compute_adaptive_resilience(
-            config_continuous, metrics_cont
-        )
-        
-        self.assertEqual(result_cont['type'], 'continuous')
-        self.assertEqual(result_cont['metric_used'], 'continuous_resilience')
-        self.assertEqual(result_cont['value'], 0.85)
-        # UN SEUL barème : celui du switch (SCORE_BRACKETS['resilience'])
-        self.assertEqual(result_cont['score'], metrics.score_from_brackets(0.85, 'resilience'))
-        self.assertEqual(result_cont['score'], 4)  # 0.85 → score 4
-        
-        # Test avec perturbation ponctuelle
-        metrics_punct = {'t_retour': 1.5}
-        result_punct = metrics.compute_adaptive_resilience(
-            config_punctual, metrics_punct
-        )
-        
-        self.assertEqual(result_punct['type'], 'punctual')
-        self.assertEqual(result_punct['metric_used'], 't_retour')
-        self.assertAlmostEqual(result_punct['value'], 1.0 / (1.0 + 1.5))
-        # Même barème que le switch, appliqué à la valeur normalisée
-        self.assertEqual(result_punct['score'], metrics.score_from_brackets(result_punct['value'], 'resilience'))
-        
-        # Test sans perturbation
-        config_none = {'system': {'input': {'perturbations': []}}}
-        result_none = metrics.compute_adaptive_resilience(config_none, {})
-        
-        self.assertEqual(result_none['type'], 'none')
-        self.assertEqual(result_none['metric_used'], 't_retour')
-    
     def test_compute_effort_status(self):
         """Test de la détection d'état d'effort."""
         # Effort stable
@@ -448,7 +392,7 @@ class TestReferenceScores(unittest.TestCase):
             hist.append({
                 't': t, 'S(t)': float(np.sum(O)) * 0.5, 'O': O, 'E': E, 'fn': fn,
                 'mean_abs_error': float(np.mean(np.abs(E - O))),
-                'effort(t)': 20.0 + rng.rand(), 'adaptive_resilience': 0.8,
+                'effort(t)': 20.0 + rng.rand(), 'resilience_ac': 0.30 + 0.0001 * i,  # moniteur lent loggé (autocorr CSD)
                 'On_mean(t)': float(np.mean(O)), 'fn_mean(t)': float(np.mean(fn)),
                 'innovation_cjs': 0.25 + 0.0001 * i,  # moniteur lent loggé (C_JS enveloppe fₙ)
             })
@@ -479,9 +423,10 @@ class TestReferenceScores(unittest.TestCase):
         self.assertAlmostEqual(raw['innovation'], float(hist[-1]['innovation_cjs']))
         self.assertAlmostEqual(raw['regulation'], float(np.mean([h['mean_abs_error'] for h in hist])))
         self.assertAlmostEqual(raw['activite'], float(np.mean([h['effort(t)'] for h in hist])))
-        self.assertAlmostEqual(raw['resilience'], 0.8)
+        # résilience = moniteur lent loggé : dernière valeur 'resilience_ac' de la fenêtre
+        self.assertAlmostEqual(raw['resilience'], float(hist[-1]['resilience_ac']))
         self.assertEqual(metrics.score_reference_metrics(raw)['resilience'],
-                         metrics.score_from_brackets(0.8, 'resilience'))
+                         metrics.score_from_brackets(hist[-1]['resilience_ac'], 'resilience'))
 
     def test_signal_target_changes_only_signal_metrics(self):
         hist = self._history()[-50:]
@@ -502,7 +447,7 @@ class TestReferenceScores(unittest.TestCase):
     def test_no_resilience_verdict_is_neutral(self):
         hist = self._history()[-50:]
         for h in hist:
-            h['adaptive_resilience'] = None
+            h['resilience_ac'] = None
         sc = metrics.compute_reference_scores(hist, 0.1, signal='O', N=3)
         self.assertEqual(sc['resilience'], metrics.NEUTRAL_SCORE)
         self.assertEqual(set(metrics.labelled_scores(sc).keys()), set(metrics.SCORE_KEY_LABELS.values()))
@@ -572,6 +517,60 @@ class TestReferenceScores(unittest.TestCase):
             self.assertIsNotNone(c)
             self.assertTrue(0.0 <= c <= 0.6)
         self.assertLess(c_noise, 0.2)  # le bruit N'EST PAS noté "innovant"
+
+
+class TestResilienceCSD(unittest.TestCase):
+    """Résilience = ralentissement critique : banc AR(1) du cahier (New_Attention.md)."""
+
+    @staticmethod
+    def _ar1(phi, n=4000, seed=0):
+        rng = np.random.RandomState(seed)
+        x = np.zeros(n)
+        for i in range(1, n):
+            x[i] = phi * x[i - 1] + rng.randn()
+        return x
+
+    def test_ar1_pole_recovered_and_drive_detrended(self):
+        # Grille pré-enregistrée : lag-1 pur ≈ φ ; + forçage : brut aveugle (~0.96),
+        # détrendé ≈ φ. Reproduit la table du cahier.
+        for phi in (0.6, 0.8, 0.9, 0.95):
+            x = self._ar1(phi)
+            drive = 5 * x.std() * np.sin(2 * np.pi * np.arange(len(x)) / 50)
+            self.assertAlmostEqual(metrics.lag_autocorrelation(x, 1), phi, delta=0.03)
+            self.assertGreater(metrics.lag_autocorrelation(x + drive, 1), 0.93)
+            r = metrics.compute_resilience_csd(x + drive, 0.1, lag=1)
+            self.assertAlmostEqual(r['ac'], phi, delta=0.03)
+            self.assertGreaterEqual(r['n_peaks'], 1)
+        # Spectre rouge lisse : aucune raie retirée
+        self.assertEqual(metrics.compute_resilience_csd(self._ar1(0.8), 0.1, lag=1)['n_peaks'], 0)
+
+    def test_relaxation_is_the_single_timescale(self):
+        # AR(1) φ=0.9 : temps de retour −1/ln φ ≈ 9.5 pas → relaxation 1/e ≈ 9-10 pas
+        relax = metrics.relaxation_steps(self._ar1(0.9, n=20000))
+        self.assertTrue(7 <= relax <= 12, relax)
+        self.assertEqual(metrics.relaxation_steps([1.0] * 50), 10)  # plat → défaut
+
+    def test_contract_none_and_direction(self):
+        self.assertIsNone(metrics.compute_resilience_csd([0.0, 1.0] * 20, 0.1))       # trop court
+        self.assertIsNone(metrics.compute_resilience_csd([1.0] * 300, 0.1))           # plat
+        self.assertIsNone(metrics.compute_resilience_csd(np.sin(2 * np.pi * np.arange(400) / 20), 0.1))  # sinus pur : résidus nuls
+        # Barème monotone unilatéral : autocorr basse = 5, haute = 1
+        self.assertEqual(metrics.score_from_brackets(0.33, 'resilience'), 5)
+        self.assertEqual(metrics.score_from_brackets(0.50, 'resilience'), 4)
+        self.assertEqual(metrics.score_from_brackets(0.95, 'resilience'), 1)
+        self.assertEqual(metrics.SCORE_BRACKETS['resilience']['direction'], 'lower')
+
+    def test_radar_alert_rule(self):
+        # Calme stationnaire : jamais d'alerte. Montée conjointe ac+var : alerte.
+        rng = np.random.RandomState(1)
+        calm_ac = list(0.30 + 0.02 * rng.randn(160)); calm_var = list(1e-3 + 1e-4 * rng.randn(160))
+        self.assertEqual(metrics.resilience_alert(calm_ac, calm_var, calm_n=100, band=0.06, n_windows=3, stride=10), 0)
+        rise_ac = calm_ac + list(np.linspace(0.35, 0.65, 60)); rise_var = calm_var + list(np.linspace(1.2e-3, 3e-3, 60))
+        self.assertEqual(metrics.resilience_alert(rise_ac, rise_var, calm_n=100, band=0.06, n_windows=3, stride=10), 1)
+        # Un seul indicateur qui monte = suspect, pas d'alerte (convergence exigée)
+        self.assertEqual(metrics.resilience_alert(rise_ac, calm_var + [1e-3] * 60, calm_n=100, band=0.06, n_windows=3, stride=10), 0)
+        # Sans référence calme complète : jamais d'alerte
+        self.assertEqual(metrics.resilience_alert(rise_ac[:50], rise_var[:50], calm_n=100), 0)
 
 
 class TestValidateConfig(unittest.TestCase):
@@ -926,6 +925,7 @@ def run_all_tests():
         TestRegulation,
         TestMetrics,
         TestReferenceScores,
+        TestResilienceCSD,
         TestValidateConfig,
         TestPerturbations,
         TestAnalyze,

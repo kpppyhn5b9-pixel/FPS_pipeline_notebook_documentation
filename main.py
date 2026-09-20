@@ -557,17 +557,17 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
             except Exception as e:
                 print(f"    ⚠️ plot_signal_scores_S_vs_O : {e}")
 
-            # 11. Résilience adaptative
+            # 11. Résilience (ralentissement critique, couche lente)
             try:
-                print("  → Résilience adaptative...")
-                fig10 = FPS_MODULES['visualize'].plot_adaptive_resilience(history)
+                print("  → Résilience (CSD)...")
+                fig10 = FPS_MODULES['visualize'].plot_resilience_csd(history)
                 if fig10 is not None:
-                    path10 = os.path.join(dirs['figures'], 'adaptive_resilience.png')
+                    path10 = os.path.join(dirs['figures'], 'resilience_csd.png')
                     fig10.savefig(path10, dpi=150, bbox_inches='tight')
-                    figures_paths['adaptive_resilience'] = path10
+                    figures_paths['resilience_csd'] = path10
                     plt.close(fig10)
             except Exception as e:
-                print(f"    ⚠️ plot_adaptive_resilience : {e}")
+                print(f"    ⚠️ plot_resilience_csd : {e}")
 
             # 11. Timeline des découvertes (γ, G)
             try:
@@ -607,7 +607,7 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
                     ('effort(t)', 'fluidity'),
                     ('innovation_cjs', 'mean_abs_error'),
                     ('An_mean(t)', 'fn_mean(t)'),
-                    ('gamma', 'adaptive_resilience'),
+                    ('gamma', 'resilience_ac'),
                     ('effort(t)', 'mean_abs_error'),
                 ]
                 path13 = os.path.join(dirs['figures'], 'scatter_pairs.png')
@@ -720,7 +720,7 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
                 print(f"    ⚠️ plot_exploration_analysis : {e}")
 
             # 20-22. Métriques clés en vue détaillée
-            for _metric in ['effort(t)', 'fluidity', 'adaptive_resilience']:
+            for _metric in ['effort(t)', 'fluidity', 'resilience_ac']:
                 try:
                     print(f"  → Métrique détaillée : {_metric}...")
                     _slug = _metric.replace('(', '').replace(')', '').replace(' ', '_')
@@ -844,7 +844,7 @@ def get_criteria_terms_mapping() -> Dict[str, List[str]]:
         'Stabilité': ['S(t)', 'C(t)', 'φₙ(t)', 'L(t)', 'dispersion'],
         'Régulation': ['Fₙ(t)', 'G(x)', 'γ(t)', 'Aₙ(t)', 'mean_abs_error'],
         'Fluidité': ['γₙ(t)', 'σ(x)', 'envₙ(x,t)', 'μₙ(t)', 'fluidity'],
-        'Résilience': ['Aₙ(t)', 'G(x,t)', 'effort(t)', 'adaptive_resilience'],
+        'Résilience': ['Aₙ(t)', 'G(x,t)', 'fₙ(t)', 'resilience_ac'],
         'Innovation': ['A_spiral(t)', 'Eₙ(t)', 'r(t)', 'innovation_cjs'],
         'Effort interne': ['effort(t)', 'd_effort/dt', 'mean_high_effort']
     }

@@ -1962,11 +1962,10 @@ def compute_perception_deficit(kind: str, On_win: np.ndarray, An_win: np.ndarray
         dF = np.abs(np.diff(fn_win, axis=0)) / (np.abs(fn_win[1:]) + eps)
         return (dA + dF).mean(axis=0)
     if kind == 'resilience':
-        # Tenue de soi LOCALE, grammaire allégée des enveloppes de santé :
-        # profondeur d'excursion de la voix en unités de son PROPRE IQR fenêtré
-        # (médiane/IQR = même vocabulaire que la santé globale ; pas d'épisodes
-        # ni de gel ici — c'est un signal de PONDÉRATION rapide, pas un verdict
-        # de santé ; le verdict complet reste l'affaire de resilience_env).
+        # Résilience-EXCURSION locale (métrique d'attention, New_Attention.md) :
+        # profondeur d'excursion de la voix en unités de son PROPRE IQR fenêtré.
+        # Signal de PONDÉRATION rapide par strate ; le verdict global de résilience
+        # est le ralentissement critique (metrics.compute_resilience_csd).
         med = np.median(On_win, axis=0)
         q75, q25 = np.percentile(On_win, [75, 25], axis=0)
         iqr = np.maximum(q75 - q25, 1e-9)

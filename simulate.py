@@ -205,10 +205,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
     run_id = loggers['run_id']
     t_array = np.arange(0, T, dt)
     backup_interval = 100
-    # Chercher t_choc depuis la config de perturbations
-    perturbations_cfg = config.get('system', {}).get('input', {}).get('perturbations', [])
-    choc_pert = [p for p in perturbations_cfg if p.get('type') == 'choc']
-    t_choc = choc_pert[0].get('t0', T/2) if choc_pert else None
     # Initialiser les signaux de feedback à zéro
     F_n_t_An = np.zeros(N)
     F_n_t_fn = np.zeros(N)
@@ -227,9 +223,23 @@ def run_fps_simulation(config, state, loggers, strict=False):
             _pw = np.array([])
         _rloc_neigh.append((_idx, _pw))
     mu_Rloc_history = []
-    # Résilience par enveloppes de santé (étage 2, spec 13/07/2026)
-    resilience_env_state = metrics.init_resilience_envelope_state(config) if hasattr(metrics, 'init_resilience_envelope_state') else None
-    resilience_mode = config.get('resilience_v2', {}).get('mode', 'auto')
+    # Résilience = ralentissement critique sur la couche lente (New_Attention.md) :
+    # autocorrélation à lag calibré des résidus détrendés de l'enveloppe fₙ, sur
+    # une fenêtre LONGUE. Le lag est calibré UNE fois (relaxation 1/e) puis figé :
+    # c'est la condition pour qu'une montée (CSD) soit visible. Sans config, sans
+    # choc à induire : elle lit la turbulence spontanée du système.
+    _rcfg = config.get('resilience', {})
+    _W_res = max(int(_rcfg.get('min_points', 200)),
+                 int(round(float(_rcfg.get('W_res_t', 40.0)) / dt)))
+    resilience_state = {
+        'lag': (int(_rcfg['lag']) if _rcfg.get('lag') else None),  # None → auto-calibré
+        'ac_hist': [], 'var_hist': [],
+        'peak_ratio': float(_rcfg.get('peak_ratio', 10.0)),
+        'max_peaks': int(_rcfg.get('max_peaks', 5)),
+        'calm_n': int(_rcfg.get('alert_calm_n', 100)),
+        'band': float(_rcfg.get('alert_band', 0.06)),
+        'n_windows': int(_rcfg.get('alert_windows', 3)),
+    }
     # Filtres de perception (spec 15/07/2026) — état du switch
     _pcfg = config.get('perception', {})
     perception_mode = _pcfg.get('filter_mode', 'static')
@@ -763,8 +773,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # (_W_innov ≥ 200, bien plus large que W_f~50) ; tant qu'on n'a pas
             # assez de points → None (verdict suspendu, score neutre côté scoreur).
             # C'est LA colonne d'innovation : plus d'entropie spectrale.
+            _W_long = max(_W_innov, _W_res)
+            _fn_env_long = [float(np.mean(f)) for f in fn_history[-_W_long:]]
             if len(fn_history) >= 200:
-                _fn_env = [float(np.mean(f)) for f in fn_history[-_W_innov:]]
+                _fn_env = _fn_env_long[-_W_innov:]
                 _plane = metrics.compute_innovation_plane(_fn_env, dt)
                 innovation_cjs = None if _plane is None else _plane['C']
                 innovation_H = None if _plane is None else _plane['H']  # côté de la cloche
@@ -830,67 +842,32 @@ def run_fps_simulation(config, state, loggers, strict=False):
             else:
                 d_effort_dt = 0.0
             
-            # Calcul t_retour (résilience) - après perturbation
-            if t_choc is not None and t > t_choc and len(S_history) > int(t_choc/dt):
-                t_retour = metrics.compute_t_retour(S_history, int(t_choc/dt), dt, 0.95) if hasattr(metrics, 'compute_t_retour') else 0.0
-            else:
-                t_retour = 0.0
-            
-            # Résilience continue — pour perturbations non-ponctuelles.
-            perturbations_list = config.get('system', {}).get('input', {}).get('perturbations', [])
-            perturbation_active = len(perturbations_list) > 0 and any(p.get('type', 'none') != 'none' for p in perturbations_list)
-            # On passe le VRAI perturbation_active. La fonction décide :
-            # pas de perturbation → None (au repos, la tenue de soi est mesurée
-            # par μ_Rloc, pas décrétée) ; sous perturbation mais < 20 pts →
-            # None aussi (verdict suspendu, humilité de démarrage).
-            if hasattr(metrics, 'compute_continuous_resilience'):
-                continuous_resilience = metrics.compute_continuous_resilience(
-                    C_history, S_history, perturbation_active
-                )
-            else:
-                continuous_resilience = 1.0
-            
-            # Résilience (lot v2 + étage 2 enveloppes, spec 13/07/2026) :
-            # Les enveloppes de santé sont TOUJOURS calculées et loggées
-            # (route de validation). Le score fourni à gamma dépend du mode :
-            #   'auto'     : enveloppes au repos, chemin typé sous perturbation
-            #   'envelope' : enveloppes partout (mode terrain)
-            #   'typed'    : chemin typé partout (rétro-compatibilité)
-            env_result = None
-            if resilience_env_state is not None and hasattr(metrics, 'update_resilience_envelope'):
-                env_result = metrics.update_resilience_envelope(
-                    resilience_env_state,
-                    {'mu_Rloc': mu_Rloc_t, 'effort': effort_t, 'mean_abs_error': mean_abs_error},
-                    t, dt
-                )
-            use_envelope = (resilience_mode == 'envelope') or \
-                           (resilience_mode == 'auto' and not perturbation_active)
-            adaptive_resilience = 0.0
-            adaptive_resilience_score = 3
-            if use_envelope and env_result is not None:
-                adaptive_resilience = env_result['value']
-                # UN SEUL barème (SCORE_BRACKETS['resilience']) ; None = verdict suspendu → neutre
-                adaptive_resilience_score = (metrics.NEUTRAL_SCORE if adaptive_resilience is None
-                                             else metrics.score_from_brackets(float(adaptive_resilience), 'resilience'))
-            elif hasattr(metrics, 'compute_adaptive_resilience'):
-                # Créer un dict temporaire avec les métriques actuelles.
-                # Moyenne None-safe : un verdict suspendu (None) ne compte pas.
-                cont_vals = [v for v in (h.get('continuous_resilience') for h in history[-100:]) if v is not None]
-                cont_mean = float(np.mean(cont_vals)) if cont_vals else None
-                current_metrics = {
-                    't_retour': t_retour,
-                    'continuous_resilience': continuous_resilience,
-                    'continuous_resilience_mean': cont_mean
-                }
-                
-                # Calculer la résilience adaptative
-                resilience_result = metrics.compute_adaptive_resilience(
-                    config, current_metrics, C_history, S_history, 
-                    int(t_choc/dt) if t_choc is not None and t > t_choc else None, dt
-                )
-                
-                adaptive_resilience = resilience_result.get('value', 0.0)
-                adaptive_resilience_score = resilience_result.get('score', 3)
+            # ----------- RÉSILIENCE : ralentissement critique (couche lente) -----------
+            # UNE quantité (New_Attention.md) : autocorrélation à lag calibré des
+            # résidus détrendés de l'enveloppe fₙ + variance des résidus + radar.
+            resilience_ac = None
+            resilience_var = None
+            resilience_lag = resilience_state['lag']
+            resilience_alert_flag = 0
+            if len(fn_history) >= _W_res:
+                _csd = metrics.compute_resilience_csd(
+                    _fn_env_long[-_W_res:], dt, lag=resilience_state['lag'],
+                    min_points=_W_res, peak_ratio=resilience_state['peak_ratio'],
+                    max_peaks=resilience_state['max_peaks'])
+                if _csd is not None:
+                    if resilience_state['lag'] is None:
+                        resilience_state['lag'] = _csd['lag']  # calibré une fois, figé ensuite
+                    resilience_lag = _csd['lag']
+                    resilience_ac, resilience_var = _csd['ac'], _csd['var']
+                    resilience_state['ac_hist'].append(resilience_ac)
+                    resilience_state['var_hist'].append(resilience_var)
+                    resilience_alert_flag = metrics.resilience_alert(
+                        resilience_state['ac_hist'], resilience_state['var_hist'],
+                        calm_n=resilience_state['calm_n'], band=resilience_state['band'],
+                        n_windows=resilience_state['n_windows'], stride=resilience_lag)
+            # UN SEUL barème (SCORE_BRACKETS['resilience']) ; None = verdict suspendu → neutre
+            resilience_score = (metrics.NEUTRAL_SCORE if resilience_ac is None
+                                else metrics.score_from_brackets(float(resilience_ac), 'resilience'))
             
             # NOUVEAU: Calcul des moyennes En, On et gamma pour le logging
             En_mean_t = np.mean(En_t) if isinstance(En_t, np.ndarray) else En_t
@@ -923,18 +900,13 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'mean_abs_error': mean_abs_error,
                 'mean_high_effort': mean_high_effort,
                 'd_effort_dt': d_effort_dt,
-                't_retour': t_retour,
-                'continuous_resilience': continuous_resilience,
                 'mu_Rloc(t)': mu_Rloc_t,
-                'resilience_env(t)': (env_result['value'] if env_result else None),
-                'D_excursion(t)': (env_result['D'] if env_result else 0.0),
-                'D_mean(t)': (env_result['D_mean'] if env_result else 0.0),
-                'D_max(t)': (env_result['D_max'] if env_result else 0.0),
-                'D_rms(t)': (env_result['D_rms'] if env_result else 0.0),
-                'resilience_metric_used': (env_result['metric_used'] if env_result else None),
+                'resilience_ac': resilience_ac,        # autocorr CSD des résidus de fₙ (moniteur lent)
+                'resilience_var': resilience_var,      # variance des résidus (radar : monte avec l'ac)
+                'resilience_lag': resilience_lag,      # lag calibré (figé), en pas
+                'resilience_alert': resilience_alert_flag,  # radar CSD : 1 = alerte précoce
+                'resilience_score': resilience_score,
                 'perception_filter': perception_state['filter'],
-                'adaptive_resilience': adaptive_resilience,
-                'adaptive_resilience_score': adaptive_resilience_score,
                 'En_mean(t)': En_mean_t,
                 'On_mean(t)': On_mean_t,
                 'gamma': gamma_t,  # Ajouter gamma global
@@ -960,7 +932,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('adaptive_resilience', 'continuous_resilience', 'innovation_cjs', 'innovation_H'):
+            for _rk in ('resilience_ac', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -968,8 +940,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # SAUF les champs textuels et ceux où NaN est intentionnel
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
-                                 'adaptive_resilience', 'continuous_resilience', 'innovation_cjs', 'innovation_H',
-                                 'resilience_env(t)', 'resilience_metric_used', 'perception_filter'}
+                                 'resilience_ac', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H',
+                                 'perception_filter'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -978,8 +950,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # ----------- 4. VÉRIFICATION NaN/Inf SYSTÉMATIQUE -------------
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
-                             'adaptive_resilience', 'continuous_resilience', 'innovation_cjs', 'innovation_H',
-                             'resilience_env(t)', 'resilience_metric_used', 'perception_filter'}
+                             'resilience_ac', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H',
+                             'perception_filter'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -1094,17 +1066,13 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'In': In_t,
                 'An_mean(t)': A_mean_t,
                 'fn_mean(t)': f_mean_t,
-                'continuous_resilience': continuous_resilience,
                 'mu_Rloc(t)': mu_Rloc_t,
-                'resilience_env(t)': (env_result['value'] if env_result else None),
-                'D_excursion(t)': (env_result['D'] if env_result else 0.0),
-                'D_mean(t)': (env_result['D_mean'] if env_result else 0.0),
-                'D_max(t)': (env_result['D_max'] if env_result else 0.0),
-                'D_rms(t)': (env_result['D_rms'] if env_result else 0.0),
-                'resilience_metric_used': (env_result['metric_used'] if env_result else None),
+                'resilience_ac': resilience_ac,
+                'resilience_var': resilience_var,
+                'resilience_lag': resilience_lag,
+                'resilience_alert': resilience_alert_flag,
+                'resilience_score': resilience_score,
                 'perception_filter': perception_state['filter'],
-                'adaptive_resilience': adaptive_resilience,
-                'adaptive_resilience_score': adaptive_resilience_score,
                 'gamma': gamma_t,
                 'phi': phi_reg,  # Phi adaptatif de régulation
                 'G_arch_used': G_arch_dominant if 'G_arch_dominant' in locals() else 'tanh',
@@ -1192,15 +1160,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 pass
         
         # Calcul des statistiques finales pour le résumé
-        # Calculer la moyenne de continuous_resilience depuis l'historique
-        continuous_resilience_values = []
-        for h in history:
-            v = h.get('continuous_resilience')
-            if v is not None:  # un verdict suspendu (None) ne compte pas
-                continuous_resilience_values.append(v)
-        continuous_resilience_mean = (np.mean(continuous_resilience_values) if continuous_resilience_values
-                                       else float(continuous_resilience) if continuous_resilience is not None
-                                       else float('nan'))
+        # Résilience (moniteur lent CSD) : dernière valeur, moyenne, lag, nb d'alertes
+        res_ac_values = [h['resilience_ac'] for h in history
+                         if h.get('resilience_ac') is not None and np.isfinite(h['resilience_ac'])]
+        res_alerts = int(sum(1 for h in history if h.get('resilience_alert')))
         
         # Innovation (moniteur lent) : dernière valeur et moyenne des verdicts rendus
         innov_values = [h['innovation_cjs'] for h in history
@@ -1220,15 +1183,12 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'final_fluidity': float(fluidity) if 'fluidity' in locals() and fluidity is not None else 0.0,
             'final_mean_abs_error': float(mean_abs_error) if mean_abs_error is not None else 0.0,
             'mean_C': float(np.mean(C_history)) if C_history else float('nan'),
-            'resilience_t_retour': float(t_retour) if t_retour is not None else 0.0,
-            'continuous_resilience': float(continuous_resilience) if continuous_resilience is not None else float('nan'),
-            'continuous_resilience_mean': float(continuous_resilience_mean),
-            # None = verdict suspendu (run trop court sous perturbation) → NaN,
-            # jamais float(None) qui crasherait, ni un 0.0/1.0 trompeur.
-            'adaptive_resilience': (float(adaptive_resilience)
-                                    if 'adaptive_resilience' in locals() and adaptive_resilience is not None
-                                    else float('nan')),
-            'adaptive_resilience_score': int(adaptive_resilience_score) if 'adaptive_resilience_score' in locals() else 3,
+            # Résilience CSD : None = verdict suspendu (run trop court) → NaN, jamais un 0/1 trompeur.
+            'resilience_ac': float(res_ac_values[-1]) if res_ac_values else float('nan'),
+            'resilience_ac_mean': float(np.mean(res_ac_values)) if res_ac_values else float('nan'),
+            'resilience_lag': (int(resilience_state['lag']) if resilience_state['lag'] else None),
+            'resilience_alerts': res_alerts,
+            'resilience_score': int(resilience_score) if 'resilience_score' in locals() else metrics.NEUTRAL_SCORE,
             'total_steps': len(t_array),
             'recorded_steps': len(S_history),
             'dt': float(dt),

@@ -439,21 +439,21 @@ def plot_exploration_analysis(df: pd.DataFrame) -> plt.Figure:
                     axes[1, 0].set_xlabel('Effort')
                     axes[1, 0].set_ylabel('Fluidité')
 
-                # 4. Évolution de la résilience
-                if 'continuous_resilience' in df.columns:
-                    axes[1, 1].plot(df['t'], df['continuous_resilience'], 
+                # 4. Évolution de la résilience (autocorr CSD des résidus de fₙ : basse = résilient)
+                if 'resilience_ac' in df.columns:
+                    axes[1, 1].plot(df['t'], df['resilience_ac'], 
                     'g-', linewidth=2, alpha=0.8)
-                    axes[1, 1].set_title('Résilience continue', fontweight='bold')
+                    axes[1, 1].set_title('Résilience (autocorr CSD, basse = résilient)', fontweight='bold')
                     axes[1, 1].set_xlabel('Temps')
-                    axes[1, 1].set_ylabel('Résilience')
-                    axes[1, 1].set_ylim(0, 1.1)
+                    axes[1, 1].set_ylabel('autocorr résidus fₙ')
+                    axes[1, 1].set_ylim(-1.05, 1.05)
 
                 # 5. Matrice de corrélation (sélection de métriques)
                 metrics_to_correlate = ['S(t)', 'C(t)', 'effort(t)', 'mean_abs_error']
                 if 'fluidity' in df.columns:
                     metrics_to_correlate.append('fluidity')
-                if 'continuous_resilience' in df.columns:
-                    metrics_to_correlate.append('continuous_resilience')
+                if 'resilience_ac' in df.columns:
+                    metrics_to_correlate.append('resilience_ac')
 
                 corr_matrix = df[metrics_to_correlate].corr()
                 im = axes[2, 0].imshow(corr_matrix, cmap='coolwarm', vmin=-1, vmax=1, aspect='auto')
@@ -1338,7 +1338,7 @@ def plot_metrics_evolution(history: List[Dict],
             'Fréquence': ['fn_mean(t)'],
             'Amplitude': ['An_mean(t)'],
             'Temps Caractéristiques': ['tau_A_mean', 'tau_f_mean', 'tau_S', 'tau_gamma'],
-            'Résilience': ['adaptive_resilience', 'continuous_resilience'],
+            'Résilience': ['resilience_ac', 'resilience_var'],
             'Best Pair': ['best_pair_score', 'best_pair_gamma'],
             'Input' : ['In_mean(t)'],
             'Erreur' : ['En_mean(t)', 'On_mean(t)']
@@ -1592,7 +1592,7 @@ def analyze_correlations(history: List[Dict],
             'An_mean(t)', 'fn_mean(t)',
             'En_mean(t)', 'On_mean(t)', 'In_mean(t)',
             'tau_A_mean', 'tau_f_mean', 'tau_S',
-            'temporal_coherence', 'adaptive_resilience', 'continuous_resilience',
+            'temporal_coherence', 'resilience_ac', 'resilience_var',
             'best_pair_score', 'best_pair_gamma',
             'decorrelation_time', 'autocorr_tau',
             'mean_high_effort', 'd_effort_dt'
@@ -2506,8 +2506,8 @@ def export_html_report(all_data: Dict[str, Any], output_path: str) -> None:
             if isinstance(value, (int, float)):
                 # Formater intelligemment selon la valeur
                 if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
-                    # Verdict non applicable (ex: continuous_resilience au repos,
-                    # par design v2) : affichage honnête, jamais un crash int(NaN).
+                    # Verdict non applicable (ex: resilience_ac ou innovation_cjs
+                    # en warmup) : affichage honnête, jamais un crash int(NaN).
                     formatted_value = "n/a"
                 elif abs(value) < 0.001 and value != 0:
                     # Notation scientifique pour les très petites valeurs
@@ -2672,139 +2672,74 @@ if __name__ == "__main__":
     plt.show()
 
 
-def plot_adaptive_resilience(metrics_history: Union[Dict[str, List], List[Dict]], 
-                           perturbation_type: str = 'none') -> plt.Figure:
+def plot_resilience_csd(metrics_history: Union[Dict[str, List], List[Dict]]) -> plt.Figure:
     """
-    Affiche la métrique de résilience adaptative unifiée.
-    
-    Utilise adaptive_resilience qui sélectionne automatiquement entre:
-    - t_retour pour les perturbations ponctuelles (choc)
-    - continuous_resilience pour les perturbations continues (sinus, bruit, rampe)
-    
-    Args:
-        metrics_history: historique des métriques
-        perturbation_type: type de perturbation (détecté automatiquement si adaptive_resilience présent)
-    
-    Returns:
-        Figure matplotlib
+    Résilience = ralentissement critique (New_Attention.md) : autocorrélation, à
+    lag calibré, des résidus détrendés de l'enveloppe fₙ (basse = retour rapide
+    = résilient), variance des résidus (monte avec l'autocorr avant une bascule)
+    et radar (alerte = bande + tendance + convergence).
+
+    Deux panneaux : (1) resilience_ac avec les seuils du barème SCORE_BRACKETS
+    ['resilience'] et les alertes ombrées ; (2) resilience_var.
     """
-    # Convertir en format uniforme si nécessaire
     if isinstance(metrics_history, list) and len(metrics_history) > 0:
-        keys = metrics_history[0].keys()
-        history_dict = {k: [m.get(k, 0) for m in metrics_history] for k in keys}
+        keys = set()
+        for m in metrics_history:
+            keys.update(m.keys())
+        history_dict = {k: [m.get(k) for m in metrics_history] for k in keys}
     else:
         history_dict = metrics_history
-    
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Priorité à adaptive_resilience si disponible
-    if 'adaptive_resilience' in history_dict:
-        data = history_dict['adaptive_resilience']
-        scores = history_dict.get('adaptive_resilience_score', [3] * len(data))
-        # None = verdict suspendu (humilité de démarrage, v2) -> NaN : matplotlib
-        # trace un trou, et plus aucune arithmétique ne rencontre un None.
-        data = [np.nan if v is None else float(v) for v in data]
-        scores = [3 if v is None else v for v in scores]
-        metric_name = "Résilience Adaptative"
-        ylabel = "Score unifié [0-1]"
-        description = "Métrique unifiée selon le type de perturbation"
-        color = FPS_COLORS['primary']
-        
-        # Déterminer automatiquement le type depuis les scores
-        if len(scores) > 0 and scores[0] is not None:
-            # Si on a des scores, on peut déduire le type de perturbation utilisé
-            perturbation_type = 'adaptatif'
-    
-    # Fallback sur les métriques individuelles
-    elif perturbation_type == 'choc':
-        # Perturbation ponctuelle : utiliser t_retour
-        if 't_retour' in history_dict:
-            data = history_dict['t_retour']
-            # Normaliser t_retour en score [0-1]
-            data = [1.0 / (1.0 + t) if t != 0 else 1.0 for t in data]
-            metric_name = "Résilience (basée sur t_retour)"
-            ylabel = "Score [0-1]"
-            description = "Temps de récupération normalisé après perturbation ponctuelle"
-            color = FPS_COLORS['warning']
-        else:
-            ax.text(0.5, 0.5, 'Données de résilience non disponibles', 
-                   transform=ax.transAxes, ha='center', va='center')
-            return fig
-    
-    elif perturbation_type in ['sinus', 'bruit', 'rampe']:
-        # Perturbation continue : utiliser continuous_resilience
-        if 'continuous_resilience' in history_dict:
-            data = history_dict['continuous_resilience']
-            metric_name = "Résilience Continue"
-            ylabel = "Score [0-1]"
-            description = "Capacité à maintenir la cohérence sous perturbation continue"
-            color = FPS_COLORS['success']
-        else:
-            ax.text(0.5, 0.5, 'Données continuous_resilience non disponibles', 
-                   transform=ax.transAxes, ha='center', va='center')
-            return fig
-    
-    else:
-        # Pas de perturbation ou type inconnu
-        ax.text(0.5, 0.5, f'Type de perturbation "{perturbation_type}" non géré\n' + 
-                'Utilisez adaptive_resilience pour une sélection automatique',
-                transform=ax.transAxes, ha='center', va='center')
+
+    def _series(key):
+        vals = history_dict.get(key)
+        if vals is None:
+            return None
+        return np.array([np.nan if v is None else float(v) for v in np.atleast_1d(vals)], dtype=float)
+
+    ac = _series('resilience_ac')
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    if ac is None or not np.isfinite(ac).any():
+        axes[0].text(0.5, 0.5, "resilience_ac indisponible (fenêtre longue non atteinte ?)",
+                     transform=axes[0].transAxes, ha='center', va='center')
         return fig
-    
-    # Tracer la métrique
-    time_steps = np.arange(len(data))
-    ax.plot(time_steps, data, color=color, linewidth=2.5, alpha=0.8)
-    
-    # Ajouter une ligne de référence pour continuous_resilience
-    if perturbation_type in ['sinus', 'bruit', 'rampe']:
-        ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, 
-                  label='Seuil acceptable (0.5)')
-        ax.axhline(y=0.8, color='green', linestyle='--', alpha=0.5, 
-                  label='Seuil excellent (0.8)')
-        ax.set_ylim(-0.05, 1.05)
-    
-    # Mise en forme
-    ax.set_title(f'{metric_name} - {description}', fontsize=14, fontweight='bold')
-    ax.set_xlabel('Pas de temps')
-    ax.set_ylabel(ylabel)
+
+    t = _series('t')
+    x = t if t is not None and len(t) == len(ac) else np.arange(len(ac))
+    var = _series('resilience_var')
+    alert = _series('resilience_alert')
+    lag_s = _series('resilience_lag')
+    lag_txt = ''
+    if lag_s is not None and np.isfinite(lag_s).any():
+        lag_txt = f" — lag calibré : {int(np.nanmax(lag_s))} pas"
+
+    ax = axes[0]
+    ax.plot(x, ac, color=FPS_COLORS['primary'], linewidth=2, label='autocorr des résidus de fₙ (lag calibré)')
+    thr = metrics.SCORE_BRACKETS['resilience']['thresholds']
+    for s, v in zip((5, 4, 3, 2), thr):
+        ax.axhline(v, color='gray', linestyle='--', alpha=0.4, linewidth=0.8)
+        ax.text(x[-1], v, f' <{v:.2f} → {s}', va='center', fontsize=8, color='gray')
+    if alert is not None:
+        on = np.isfinite(alert) & (alert > 0)
+        if on.any():
+            ax.fill_between(x, -1.05, 1.05, where=on, color=FPS_COLORS['danger'], alpha=0.15,
+                            label='alerte CSD (radar)')
+    ax.set_ylim(-1.05, 1.05)
+    ax.set_ylabel('autocorr (basse = résilient)')
+    ax.set_title('Résilience — ralentissement critique sur la couche lente' + lag_txt, fontweight='bold')
+    ax.grid(True, alpha=0.3); ax.legend(loc='upper left')
+
+    ax = axes[1]
+    if var is not None:
+        ax.plot(x, var, color=FPS_COLORS['secondary'], linewidth=2, label='variance des résidus')
+        ax.legend(loc='upper left')
+    ax.set_ylabel('variance'); ax.set_xlabel('Temps')
     ax.grid(True, alpha=0.3)
-    
-    # Statistiques dans un encadré
-    mean_val = np.mean(data)
-    std_val = np.std(data)
-    final_val = data[-1] if len(data) > 0 else 0
-    
-    stats_text = f'Moyenne: {mean_val:.3f}\n'
-    stats_text += f'Écart-type: {std_val:.3f}\n'
-    stats_text += f'Valeur finale: {final_val:.3f}'
-    
-    # Ajouter interprétation pour continuous_resilience
-    if perturbation_type in ['sinus', 'bruit', 'rampe']:
-        if final_val >= 0.8:
-            interpretation = "Excellente résilience"
-            interp_color = 'green'
-        elif final_val >= 0.5:
-            interpretation = "Résilience acceptable"
-            interp_color = 'orange'
-        else:
-            interpretation = "Résilience faible"
-            interp_color = 'red'
-        stats_text += f'\n\nInterprétation: {interpretation}'
-    
-    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
-            verticalalignment='top', horizontalalignment='left',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7),
-            fontsize=10)
-    
-    # Légende si lignes de référence
-    if perturbation_type in ['sinus', 'bruit', 'rampe']:
-        ax.legend(loc='lower right')
-    
-    # Ajouter note sur le type de perturbation
-    ax.text(0.98, 0.02, f'Perturbation: {perturbation_type}', 
-           transform=ax.transAxes, ha='right', va='bottom',
-           style='italic', alpha=0.7)
-    
+
+    fin = ac[np.isfinite(ac)]
+    stats_text = (f"dernière : {fin[-1]:.3f}\nmoyenne : {np.mean(fin):.3f}\nécart-type : {np.std(fin):.3f}"
+                  + (f"\nalertes : {int(np.nansum(alert))}" if alert is not None else ''))
+    axes[0].text(0.99, 0.02, stats_text, transform=axes[0].transAxes, va='bottom', ha='right',
+                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7), fontsize=9)
     plt.tight_layout()
     return fig
 
