@@ -754,7 +754,19 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 entropy_S = metrics.compute_entropy_S(S_history[-_W_ref:], 1.0/dt)
             else:
                 entropy_S = 0.1
-            
+
+            # INNOVATION = moniteur LENT (métrique d'identité, pas d'attention) :
+            # complexité statistique C_JS de l'enveloppe fₙ sur une fenêtre LONGUE.
+            # C_JS a besoin de beaucoup de points pour une distribution de
+            # permutations stable → fenêtre ≥200 (bien plus large que W_f~50) ;
+            # tant qu'on n'a pas assez de points → None (score neutre côté scoreur).
+            _W_innov = max(200, 4 * _W_ref)
+            if len(fn_history) >= 200:
+                _fn_env = [float(np.mean(f)) for f in fn_history[-_W_innov:]]
+                innovation_cjs = metrics.compute_innovation_cjs(_fn_env, dt)
+            else:
+                innovation_cjs = None
+
             # === TAU MULTI-ÉCHELLES D'ABORD (tau_S requis par decorrelation après) ===
             if len(S_history) >= 20 and len(history) >= 20:
                 try:
@@ -895,6 +907,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,  # jerk de l'enveloppe fₙ (métrique de référence)
                 'entropy_S': entropy_S,
+                'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
                 'autocorr_tau': autocorr_tau,  # Temps de décorrélation
                 'decorrelation_time': decorrelation_time,  # Alias pour cohérence
@@ -1061,6 +1074,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'S_contrib': S_contrib_t,  # AJOUT PR: contribution de chaque strate à S(t)
                 'G_values_array': G_values_array,  # AJOUT PR: G par strate (array numpy)
                 'C': C_t, 'A_spiral': A_spiral_t, 'entropy_S': entropy_S,
+                'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'delta_fn': delta_fn_t, 'S(t)': S_t, 'C(t)': C_t,
                 'effort(t)': effort_t, 'cpu_step(t)': cpu_step,
                 'A_mean(t)': A_mean_t, 'f_mean(t)': f_mean_t,
