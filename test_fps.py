@@ -446,7 +446,8 @@ class TestReferenceScores(unittest.TestCase):
         hist = self._history()[-50:]
         raw = metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)
         O_series = [float(np.sum(h['O'])) for h in hist]
-        self.assertAlmostEqual(raw['dispersion'], float(np.std(O_series)))
+        # dispersion = std(ΣO) NORMALISÉ par √N (cloche autour de l'amplitude saine).
+        self.assertAlmostEqual(raw['dispersion'], float(np.std(O_series)) / np.sqrt(3))
         self.assertAlmostEqual(raw['fluidity'], metrics.compute_fluidity([float(np.mean(h['fn'])) for h in hist]))
         # innovation = moniteur lent loggé (C_JS enveloppe fₙ) : le scoreur lit la
         # dernière valeur 'innovation_cjs' disponible dans la fenêtre, il ne la recalcule pas.
@@ -481,6 +482,42 @@ class TestReferenceScores(unittest.TestCase):
         sc = metrics.compute_reference_scores(hist, 0.1, signal='O', N=3)
         self.assertEqual(sc['resilience'], metrics.NEUTRAL_SCORE)
         self.assertEqual(set(metrics.labelled_scores(sc).keys()), set(metrics.SCORE_KEY_LABELS.values()))
+
+    def test_dispersion_bell(self):
+        # Cloche : 5 au centre (amplitude saine), baisse des DEUX côtés.
+        c = metrics.SCORE_BRACKETS['dispersion']['center']
+        self.assertEqual(metrics.SCORE_BRACKETS['dispersion']['direction'], 'bell')
+        self.assertEqual(metrics.score_from_brackets(c, 'dispersion'), 5)
+        self.assertEqual(metrics.score_from_brackets(c * 1.2, 'dispersion'), 5)   # bande saine
+        self.assertEqual(metrics.score_from_brackets(c / 1.2, 'dispersion'), 5)
+        self.assertEqual(metrics.score_from_brackets(c * 1.5, 'dispersion'), 4)   # emballement léger
+        self.assertEqual(metrics.score_from_brackets(c / 1.5, 'dispersion'), 4)   # gel léger
+        self.assertEqual(metrics.score_from_brackets(c * 5, 'dispersion'), 1)     # explose
+        self.assertEqual(metrics.score_from_brackets(c / 5, 'dispersion'), 1)     # fige
+        self.assertEqual(metrics.score_from_brackets(0.0, 'dispersion'), 1)       # gel total
+
+    def test_dispersion_normalised_by_sqrt_N(self):
+        # std(ΣO)/√N : même chimère à N différents → même dispersion normalisée.
+        def hist_N(N, n=60):
+            rng = np.random.RandomState(4)
+            h = []
+            for i in range(n):
+                O = 0.02 * rng.randn(N)  # N contributions ~indépendantes, centrées
+                h.append({'O': O, 'S(t)': float(np.sum(O)),
+                          'fn': np.ones(N), 'fn_mean(t)': 1.0})
+            return h
+        d20 = metrics.compute_reference_metrics(hist_N(20), 0.1, signal='O', N=20)['dispersion']
+        d100 = metrics.compute_reference_metrics(hist_N(100), 0.1, signal='O', N=100)['dispersion']
+        # invariance en N à ~15 % près (le √N retire l'essentiel de l'échelle)
+        self.assertLess(abs(d20 - d100) / d100, 0.15)
+        # N inconnu et non déductible (pas de vecteur O) → verdict suspendu.
+        rows = [{'On_mean(t)': 0.001, 'S(t)': 0.1, 'fn_mean(t)': 1.0} for _ in range(60)]
+        self.assertIsNone(metrics.compute_reference_metrics(rows, 0.1, signal='O', N=None)['dispersion'])
+
+    def test_dispersion_is_observe_only(self):
+        # Métrique d'identité : notée et visible, jamais engagée comme remède.
+        self.assertIn('stabilite', metrics.OBSERVE_ONLY_FILTERS)
+        self.assertIn('innovation', metrics.OBSERVE_ONLY_FILTERS)
 
     def test_innovation_absent_column_is_neutral(self):
         # Un CSV / warmup sans 'innovation_cjs' → verdict suspendu, score neutre.
