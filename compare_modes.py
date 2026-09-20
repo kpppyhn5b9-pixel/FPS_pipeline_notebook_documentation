@@ -130,14 +130,15 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
         'fps_vs_neutral_efficiency': (fps_cont_resil - neutral_cont_resil) / (abs(neutral_cont_resil) + 1e-10) * 100
     }
     
-    # 4. Innovation = score de référence 'innovation' sur l'entropie spectrale
-    fps_entropy = fps_result.get('metrics', {}).get('entropy_S', 0.5)
-    kura_entropy = kuramoto_result.get('metrics', {}).get('entropy_S', 0.5)
-    neutral_entropy = neutral_result.get('metrics', {}).get('entropy_S', 0.5)
-    print(f"   Entropy values - FPS: {fps_entropy}, Kuramoto: {kura_entropy}, Neutral: {neutral_entropy}")
-    fps_innovation = _score(fps_entropy, 'innovation')
-    kura_innovation = _score(kura_entropy, 'innovation')
-    neutral_innovation = _score(neutral_entropy, 'innovation')
+    # 4. Innovation = score de référence 'innovation' sur C_JS (complexité
+    # statistique de l'enveloppe fₙ, moniteur lent). Absent / None → neutre.
+    fps_cjs = fps_result.get('metrics', {}).get('innovation_cjs')
+    kura_cjs = kuramoto_result.get('metrics', {}).get('innovation_cjs')
+    neutral_cjs = neutral_result.get('metrics', {}).get('innovation_cjs')
+    print(f"   Innovation C_JS - FPS: {fps_cjs}, Kuramoto: {kura_cjs}, Neutral: {neutral_cjs}")
+    fps_innovation = _score(fps_cjs, 'innovation')
+    kura_innovation = _score(kura_cjs, 'innovation')
+    neutral_innovation = _score(neutral_cjs, 'innovation')
     
     metrics['innovation'] = {
         'fps_value': fps_innovation,

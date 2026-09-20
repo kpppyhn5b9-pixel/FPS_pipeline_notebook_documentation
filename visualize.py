@@ -254,9 +254,10 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
     
     # 4. Métriques de qualité
     ax4 = fig.add_subplot(gs[1, 1])
-    if 'entropy_S' in history_dict:
-        ax4.plot(history_dict['entropy_S'], color=FPS_COLORS['accent'], 
-                 linewidth=2, label='Entropie')
+    if 'innovation_cjs' in history_dict:
+        _innov = [np.nan if v is None else float(v) for v in np.atleast_1d(history_dict['innovation_cjs'])]
+        ax4.plot(_innov, color=FPS_COLORS['accent'], 
+                 linewidth=2, label='Innovation (C_JS)')
     if 'fluidity' in history_dict:
         ax4_twin = ax4.twinx()
         ax4_twin.plot(history_dict['fluidity'], color=FPS_COLORS['secondary'], 
@@ -264,7 +265,7 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
         ax4_twin.set_ylabel('Fluidité', color=FPS_COLORS['secondary'])
         ax4_twin.set_ylim(0, 1.1)  # Fluidité entre 0 et 1
     ax4.set_title('Innovation & Fluidité', fontweight='bold')
-    ax4.set_ylabel('Entropie', color=FPS_COLORS['accent'])
+    ax4.set_ylabel('Innovation C_JS', color=FPS_COLORS['accent'])
     ax4.grid(True, alpha=0.3)
     
     # 5. Régulation
@@ -625,13 +626,15 @@ def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
     ax.set_title('Scores 1-5 comparés (fenêtre W_f)', fontweight='bold')
     ax.legend(); ax.grid(True, alpha=0.3, axis='y')
 
-    # 3. Métriques brutes qui dépendent du signal
+    # 3. Métriques brutes : seule la dispersion dépend du signal (fluidité et
+    # innovation lisent l'enveloppe fₙ, identique pour S et O)
     ax = axes[1, 0]
     raw_keys = ['dispersion', 'fluidity', 'innovation']
     x = np.arange(len(raw_keys))
-    ax.bar(x - w/2, [raw_S[k] for k in raw_keys], w, label='S(t)', color=FPS_COLORS['primary'])
-    ax.bar(x + w/2, [raw_O[k] for k in raw_keys], w, label='O(t)', color=FPS_COLORS['secondary'])
-    ax.set_xticks(x); ax.set_xticklabels(['écart-type', 'fluidité (jerk fₙ)', 'entropie'])
+    _r = lambda d, k: (float(d[k]) if d.get(k) is not None and np.isfinite(d[k]) else 0.0)
+    ax.bar(x - w/2, [_r(raw_S, k) for k in raw_keys], w, label='S(t)', color=FPS_COLORS['primary'])
+    ax.bar(x + w/2, [_r(raw_O, k) for k in raw_keys], w, label='O(t)', color=FPS_COLORS['secondary'])
+    ax.set_xticks(x); ax.set_xticklabels(['écart-type', 'fluidité (jerk fₙ)', 'innovation (C_JS fₙ)'])
     ax.set_title('Métriques brutes comparées', fontweight='bold')
     ax.legend(); ax.grid(True, alpha=0.3, axis='y')
 
@@ -649,9 +652,10 @@ def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
         lines.append(f"{c:12s}{sc_S[c]:>10d}{sc_O[c]:>10d}")
     lines += ["──────────────────────────────────────",
               "γ note S(t) ; switch, figures et",
-              "rapports notent O(t). Régulation,",
-              "effort et résilience ne dépendent",
-              "pas du signal."]
+              "rapports notent O(t). Seule la",
+              "dispersion dépend du signal : les",
+              "cinq autres lisent fₙ, E−O, effort",
+              "ou la résilience."]
     ax.text(0.02, 0.98, "\n".join(lines), transform=ax.transAxes, va='top', ha='left',
             family='monospace', fontsize=10)
 
@@ -1329,7 +1333,7 @@ def plot_metrics_evolution(history: List[Dict],
             'État cible E(t) (Prior prospectif)': ['En_mean(t)'],
             'Erreur' : ['mean_abs_error'],
             'Effort & Régulation': ['effort(t)', 'mean_abs_error', 'd_effort_dt'],
-            'Adaptation & Innovation': ['entropy_S', 'fluidity', 'temporal_coherence'],
+            'Adaptation & Innovation': ['innovation_cjs', 'fluidity', 'temporal_coherence'],
             'Paramètres Gamma': ['gamma', 'gamma_mean(t)'],
             'Fréquence': ['fn_mean(t)'],
             'Amplitude': ['An_mean(t)'],
@@ -1582,7 +1586,7 @@ def analyze_correlations(history: List[Dict],
     if metrics_to_analyze is None:
         metrics_to_analyze = [
             'S(t)', 'C(t)', 'E(t)',
-            'effort(t)', 'entropy_S', 'fluidity',
+            'effort(t)', 'innovation_cjs', 'fluidity',
             'mean_abs_error',
             'gamma', 'gamma_mean(t)',
             'An_mean(t)', 'fn_mean(t)',
@@ -2613,7 +2617,7 @@ if __name__ == "__main__":
         'C(t)': C_fps,
         'effort(t)': effort_fps,
         'cpu_step(t)': 0.01 + 0.005 * np.random.randn(len(t)),
-        'entropy_S': 0.5 + 0.1 * np.sin(2 * np.pi * t / 30),
+        'innovation_cjs': 0.25 + 0.05 * np.sin(2 * np.pi * t / 30),
         'mean_abs_error': 0.2 * np.exp(-t/50),
         'effort_status': ['stable' if e < 0.7 else 'transitoire' if e < 0.9 else 'chronique' 
                          for e in effort_fps]

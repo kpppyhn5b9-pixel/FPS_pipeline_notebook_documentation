@@ -248,6 +248,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'seuil_out': int(_pcfg.get('seuil_sortie', 3)),
         'enabled': _pcfg.get('filters_enabled', ['erreur','stabilite','fluidite','innovation','effort']),
     }
+    # Fenêtre LONGUE du moniteur lent d'innovation (C_JS de l'enveloppe fₙ) :
+    # la distribution de permutations a besoin de ≥200 points, bien plus que W_f.
+    _W_innov = max(200, 4 * perception_state['W_f'])
 
     # Historiques avec limite de mémoire
     MAX_HISTORY_SIZE = config.get('system', {}).get('max_history_size', 10000)
@@ -641,7 +644,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             _Ow = np.array([h['O'] for h in history[-_Wf:]])
                             _Aw = np.array([h['An'] for h in history[-_Wf:]])
                             _Fw = np.array([h['fn'] for h in history[-_Wf:]])
-                            _def = dynamics.compute_perception_deficit(_f, _Ow, _Aw, _Fw, dt)
+                            # 'innovation' lit C_JS par strate : fenêtre LONGUE de fₙ
+                            _Fw_long = (np.array([h['fn'] for h in history[-_W_innov:]])
+                                        if _f == 'innovation' else None)
+                            _def = dynamics.compute_perception_deficit(_f, _Ow, _Aw, _Fw, dt,
+                                                                       fn_long_win=_Fw_long)
                             perception_state['weights'] = dynamics._echelle_attention(_def)
                 config_for_S = config.copy()
                 config_for_S['state'] = state
@@ -743,24 +750,16 @@ def run_fps_simulation(config, state, loggers, strict=False):
             effort_history.append(effort_t)
             effort_status = metrics.compute_effort_status(effort_t, effort_history, config) if hasattr(metrics, 'compute_effort_status') else "stable"
             
-            # FLUIDITÉ et INNOVATION loggées par pas : les fonctions de RÉFÉRENCE
-            # (metrics.compute_fluidity = jerk de l'enveloppe fₙ, metrics.
-            # compute_entropy_S) sur LA fenêtre de référence W_f. Ce sont les
-            # colonnes calculées sur S(t) ; les scores sur O(t) sont recalculés
-            # depuis history par metrics.compute_reference_scores.
+            # FLUIDITÉ loggée par pas : la fonction de RÉFÉRENCE (metrics.
+            # compute_fluidity = jerk de l'enveloppe fₙ) sur la fenêtre W_f.
             _W_ref = perception_state['W_f']
             fluidity = metrics.compute_fluidity([float(np.mean(f)) for f in fn_history[-_W_ref:]])
-            if len(S_history) >= 10:
-                entropy_S = metrics.compute_entropy_S(S_history[-_W_ref:], 1.0/dt)
-            else:
-                entropy_S = 0.1
 
             # INNOVATION = moniteur LENT (métrique d'identité, pas d'attention) :
-            # complexité statistique C_JS de l'enveloppe fₙ sur une fenêtre LONGUE.
-            # C_JS a besoin de beaucoup de points pour une distribution de
-            # permutations stable → fenêtre ≥200 (bien plus large que W_f~50) ;
-            # tant qu'on n'a pas assez de points → None (score neutre côté scoreur).
-            _W_innov = max(200, 4 * _W_ref)
+            # complexité statistique C_JS de l'enveloppe fₙ sur une fenêtre LONGUE
+            # (_W_innov ≥ 200, bien plus large que W_f~50) ; tant qu'on n'a pas
+            # assez de points → None (verdict suspendu, score neutre côté scoreur).
+            # C'est LA colonne d'innovation : plus d'entropie spectrale.
             if len(fn_history) >= 200:
                 _fn_env = [float(np.mean(f)) for f in fn_history[-_W_innov:]]
                 innovation_cjs = metrics.compute_innovation_cjs(_fn_env, dt)
@@ -906,7 +905,6 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'A_mean(t)': A_mean_t,
                 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,  # jerk de l'enveloppe fₙ (métrique de référence)
-                'entropy_S': entropy_S,
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
                 'autocorr_tau': autocorr_tau,  # Temps de décorrélation
@@ -955,7 +953,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('adaptive_resilience', 'continuous_resilience'):
+            for _rk in ('adaptive_resilience', 'continuous_resilience', 'innovation_cjs'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -963,7 +961,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # SAUF les champs textuels et ceux où NaN est intentionnel
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
-                                 'adaptive_resilience', 'continuous_resilience',
+                                 'adaptive_resilience', 'continuous_resilience', 'innovation_cjs',
                                  'resilience_env(t)', 'resilience_metric_used', 'perception_filter'}
             for key in all_metrics:
                 if key in skip_safe_convert:
@@ -973,7 +971,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # ----------- 4. VÉRIFICATION NaN/Inf SYSTÉMATIQUE -------------
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
-                             'adaptive_resilience', 'continuous_resilience',
+                             'adaptive_resilience', 'continuous_resilience', 'innovation_cjs',
                              'resilience_env(t)', 'resilience_metric_used', 'perception_filter'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
@@ -1073,7 +1071,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'phi_n_t': phi_n_t,  # AJOUT PR: phases par strate (requis par visualize_stratum_patterns)
                 'S_contrib': S_contrib_t,  # AJOUT PR: contribution de chaque strate à S(t)
                 'G_values_array': G_values_array,  # AJOUT PR: G par strate (array numpy)
-                'C': C_t, 'A_spiral': A_spiral_t, 'entropy_S': entropy_S,
+                'C': C_t, 'A_spiral': A_spiral_t,
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'delta_fn': delta_fn_t, 'S(t)': S_t, 'C(t)': C_t,
                 'effort(t)': effort_t, 'cpu_step(t)': cpu_step,
@@ -1134,21 +1132,15 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Vérifier si un critère non-déclencheur présente un écart > 3σ
             alert_sigma = config.get('validation', {}).get('alert_sigma', 3)
             if len(S_history) >= 100:  # Besoin d'historique pour calculer σ
-                # Exemple pour entropy_S
-                entropy_history = [h.get('entropy_S', 0.5) for h in history[-100:] if 'entropy_S' in h]
-                if len(entropy_history) > 0:
-                    entropy_mean = np.mean(entropy_history)
-                    entropy_std = np.std(entropy_history)
-                    if entropy_std > 0 and abs(entropy_S - entropy_mean) > alert_sigma * entropy_std:
-                        alert_msg = f"MODE ALERTE : entropy_S={entropy_S:.4f} dévie de >{alert_sigma}σ à t={t}"
-                        print(alert_msg)
-                        with open(os.path.join(loggers['output_dir'], f"alerts_{run_id}.log"), "a") as alert_file:
-                            alert_file.write(f"{alert_msg}\n")
-                
-                # Même vérification pour d'autres métriques non-déclencheuses
-                for metric_name in ['fluidity', 'mean_high_effort', 'd_effort_dt']:
+                # Métriques non-déclencheuses surveillées (innovation_cjs : None =
+                # warmup, ignoré). Valeur courante ET historique doivent exister.
+                for metric_name in ['innovation_cjs', 'fluidity', 'mean_high_effort', 'd_effort_dt']:
+                    _cur = all_metrics.get(metric_name)
+                    if _cur is None or not np.isfinite(_cur):
+                        continue
                     if metric_name in all_metrics:
-                        metric_history = [h.get(metric_name, 0) for h in history[-100:] if metric_name in h]
+                        metric_history = [h[metric_name] for h in history[-100:]
+                                          if h.get(metric_name) is not None and np.isfinite(h[metric_name])]
                         if len(metric_history) > 10:
                             m_mean = np.mean(metric_history)
                             m_std = np.std(metric_history)
@@ -1202,9 +1194,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
                                        else float(continuous_resilience) if continuous_resilience is not None
                                        else float('nan'))
         
-        # Calculer moyennes sur l'historique pour cohérence avec système adaptatif
-        entropy_history = [h.get('entropy_S', 0.5) for h in history if 'entropy_S' in h]
-        mean_entropy_S = np.mean(entropy_history) if entropy_history else float(entropy_S) if entropy_S is not None else 0.0
+        # Innovation (moniteur lent) : dernière valeur et moyenne des verdicts rendus
+        innov_values = [h['innovation_cjs'] for h in history
+                        if h.get('innovation_cjs') is not None and np.isfinite(h['innovation_cjs'])]
         
         metrics_summary = {
             'mean_S': np.mean(S_history) if S_history else 0.0,
@@ -1212,8 +1204,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'mean_effort': np.mean(effort_history) if effort_history else 0.0,
             'max_effort': np.max(effort_history) if effort_history else 0.0,
             'mean_cpu_step': np.mean(cpu_steps) if cpu_steps else 0.0,
-            'final_entropy_S': float(entropy_S) if entropy_S is not None else 0.0,
-            'entropy_S': float(mean_entropy_S),  # NOUVEAU: moyenne pour cohérence avec système adaptatif
+            'innovation_cjs': float(innov_values[-1]) if innov_values else float('nan'),
+            'innovation_cjs_mean': float(np.mean(innov_values)) if innov_values else float('nan'),
             'final_fluidity': float(fluidity) if 'fluidity' in locals() and fluidity is not None else 0.0,
             'final_mean_abs_error': float(mean_abs_error) if mean_abs_error is not None else 0.0,
             'mean_C': float(np.mean(C_history)) if C_history else float('nan'),
@@ -1444,7 +1436,7 @@ def run_neutral_simulation(config, loggers):
             'A_mean(t)': 1.0,
             'f_mean(t)': np.mean(frequencies),
             'effort_status': 'stable',
-            'entropy_S': 0.0,
+            'innovation_cjs': 0.0,  # fréquences fixes : ordre pur → C_JS nul
             'mean_abs_error': 0.0
         }
         

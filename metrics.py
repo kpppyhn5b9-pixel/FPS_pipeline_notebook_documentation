@@ -3,7 +3,7 @@ metrics.py - Calcul des métriques FPS
 Version exhaustive conforme à la feuille de route FPS V1.3
 ---------------------------------------------------------------
 NOTE FPS – Plasticité méthodologique :
-Les métriques (effort, entropy, etc.) sont ajustables : toute
+Les métriques (effort, innovation, etc.) sont ajustables : toute
 modification ou alternative testée doit être documentée et laissée
 ouverte dans la config.
 ---------------------------------------------------------------
@@ -22,7 +22,6 @@ la falsification et le raffinement continu.
 """
 
 import numpy as np
-from scipy import signal
 from typing import Dict, List, Union, Optional, Tuple, Any
 import warnings
 
@@ -265,81 +264,6 @@ def compute_d_effort_dt(effort_history: List[float], dt: float) -> float:
 
 
 # ============== MÉTRIQUES DE QUALITÉ DYNAMIQUE ==============
-
-
-def compute_entropy_S(S_t: Union[float, List[float], np.ndarray], 
-                      sampling_rate: float) -> float:
-    """
-    Calcule l'entropie spectrale du signal S(t).
-    
-    Mesure l'innovation : haute entropie = riche en fréquences diverses.
-    Utilise l'entropie de Shannon sur le spectre de puissance normalisé.
-    
-    Args:
-        S_t: signal (peut être juste la valeur actuelle ou une fenêtre)
-        sampling_rate: fréquence d'échantillonnage (1/dt)
-    
-    Returns:
-        float: entropie spectrale entre 0 et 1
-    """
-    # PAS de buffer persistant : un état caché attaché à la fonction survivrait
-    # d'un appel et d'un run à l'autre dans le même process (fuite de
-    # reproductibilité, et doublon de S_history). La fenêtre doit être passée
-    # explicitement par l'appelant (cf. simulate.py qui fournit S_window).
-    #
-    # Une valeur scalaire isolée ne porte pas de spectre : on renvoie une
-    # approximation locale fondée sur la magnitude, sans aucun état.
-    if np.isscalar(S_t):
-        magnitude = abs(S_t)
-        if magnitude < 0.1:
-            return 0.1  # Très peu d'information
-        elif magnitude > 10:
-            return 0.9  # Beaucoup d'information
-        else:
-            # Fonction sigmoïde pour mapper [0.1, 10] -> [0.1, 0.9]
-            return 0.1 + 0.8 / (1 + np.exp(-0.5 * (magnitude - 5)))
-
-    # Si on a moins de 10 points, calculer une entropie approximative
-    if len(S_t) < 10:
-        # Entropie basée sur la variance du signal court
-        variance = np.var(S_t)
-        # Normaliser la variance pour obtenir une entropie entre 0 et 1
-        # Variance élevée = plus d'information = entropie plus haute
-        return min(0.9, 0.1 + 0.8 * np.tanh(variance))
-    
-    try:
-        # Calcul du spectre de puissance
-        freqs, psd = signal.periodogram(S_t, sampling_rate)
-        
-        # Normalisation pour obtenir une distribution de probabilité
-        psd_sum = np.sum(psd)
-        if psd_sum == 0 or np.isnan(psd_sum):
-            # Signal constant ou problème : entropie faible
-            return 0.1
-        psd_norm = psd / psd_sum
-        
-        # Éviter log(0)
-        psd_norm = psd_norm + 1e-15
-        
-        # Entropie de Shannon
-        entropy = -np.sum(psd_norm * np.log(psd_norm))
-        
-        # Normalisation par l'entropie maximale
-        max_entropy = np.log(len(psd_norm))
-        if max_entropy > 0:
-            entropy_normalized = entropy / max_entropy
-        else:
-            entropy_normalized = 0.5
-        
-        # Plancher harmonisé (14/07/2026) : le chemin spectral respecte le même
-        # 0.1 que les chemins dégénérés (avant : un sinus pur scorait 0.0 SOUS
-        # une constante à 0.1). Prouvé sans effet sur les runs existants
-        # (l'entropie vivante ne descend jamais sous 0.1).
-        return np.clip(entropy_normalized, 0.1, 1.0)
-        
-    except Exception as e:
-        warnings.warn(f"Erreur dans compute_entropy_S: {e}")
-        return 0.5
 
 
 # ============== MÉTRIQUES DE RÉGULATION ==============
@@ -839,6 +763,19 @@ def compute_innovation_cjs(fn_mean_window, dt: float, d: int = 4,
     return float((js / js_max) * H) if js_max > 0 else 0.0
 
 
+def innovation_deficit(c_js: Optional[float]) -> float:
+    """
+    Déficit d'innovation (filtre de perception 'innovation'), sur la même
+    métrique que le score : 1 − C_JS / seuil_haut, borné à 0. Le seuil haut est
+    celui du barème (SCORE_BRACKETS['innovation'], score 5) : source unique.
+    None (fenêtre trop courte) → 0 (aucun verdict, aucun poids).
+    """
+    if c_js is None or not np.isfinite(c_js):
+        return 0.0
+    c_top = SCORE_BRACKETS['innovation']['thresholds'][0]
+    return float(max(0.0, 1.0 - float(c_js) / c_top))
+
+
 def _num(v) -> Optional[float]:
     """float fini ou None (cellule vide d'un CSV, None, NaN, texte)."""
     try:
@@ -892,7 +829,8 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
     Mêmes calculs que le switch de perception, à l'identique :
       dispersion  = std(signal)                       (compute_dispersion)
       fluidity    = jerk de la moyenne de fₙ           (compute_fluidity)
-      innovation  = entropie spectrale du signal       (compute_entropy_S)
+      innovation  = complexité statistique C_JS de fₙ  (compute_innovation_cjs,
+                    moniteur lent lu dans la colonne innovation_cjs)
       regulation  = moyenne de mean_abs_error par pas  (compute_mean_abs_error)
       activite    = moyenne de effort(t)               (compute_effort)
       resilience  = moyenne de adaptive_resilience     (compute_adaptive_resilience

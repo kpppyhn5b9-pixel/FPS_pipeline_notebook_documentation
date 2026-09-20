@@ -190,7 +190,7 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
             'f_mean(t)': np.mean(frequencies),
             'effort_status': 'stable',
             'fluidity': 1.0,      # fₙ fixe : rien de saccadé
-            'entropy_S': 0.0,     # calculée en fin de run
+            'innovation_cjs': 0.0,  # fₙ fixe : ordre pur → C_JS nul
             'mean_abs_error': 0.0,  # Pas de régulation
             'mean_high_effort': 0.0,
             'd_effort_dt': 0.0,
@@ -240,8 +240,9 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
     # Métriques de comparaison : LES fonctions de référence de metrics.py,
     # exactement celles de la FPS (rien de recalculé en local).
     W = metrics.reference_window(config, dt)
-    entropy_S = float(metrics.compute_entropy_S(S_history[-W:], 1.0 / dt)) if len(S_history) >= 10 else 0.5
-    final_fluidity = metrics.compute_fluidity([np.mean(frequencies)] * min(len(S_history), W))
+    _fn_env = [float(np.mean(frequencies))] * len(S_history)
+    innovation_cjs = metrics.compute_innovation_cjs(_fn_env, dt)  # fₙ fixe → 0.0 (None si run < 200 pas)
+    final_fluidity = metrics.compute_fluidity(_fn_env[-W:])
     
     # Temps de retour après perturbation (même settling-time que la FPS)
     if pert_type != 'none' and pert_t0 < T/2:
@@ -268,7 +269,7 @@ def run_kuramoto_simulation(config: Dict, loggers: Dict) -> Dict[str, Any]:
             'mean_cpu_step': np.mean(cpu_steps),
             'final_order': order_params[-1],
             'final_fluidity': float(final_fluidity),
-            'entropy_S': entropy_S,
+            'innovation_cjs': innovation_cjs,
             't_retour': t_retour,
             'mean_effort': 0.0,  # Toujours 0 pour Kuramoto
             'mode': 'Kuramoto',
@@ -360,10 +361,10 @@ def compare_with_fps(kuramoto_results: Dict, fps_results: Dict) -> Dict[str, Any
                               kuramoto_results['metrics'].get('mean_cpu_step', float('inf')) else 'kuramoto'
         },
         'innovation': {
-            'kuramoto': kuramoto_results['metrics'].get('entropy_S', 0),
-            'fps': fps_results['metrics'].get('entropy_S', 0),
-            'winner': 'fps' if fps_results['metrics'].get('entropy_S', 0) > 
-                              kuramoto_results['metrics'].get('entropy_S', 0) else 'kuramoto'
+            'kuramoto': kuramoto_results['metrics'].get('innovation_cjs') or 0,
+            'fps': fps_results['metrics'].get('innovation_cjs') or 0,
+            'winner': 'fps' if (fps_results['metrics'].get('innovation_cjs') or 0) > 
+                              (kuramoto_results['metrics'].get('innovation_cjs') or 0) else 'kuramoto'
         }
     }
     
