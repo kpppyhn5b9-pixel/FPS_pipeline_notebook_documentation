@@ -163,9 +163,17 @@ def load_run_data(csv_path: str) -> Dict[str, np.ndarray]:
         reader = csv.DictReader(f)
         for row in reader:
             for key, value in row.items():
+                # Cellule vide (métrique sans verdict : innovation_cjs, résilience
+                # en échauffement…) → NaN, jamais une chaîne vide : une colonne
+                # numérique doit rester numérique (sinon les figures la tracent
+                # en catégories et les scoreurs reçoivent des ''). Même règle
+                # que explore.load_csv_data.
+                if value is None or value == '':
+                    data[key].append(float('nan'))
+                    continue
                 try:
                     # Convertir en float si possible
-                    if value and value.lower() not in ['stable', 'transitoire', 'chronique']:
+                    if value.lower() not in ['stable', 'transitoire', 'chronique']:
                         data[key].append(float(value))
                     else:
                         data[key].append(value)
