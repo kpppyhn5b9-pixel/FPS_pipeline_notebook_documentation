@@ -712,15 +712,89 @@ REFERENCE_SCORE_KEYS = ('dispersion', 'regulation', 'fluidity', 'resilience', 'i
 # découle). L'innovation est une métrique d'IDENTITÉ : on l'observe, on
 # n'intervient pas dessus. Le geste « relâcher » n'existe pas encore.
 OBSERVE_ONLY_FILTERS = ('innovation',)
-# Libellés des figures et rapports, dans l'ordre d'affichage.
+# ============================================================================
+# NOMS AFFICHÉS (nettoyage 20/09/2026) — SOURCE UNIQUE pour le terminal, les
+# rapports, les figures et les exports lisibles. Les CLÉS (scores, filtres,
+# colonnes CSV du run) ne changent pas : elles sont consommées par le code.
+# Chaque nom dit ce que la métrique MESURE, pas ce qu'on aimerait qu'elle dise :
+#   dispersion  → « Dispersion »      (écart-type de S : amplitude, pas structure)
+#   regulation  → « Régulation »      (erreur |E−O| moyenne)
+#   fluidity    → « Fluidité jerk »   (jerk de l'enveloppe fₙ)
+#   resilience  → « Résilience CSD »  (ralentissement critique : autocorr des
+#                                       résidus de fₙ au lag calibré)
+#   innovation  → « Innovation C_JS » (complexité statistique de Rosso)
+#   activite    → « Activité »        (churn des paramètres, pas du stress)
+# ============================================================================
 SCORE_KEY_LABELS = {
-    'dispersion': 'Stabilité',
+    'dispersion': 'Dispersion',
     'regulation': 'Régulation',
-    'fluidity':   'Fluidité',
-    'resilience': 'Résilience',
-    'innovation': 'Innovation',
-    'activite':   'Effort interne',
+    'fluidity':   'Fluidité jerk',
+    'resilience': 'Résilience CSD',
+    'innovation': 'Innovation C_JS',
+    'activite':   'Activité',
 }
+# Même libellé par nom de FILTRE du switch ('stabilite' → « Dispersion », etc.),
+# plus les états non-métriques du switch.
+FILTER_LABELS = {f: SCORE_KEY_LABELS[k] for f, k in FILTER_TO_SCORE_KEY.items()}
+FILTER_LABELS['neutre'] = 'Neutre'
+
+
+# Libellés des COLONNES (CSV de run, dicts de résultats) quand elles sont
+# affichées (légendes, axes, rapports). Les clés restent telles quelles dans les
+# fichiers : ce sont des identifiants consommés par le code.
+COLUMN_LABELS = {
+    'effort(t)':            'Activité (effort)',
+    'mean_effort':          'Activité moyenne',
+    'max_effort':           'Activité max',
+    'mean_high_effort':     'Activité chronique',
+    'd_effort_dt':          'Activité transitoire (d/dt)',
+    'd_effort/dt':          'Activité transitoire (d/dt)',
+    'effort_status':        "État d'activité",
+    'effort_internal':      'Activité chronique',
+    'effort_transient':     'Activité transitoire',
+    'mean_abs_error':       'Régulation (|E−O|)',
+    'fluidity':             'Fluidité jerk',
+    'final_fluidity':       'Fluidité jerk (finale)',
+    'innovation_cjs':       'Innovation C_JS',
+    'innovation_cjs_mean':  'Innovation C_JS (moyenne)',
+    'innovation_H':         'Innovation H (entropie)',
+    'resilience_ac':        'Résilience CSD (autocorr)',
+    'resilience_ac_mean':   'Résilience CSD (autocorr moyenne)',
+    'resilience_ac_smooth': 'Résilience CSD (autocorr lissée)',
+    'resilience_var':       'Résilience CSD (variance)',
+    'resilience_lag':       'Résilience CSD (lag)',
+    'resilience_alert':     'Résilience CSD (alerte)',
+    'resilience_alerts':    'Résilience CSD (alertes)',
+    'resilience_quiet':     'Résilience CSD (quiet)',
+    'resilience_quiet_share': 'Résilience CSD (part quiet)',
+    'resilience_score':     'Résilience CSD (score)',
+    'std_S':                'Dispersion (écart-type de S)',
+    'stability':            'Dispersion',
+    'perception_filter':    'Filtre de perception',
+}
+
+
+def metric_label(name: str) -> str:
+    """
+    Nom affiché d'une métrique, depuis sa clé de score ('fluidity'), son nom de
+    filtre ('fluidite'), un nom de colonne ('resilience_ac') ou un nom déjà
+    affiché. Inconnu → renvoyé tel quel (les colonnes non-métriques, S(t), C(t)…).
+    """
+    name = str(name)
+    if name in SCORE_KEY_LABELS:
+        return SCORE_KEY_LABELS[name]
+    if name in FILTER_LABELS:
+        return FILTER_LABELS[name]
+    if name in COLUMN_LABELS:
+        return COLUMN_LABELS[name]
+    return name
+
+
+def labelled_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Dict de résultats avec les clés connues remplacées par leur libellé (affichage)."""
+    return {metric_label(k): v for k, v in summary.items()}
+
+
 NEUTRAL_SCORE = 3
 
 
@@ -998,7 +1072,7 @@ def compute_reference_scores(history_window: List[Dict], dt: float,
 
 
 def labelled_scores(scores: Dict[str, int]) -> Dict[str, int]:
-    """{'Stabilité': 4, 'Régulation': 3, ...} pour les figures et rapports."""
+    """{'Dispersion': 4, 'Régulation': 3, ...} (libellés de SCORE_KEY_LABELS) pour les figures et rapports."""
     return {SCORE_KEY_LABELS[k]: int(scores.get(k, NEUTRAL_SCORE)) for k in REFERENCE_SCORE_KEYS}
 
 

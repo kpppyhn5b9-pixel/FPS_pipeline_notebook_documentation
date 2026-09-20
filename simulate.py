@@ -990,7 +990,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     continue
                 if isinstance(metric_value, (int, float)) and (np.isnan(metric_value) or np.isinf(metric_value)):
                     nan_inf_detected = True
-                    alert_msg = f"ALERTE : NaN/Inf détecté à t={t} pour {metric_name}={metric_value}"
+                    alert_msg = f"ALERTE : NaN/Inf détecté à t={t} pour {metrics.metric_label(metric_name)} ({metric_name})={metric_value}"
                     print(alert_msg)
                     os.makedirs(loggers['output_dir'], exist_ok=True)
                     with open(os.path.join(loggers['output_dir'], f"alerts_{run_id}.log"), "a") as alert_file:
@@ -1155,7 +1155,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             m_mean = np.mean(metric_history)
                             m_std = np.std(metric_history)
                             if m_std > 0 and abs(all_metrics[metric_name] - m_mean) > alert_sigma * m_std:
-                                alert_msg = f"MODE ALERTE : {metric_name}={all_metrics[metric_name]:.4f} dévie de >{alert_sigma}σ à t={t}"
+                                alert_msg = f"MODE ALERTE : {metrics.metric_label(metric_name)} ({metric_name})={all_metrics[metric_name]:.4f} dévie de >{alert_sigma}σ à t={t}"
                                 with open(os.path.join(loggers['output_dir'], f"alerts_{run_id}.log"), "a") as alert_file:
                                     alert_file.write(f"{alert_msg}\n")
 
@@ -1515,7 +1515,7 @@ if __name__ == "__main__":
         result = run_simulation(args.config, args.mode, strict=args.strict)
         print(f"\nSimulation terminée : {result['run_id']}")
         print(f"Logs : {result['logs']}")
-        print(f"Métriques finales : {result['metrics']}")
+        print(f"Métriques finales : {metrics.labelled_summary(result['metrics'])}")
 
 """
 -----------------------

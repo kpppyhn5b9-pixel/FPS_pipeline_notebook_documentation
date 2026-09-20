@@ -383,6 +383,47 @@ Ce que ça ne dit pas : la rampe est imposée sur le taux de rappel de γ, pas
 produite par la FPS elle-même. Le jour où un régime interne (régulation, effort
 chronique, φ adaptatif) fera dériver ce taux, le radar est prêt à le lire.
 
+### Suite 20/09/2026 (septies) — noms affichés : une source unique
+
+Nettoyage ultime (accord d'Andréa) : chaque métrique porte le nom de ce
+qu'elle MESURE, partout où un humain la lit. Rien ne change dans les appels,
+les signatures, les clés de scores, les noms de filtres du switch, les colonnes
+du CSV de run, les clés des dicts de résultats ni les clés de config : ce sont
+des identifiants consommés par le code (readers, validateur, tests).
+
+| clé de score | filtre | nom affiché (avant) | nom affiché (après) |
+|---|---|---|---|
+| `dispersion` | `stabilite` | Stabilité | **Dispersion** |
+| `regulation` | `erreur` | Régulation | Régulation |
+| `fluidity` | `fluidite` | Fluidité | **Fluidité jerk** |
+| `resilience` | `resilience` | Résilience | **Résilience CSD** (critical slowing down, ralentissement critique) |
+| `innovation` | `innovation` | Innovation | **Innovation C_JS** |
+| `activite` | `effort` | Effort interne | **Activité** |
+
+**Source unique** (`metrics.py`) : `SCORE_KEY_LABELS` (clé de score → libellé),
+`FILTER_LABELS` (nom de filtre → libellé, + `neutre`), `COLUMN_LABELS` (colonne
+ou clé de résultat → libellé, ex. `resilience_ac` → « Résilience CSD
+(autocorr) », `mean_high_effort` → « Activité chronique », `mean_abs_error` →
+« Régulation (|E−O|) »), et `metric_label(nom)` qui accepte les trois formes et
+rend un nom inconnu tel quel (`S(t)`, `C(t)`… restent eux-mêmes).
+`labelled_scores` et `labelled_summary` traduisent un dict entier.
+
+**Passés par la source unique** (inventaire du 20/09) : toutes les figures de
+`visualize.py` (tableau de bord, S vs O, grille empirique, évolution des scores,
+évolution des métriques brutes, détail par métrique, corrélations, nuages de
+points, matrice critères ↔ termes, figure résilience, rapport HTML) ; les prints
+de `main.py` (figures, métriques finales) et de `simulate.py` (métriques
+finales, journal d'alertes : libellé + clé entre parenthèses) ; `analyze.py`
+(critères déclenchés, changelog) ; `compare_modes.py` (prints et rapport TXT :
+libellé + clé, les clés JSON restent) ; `explore.py` (rapport Markdown, top
+corrélations) ; `utils.py` (résumé de `runs_completed.txt`, latent).
+
+Convention : quand un texte sert aussi de trace technique (journal d'alertes,
+changelog, rapport TXT de comparaison), le libellé est suivi de la clé entre
+parenthèses, pour que le lecteur puisse retrouver la colonne.
+
+Hors périmètre : `notebooks/*.py` (copies figées) et le notebook.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*

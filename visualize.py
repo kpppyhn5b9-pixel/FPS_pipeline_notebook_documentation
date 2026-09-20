@@ -37,6 +37,9 @@ import metrics
 
 # Configuration matplotlib pour de beaux graphiques
 plt.style.use('seaborn-v0_8-darkgrid')
+# Police avec les indices Unicode (ₙ, ₀…) utilisés dans les titres et axes :
+# Liberation Sans (choisie par le style sur certains systèmes) ne les a pas.
+plt.rcParams['font.family'] = ['DejaVu Sans', 'sans-serif']
 plt.rcParams['figure.figsize'] = (12, 8)
 plt.rcParams['font.size'] = 10
 plt.rcParams['lines.linewidth'] = 2
@@ -242,14 +245,14 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
     ax3 = fig.add_subplot(gs[1, 0])
     if 'effort(t)' in history_dict:
         ax3.plot(history_dict['effort(t)'], color=FPS_COLORS['warning'], 
-                 linewidth=2, label='Effort')
+                 linewidth=2, label=metrics.SCORE_KEY_LABELS['activite'])
     if 'cpu_step(t)' in history_dict:
         ax3_twin = ax3.twinx()
         ax3_twin.plot(history_dict['cpu_step(t)'], color=FPS_COLORS['danger'], 
                       linewidth=2, alpha=0.7, label='CPU')
         ax3_twin.set_ylabel('CPU (s)', color=FPS_COLORS['danger'])
-    ax3.set_title('Effort & CPU', fontweight='bold')
-    ax3.set_ylabel('Effort', color=FPS_COLORS['warning'])
+    ax3.set_title(f"{metrics.SCORE_KEY_LABELS['activite']} & CPU", fontweight='bold')
+    ax3.set_ylabel(metrics.SCORE_KEY_LABELS['activite'], color=FPS_COLORS['warning'])
     ax3.grid(True, alpha=0.3)
     
     # 4. Métriques de qualité
@@ -257,22 +260,22 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
     if 'innovation_cjs' in history_dict:
         _innov = [np.nan if v is None else float(v) for v in np.atleast_1d(history_dict['innovation_cjs'])]
         ax4.plot(_innov, color=FPS_COLORS['accent'], 
-                 linewidth=2, label='Innovation (C_JS)')
+                 linewidth=2, label=metrics.SCORE_KEY_LABELS['innovation'])
     if 'fluidity' in history_dict:
         ax4_twin = ax4.twinx()
         ax4_twin.plot(history_dict['fluidity'], color=FPS_COLORS['secondary'], 
-                      linewidth=2, alpha=0.7, label='Fluidité')
-        ax4_twin.set_ylabel('Fluidité', color=FPS_COLORS['secondary'])
+                      linewidth=2, alpha=0.7, label=metrics.SCORE_KEY_LABELS['fluidity'])
+        ax4_twin.set_ylabel(metrics.SCORE_KEY_LABELS['fluidity'], color=FPS_COLORS['secondary'])
         ax4_twin.set_ylim(0, 1.1)  # Fluidité entre 0 et 1
-    ax4.set_title('Innovation & Fluidité', fontweight='bold')
-    ax4.set_ylabel('Innovation C_JS', color=FPS_COLORS['accent'])
+    ax4.set_title(f"{metrics.SCORE_KEY_LABELS['innovation']} & {metrics.SCORE_KEY_LABELS['fluidity']}", fontweight='bold')
+    ax4.set_ylabel(metrics.SCORE_KEY_LABELS['innovation'], color=FPS_COLORS['accent'])
     ax4.grid(True, alpha=0.3)
     
     # 5. Régulation
     if 'mean_abs_error' in history_dict:
         ax5 = fig.add_subplot(gs[1, 2])
         ax5.plot(history_dict['mean_abs_error'], color=FPS_COLORS['success'], linewidth=2)
-        ax5.set_title('Erreur de régulation', fontweight='bold')
+        ax5.set_title(metrics.SCORE_KEY_LABELS['regulation'], fontweight='bold')
         ax5.set_ylabel('|Eₙ - Oₙ|')
         ax5.grid(True, alpha=0.3)
     
@@ -281,8 +284,8 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
         ax6 = fig.add_subplot(gs[2, 0])
         ax6.hist(history_dict['effort(t)'], bins=30, color=FPS_COLORS['warning'], 
                  alpha=0.7, edgecolor='black')
-        ax6.set_title('Distribution de l\'effort', fontweight='bold')
-        ax6.set_xlabel('Effort')
+        ax6.set_title(f"Distribution : {metrics.SCORE_KEY_LABELS['activite']}", fontweight='bold')
+        ax6.set_xlabel(metrics.SCORE_KEY_LABELS['activite'])
         ax6.set_ylabel('Fréquence')
     
     # 7. Statut de l'effort
@@ -299,7 +302,7 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
         ax7.pie(status_counts.values(), labels=status_counts.keys(), 
                 colors=[colors.get(s, 'gray') for s in status_counts.keys()],
                 autopct='%1.1f%%', startangle=90)
-        ax7.set_title('Répartition des états d\'effort', fontweight='bold')
+        ax7.set_title(f"Répartition : {metrics.COLUMN_LABELS['effort_status']}", fontweight='bold')
     
     # 8. NOUVEAU BLOC : Alignement En/On et gamma
     ax8 = fig.add_subplot(gs[3, :])  # Prend toute la largeur de la quatrième ligne
@@ -374,11 +377,11 @@ def plot_metrics_dashboard(metrics_history: Union[Dict[str, List], List[Dict]]) 
             percentile_99 = np.percentile(effort_data_clean, 99)
             effort_data_clean = effort_data_clean[effort_data_clean <= percentile_99]
             
-            stats_text += f"Effort:\n"
+            stats_text += f"{metrics.SCORE_KEY_LABELS['activite']}:\n"
             stats_text += f"  Moyenne: {np.mean(effort_data_clean):.3f}\n"
             stats_text += f"  Percentile 90: {np.percentile(effort_data_clean, 90):.3f}\n"
         else:
-            stats_text += "Effort: Données invalides\n"
+            stats_text += f"{metrics.SCORE_KEY_LABELS['activite']}: Données invalides\n"
     
     ax9.text(0.1, 0.9, stats_text, transform=ax9.transAxes, 
              fontsize=10, verticalalignment='top',
@@ -416,8 +419,8 @@ def plot_exploration_analysis(df: pd.DataFrame) -> plt.Figure:
 
                 # 1. Distribution de l'effort
                 axes[0, 0].hist(df['effort(t)'], bins=50, color='orange', alpha=0.7, edgecolor='black')
-                axes[0, 0].set_title('Distribution de l\'effort', fontweight='bold')
-                axes[0, 0].set_xlabel('Effort')
+                axes[0, 0].set_title(f"Distribution : {metrics.SCORE_KEY_LABELS['activite']}", fontweight='bold')
+                axes[0, 0].set_xlabel(metrics.SCORE_KEY_LABELS['activite'])
                 axes[0, 0].set_ylabel('Fréquence')
 
                 # 2. Évolution S(t) avec bandes de cohérence
@@ -435,15 +438,15 @@ def plot_exploration_analysis(df: pd.DataFrame) -> plt.Figure:
                 if 'fluidity' in df.columns:
                     axes[1, 0].scatter(df['effort(t)'], df['fluidity'], 
                        c=df['t'], cmap='viridis', s=5, alpha=0.5)
-                    axes[1, 0].set_title('Effort vs Fluidité (temps en couleur)', fontweight='bold')
-                    axes[1, 0].set_xlabel('Effort')
-                    axes[1, 0].set_ylabel('Fluidité')
+                    axes[1, 0].set_title(f"{metrics.SCORE_KEY_LABELS['activite']} vs {metrics.SCORE_KEY_LABELS['fluidity']} (temps en couleur)", fontweight='bold')
+                    axes[1, 0].set_xlabel(metrics.SCORE_KEY_LABELS['activite'])
+                    axes[1, 0].set_ylabel(metrics.SCORE_KEY_LABELS['fluidity'])
 
                 # 4. Évolution de la résilience (autocorr CSD des résidus de fₙ : basse = résilient)
                 if 'resilience_ac' in df.columns:
                     axes[1, 1].plot(df['t'], df['resilience_ac'], 
                     'g-', linewidth=2, alpha=0.8)
-                    axes[1, 1].set_title('Résilience (autocorr CSD, basse = résilient)', fontweight='bold')
+                    axes[1, 1].set_title(f"{metrics.SCORE_KEY_LABELS['resilience']} (autocorr, basse = résilient)", fontweight='bold')
                     axes[1, 1].set_xlabel('Temps')
                     axes[1, 1].set_ylabel('autocorr résidus fₙ')
                     axes[1, 1].set_ylim(-1.05, 1.05)
@@ -459,8 +462,8 @@ def plot_exploration_analysis(df: pd.DataFrame) -> plt.Figure:
                 im = axes[2, 0].imshow(corr_matrix, cmap='coolwarm', vmin=-1, vmax=1, aspect='auto')
                 axes[2, 0].set_xticks(range(len(metrics_to_correlate)))
                 axes[2, 0].set_yticks(range(len(metrics_to_correlate)))
-                axes[2, 0].set_xticklabels(metrics_to_correlate, rotation=45, ha='right')
-                axes[2, 0].set_yticklabels(metrics_to_correlate)
+                axes[2, 0].set_xticklabels([metrics.metric_label(m) for m in metrics_to_correlate], rotation=45, ha='right')
+                axes[2, 0].set_yticklabels([metrics.metric_label(m) for m in metrics_to_correlate])
                 axes[2, 0].set_title('Matrice de corrélation', fontweight='bold')
                 plt.colorbar(im, ax=axes[2, 0])
 
@@ -547,8 +550,7 @@ def calculate_empirical_scores_notebook(history, config):
     scoreur que le switch de perception (rien d'inline, aucun barème local).
 
     Returns:
-        dict {'Stabilité', 'Régulation', 'Fluidité', 'Résilience',
-              'Innovation', 'Effort interne'} → int 1-5
+        dict {libellé de metrics.SCORE_KEY_LABELS} → int 1-5
     """
     if not history:
         print("⚠️ Pas d'historique pour calculer les scores empiriques")
@@ -634,7 +636,7 @@ def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
     _r = lambda d, k: (float(d[k]) if d.get(k) is not None and np.isfinite(d[k]) else 0.0)
     ax.bar(x - w/2, [_r(raw_S, k) for k in raw_keys], w, label='S(t)', color=FPS_COLORS['primary'])
     ax.bar(x + w/2, [_r(raw_O, k) for k in raw_keys], w, label='O(t)', color=FPS_COLORS['secondary'])
-    ax.set_xticks(x); ax.set_xticklabels(['écart-type', 'fluidité (jerk fₙ)', 'innovation (C_JS fₙ)'])
+    ax.set_xticks(x); ax.set_xticklabels([metrics.SCORE_KEY_LABELS[k] for k in raw_keys])
     ax.set_title('Métriques brutes comparées', fontweight='bold')
     ax.legend(); ax.grid(True, alpha=0.3, axis='y')
 
@@ -644,18 +646,18 @@ def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
         return f"{v:>10.4f}" if v is not None and np.isfinite(v) else f"{'—':>10s}"
     lines = ["Diagnostic S(t) (perçu) vs O(t) (brut)",
              "──────────────────────────────────────",
-             f"{'':12s}{'S(t)':>10s}{'O(t)':>10s}"]
+             f"{'':16s}{'S(t)':>10s}{'O(t)':>10s}"]
     for k in metrics.REFERENCE_SCORE_KEYS:
-        lines.append(f"{k:12s}{_f(raw_S[k])}{_f(raw_O[k])}")
+        lines.append(f"{metrics.SCORE_KEY_LABELS[k]:16s}{_f(raw_S[k])}{_f(raw_O[k])}")
     lines.append("──────────────────────────────────────")
     for c in criteria:
-        lines.append(f"{c:12s}{sc_S[c]:>10d}{sc_O[c]:>10d}")
+        lines.append(f"{c:16s}{sc_S[c]:>10d}{sc_O[c]:>10d}")
     lines += ["──────────────────────────────────────",
               "γ note S(t) ; switch, figures et",
               "rapports notent O(t). Seule la",
               "dispersion dépend du signal : les",
-              "cinq autres lisent fₙ, E−O, effort",
-              "ou la résilience."]
+              "cinq autres lisent fₙ, E−O ou",
+              "l'activité."]
     ax.text(0.02, 0.98, "\n".join(lines), transform=ax.transAxes, va='top', ha='left',
             family='monospace', fontsize=10)
 
@@ -798,8 +800,9 @@ def plot_scores_evolution(history: List[Dict], config: Dict = None,
     fig, axes = plt.subplots(len(labels), 1, figsize=(14, 11), sharex=True)
     fig.suptitle(f"Évolution temporelle des scores de référence (cible {signal}(t), fenêtre W_f)",
                  fontsize=16, fontweight='bold', y=0.995)
-    colors = {'Stabilité': '#2E86AB', 'Régulation': '#2E86AB', 'Fluidité': '#2E86AB',
-              'Résilience': '#87BE3F', 'Innovation': '#87BE3F', 'Effort interne': '#FFC43D'}
+    _key_colors = {'dispersion': '#2E86AB', 'regulation': '#2E86AB', 'fluidity': '#2E86AB',
+                   'resilience': '#87BE3F', 'innovation': '#87BE3F', 'activite': '#FFC43D'}
+    colors = {metrics.SCORE_KEY_LABELS[k]: c for k, c in _key_colors.items()}
     for idx, criterion in enumerate(labels):
         ax = axes[idx]
         scores = scores_dict[criterion]
@@ -892,7 +895,7 @@ def plot_fps_vs_kuramoto(fps_data: Dict[str, np.ndarray],
     if 'effort(t)' in fps_data and len(fps_data.get('effort(t)', [])) > 0:
         t_fps_e = np.arange(len(fps_data['effort(t)']))
         ax3.plot(t_fps_e, fps_data['effort(t)'], 'b-', linewidth=2, 
-                 label='Effort FPS', alpha=0.8)
+                 label=f"{metrics.SCORE_KEY_LABELS['activite']} FPS", alpha=0.8)
         effort_plotted = True
     
     # Ajout effort Kuramoto s'il existe
@@ -901,7 +904,7 @@ def plot_fps_vs_kuramoto(fps_data: Dict[str, np.ndarray],
         # Vérifier si les valeurs ne sont pas toutes nulles
         if np.any(kuramoto_data['effort(t)'] != 0):
             ax3.plot(t_kura_e, kuramoto_data['effort(t)'], 'r--', linewidth=2, 
-                     label='Effort Kuramoto', alpha=0.8)
+                     label=f"{metrics.SCORE_KEY_LABELS['activite']} Kuramoto", alpha=0.8)
             effort_plotted = True
     
     # CPU sur axe y droit
@@ -924,9 +927,9 @@ def plot_fps_vs_kuramoto(fps_data: Dict[str, np.ndarray],
         if handles_cpu:
             ax3_twin.legend(loc='upper right')
     
-    ax3.set_title('Effort et coût CPU', fontweight='bold')
+    ax3.set_title(f"{metrics.SCORE_KEY_LABELS['activite']} et coût CPU", fontweight='bold')
     ax3.set_xlabel('Temps')
-    ax3.set_ylabel('Effort')
+    ax3.set_ylabel(metrics.SCORE_KEY_LABELS['activite'])
     # Légende effort seulement s'il y a des courbes
     handles3, labels3 = ax3.get_legend_handles_labels()
     if handles3:
@@ -1331,17 +1334,17 @@ def plot_metrics_evolution(history: List[Dict],
             'Filtre perceprif S(t) (Prior perceptif)': ['S(t)'],
             'Signal Global O(t)': ['On_mean(t)'],
             'État cible E(t) (Prior prospectif)': ['En_mean(t)'],
-            'Erreur' : ['mean_abs_error'],
-            'Effort & Régulation': ['effort(t)', 'mean_abs_error', 'd_effort_dt'],
-            'Adaptation & Innovation': ['innovation_cjs', 'fluidity', 'temporal_coherence'],
+            metrics.SCORE_KEY_LABELS['regulation']: ['mean_abs_error'],
+            f"{metrics.SCORE_KEY_LABELS['activite']} & {metrics.SCORE_KEY_LABELS['regulation']}": ['effort(t)', 'mean_abs_error', 'd_effort_dt'],
+            f"{metrics.SCORE_KEY_LABELS['innovation']} & {metrics.SCORE_KEY_LABELS['fluidity']}": ['innovation_cjs', 'fluidity', 'temporal_coherence'],
             'Paramètres Gamma': ['gamma', 'gamma_mean(t)'],
             'Fréquence': ['fn_mean(t)'],
             'Amplitude': ['An_mean(t)'],
             'Temps Caractéristiques': ['tau_A_mean', 'tau_f_mean', 'tau_S', 'tau_gamma'],
-            'Résilience': ['resilience_ac', 'resilience_var'],
+            metrics.SCORE_KEY_LABELS['resilience']: ['resilience_ac', 'resilience_var'],
             'Best Pair': ['best_pair_score', 'best_pair_gamma'],
             'Input' : ['In_mean(t)'],
-            'Erreur' : ['En_mean(t)', 'On_mean(t)']
+            'Cible Eₙ et sortie Oₙ' : ['En_mean(t)', 'On_mean(t)']
         }
     else:
         # Si l'utilisateur spécifie, tout mettre dans un groupe
@@ -1361,12 +1364,12 @@ def plot_metrics_evolution(history: List[Dict],
     colors = ['#2E86AB', '#87BE3F', '#FFC43D', '#FF6B35', '#C73E1D', 
               '#A23B72', '#6A994E', '#BC4B51', '#5F0F40', '#0FA3B1']
     
-    for group_idx, (group_name, metrics) in enumerate(metric_groups.items()):
+    for group_idx, (group_name, group_metrics) in enumerate(metric_groups.items()):
         ax = axes[group_idx]
         
         # Pour chaque métrique du groupe
         plotted_any = False
-        for metric_idx, metric in enumerate(metrics):
+        for metric_idx, metric in enumerate(group_metrics):
             # Extraire les valeurs
             values = []
             for h in history:
@@ -1392,7 +1395,7 @@ def plot_metrics_evolution(history: List[Dict],
             values_plot = [v if v is not None else np.nan for v in values]
             
             ax.plot(t_values, values_plot, 
-                   color=color, linewidth=2, label=metric, alpha=0.8)
+                   color=color, linewidth=2, label=metrics.metric_label(metric), alpha=0.8)
         
         if plotted_any:
             ax.set_ylabel('Valeur', fontweight='bold', fontsize=11)
@@ -1452,7 +1455,7 @@ def plot_single_metric_detailed(history: List[Dict],
         print("⚠️ Pas d'historique disponible")
         return
     
-    print(f"🔍 Analyse détaillée de {metric_name}...")
+    print(f"🔍 Analyse détaillée de {metrics.metric_label(metric_name)}...")
     
     # Extraire les données
     t_values = [h['t'] for h in history]
@@ -1469,14 +1472,14 @@ def plot_single_metric_detailed(history: List[Dict],
     non_none_times = [t for t, v in zip(t_values, values) if v is not None]
     
     if not non_none_values:
-        print(f"⚠️ Aucune valeur disponible pour {metric_name}")
+        print(f"⚠️ Aucune valeur disponible pour {metrics.metric_label(metric_name)}")
         return
     
     # Créer la figure avec 3 subplots
     fig = plt.figure(figsize=(16, 10))
     gs = fig.add_gridspec(3, 2, height_ratios=[2, 1, 1], hspace=0.3, wspace=0.3)
     
-    fig.suptitle(f'Analyse Détaillée : {metric_name}', fontsize=16, fontweight='bold')
+    fig.suptitle(f'Analyse Détaillée : {metrics.metric_label(metric_name)}', fontsize=16, fontweight='bold')
     
     # ===== Subplot 1: Série temporelle principale =====
     ax1 = fig.add_subplot(gs[0, :])
@@ -1495,7 +1498,7 @@ def plot_single_metric_detailed(history: List[Dict],
     ax1.axhline(y=mean_val - std_val, color='orange', linestyle=':', linewidth=1, 
                label=f'-1σ: {mean_val-std_val:.4f}', alpha=0.5)
     
-    ax1.set_ylabel(metric_name, fontsize=12, fontweight='bold')
+    ax1.set_ylabel(metrics.metric_label(metric_name), fontsize=12, fontweight='bold')
     ax1.set_title('Évolution Temporelle', fontsize=12, pad=10)
     ax1.legend(loc='best', fontsize=10)
     ax1.grid(True, alpha=0.3, linestyle=':')
@@ -1518,7 +1521,7 @@ def plot_single_metric_detailed(history: List[Dict],
     bp['boxes'][0].set_facecolor('#FFC43D')
     ax3.set_ylabel('Valeur', fontsize=11, fontweight='bold')
     ax3.set_title('Box Plot', fontsize=11, pad=10)
-    ax3.set_xticklabels([metric_name])
+    ax3.set_xticklabels([metrics.metric_label(metric_name)])
     ax3.grid(True, alpha=0.3, axis='y')
     
     # ===== Subplot 4: Statistiques textuelles =====
@@ -1642,8 +1645,8 @@ def analyze_correlations(history: List[Dict],
     # Labels
     ax1.set_xticks(range(len(corr_matrix.columns)))
     ax1.set_yticks(range(len(corr_matrix.columns)))
-    ax1.set_xticklabels(corr_matrix.columns, rotation=45, ha='right', fontsize=8)
-    ax1.set_yticklabels(corr_matrix.columns, fontsize=8)
+    ax1.set_xticklabels([metrics.metric_label(c) for c in corr_matrix.columns], rotation=45, ha='right', fontsize=8)
+    ax1.set_yticklabels([metrics.metric_label(c) for c in corr_matrix.columns], fontsize=8)
     
     ax1.set_title('Matrice de Corrélation (Pearson)', fontsize=12, fontweight='bold', pad=10)
     
@@ -1684,7 +1687,7 @@ def analyze_correlations(history: List[Dict],
     top_positive = [c for c in correlations_sorted if c['corr'] > 0][:10]
     
     if top_positive:
-        labels = [f"{c['metric1'][:8]}\nvs\n{c['metric2'][:8]}" for c in top_positive]
+        labels = [f"{metrics.metric_label(c['metric1'])}\nvs\n{metrics.metric_label(c['metric2'])}" for c in top_positive]
         values = [c['corr'] for c in top_positive]
         
         y_pos = np.arange(len(labels))
@@ -1712,7 +1715,7 @@ def analyze_correlations(history: List[Dict],
     top_negative = [c for c in correlations_sorted if c['corr'] < 0][:10]
     
     if top_negative:
-        labels = [f"{c['metric1'][:8]}\nvs\n{c['metric2'][:8]}" for c in top_negative]
+        labels = [f"{metrics.metric_label(c['metric1'])}\nvs\n{metrics.metric_label(c['metric2'])}" for c in top_negative]
         values = [c['corr'] for c in top_negative]
         
         y_pos = np.arange(len(labels))
@@ -1828,7 +1831,7 @@ def plot_scatter_pairs(history: List[Dict],
                 y_data.append(float(y_val))
         
         if len(x_data) < 5:
-            ax.text(0.5, 0.5, f'Pas assez de données\npour {metric1}\nvs {metric2}',
+            ax.text(0.5, 0.5, f'Pas assez de données\npour {metrics.metric_label(metric1)}\nvs {metrics.metric_label(metric2)}',
                    ha='center', va='center', transform=ax.transAxes,
                    fontsize=10, style='italic', color='gray')
             ax.set_xticks([])
@@ -1853,9 +1856,9 @@ def plot_scatter_pairs(history: List[Dict],
         except:
             pass
         
-        ax.set_xlabel(metric1, fontsize=10, fontweight='bold')
-        ax.set_ylabel(metric2, fontsize=10, fontweight='bold')
-        ax.set_title(f'{metric1} vs {metric2}', fontsize=11, pad=10)
+        ax.set_xlabel(metrics.metric_label(metric1), fontsize=10, fontweight='bold')
+        ax.set_ylabel(metrics.metric_label(metric2), fontsize=10, fontweight='bold')
+        ax.set_title(f'{metrics.metric_label(metric1)} vs {metrics.metric_label(metric2)}', fontsize=11, pad=10)
         ax.grid(True, alpha=0.3, linestyle=':')
     
     # Masquer les axes vides
@@ -2387,8 +2390,8 @@ def generate_correlation_matrix(criteria_terms_mapping: Dict[str, List[str]]) ->
     # Axes
     ax.set_xticks(np.arange(len(all_terms)))
     ax.set_yticks(np.arange(len(criteria)))
-    ax.set_xticklabels(all_terms, rotation=45, ha='right')
-    ax.set_yticklabels(criteria)
+    ax.set_xticklabels([metrics.metric_label(t) for t in all_terms], rotation=45, ha='right')
+    ax.set_yticklabels([metrics.metric_label(c) for c in criteria])
     
     # Colorbar
     cbar = plt.colorbar(im, ax=ax)
@@ -2525,7 +2528,7 @@ def export_html_report(all_data: Dict[str, Any], output_path: str) -> None:
                 html_content += f"""
                     <div class="metric-box">
                         <div class="metric-value">{formatted_value}</div>
-                        <div class="metric-label">{metric}</div>
+                        <div class="metric-label">{metrics.metric_label(metric)}</div>
                     </div>
                 """
 
@@ -2636,22 +2639,16 @@ if __name__ == "__main__":
     fig3 = plot_metrics_dashboard(test_data)
     
     print("\nTest 5 - Grille empirique:")
-    scores_test = {
-        'Stabilité': 4,
-        'Régulation': 3,
-        'Fluidité': 5,
-        'Résilience': 3,
-        'Innovation': 4,
-        'Effort interne': 3
-    }
+    scores_test = metrics.labelled_scores({'dispersion': 4, 'regulation': 3, 'fluidity': 5,
+                                           'resilience': 3, 'innovation': 4, 'activite': 3})
     fig4 = create_empirical_grid(scores_test)
     
     print("\nTest 6 - Matrice de corrélation:")
     mapping_test = {
-        'Stabilité': ['S(t)', 'C(t)', 'φₙ(t)'],
-        'Régulation': ['Fₙ(t)', 'G(x)', 'γ(t)'],
-        'Fluidité': ['γₙ(t)', 'σ(x)', 'envₙ(x,t)'],
-        'Innovation': ['A_spiral(t)', 'Eₙ(t)', 'r(t)']
+        metrics.SCORE_KEY_LABELS['dispersion']: ['S(t)', 'C(t)', 'φₙ(t)'],
+        metrics.SCORE_KEY_LABELS['regulation']: ['Fₙ(t)', 'G(x)', 'γ(t)'],
+        metrics.SCORE_KEY_LABELS['fluidity']: ['γₙ(t)', 'σ(x)', 'envₙ(x,t)'],
+        metrics.SCORE_KEY_LABELS['innovation']: ['A_spiral(t)', 'Eₙ(t)', 'r(t)']
     }
     fig5 = generate_correlation_matrix(mapping_test)
     
@@ -2699,7 +2696,7 @@ def plot_resilience_csd(metrics_history: Union[Dict[str, List], List[Dict]]) -> 
     ac = _series('resilience_ac')
     fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
     if ac is None or not np.isfinite(ac).any():
-        axes[0].text(0.5, 0.5, "resilience_ac indisponible (fenêtre longue non atteinte ?)",
+        axes[0].text(0.5, 0.5, f"{metrics.SCORE_KEY_LABELS['resilience']} indisponible (fenêtre longue non atteinte ?)",
                      transform=axes[0].transAxes, ha='center', va='center')
         return fig
 
@@ -2728,7 +2725,7 @@ def plot_resilience_csd(metrics_history: Union[Dict[str, List], List[Dict]]) -> 
                             label='alerte CSD (radar)')
     ax.set_ylim(-1.05, 1.05)
     ax.set_ylabel('autocorr (basse = résilient)')
-    ax.set_title('Résilience — ralentissement critique sur la couche lente' + lag_txt, fontweight='bold')
+    ax.set_title(f"{metrics.SCORE_KEY_LABELS['resilience']} — ralentissement critique sur la couche lente" + lag_txt, fontweight='bold')
     ax.grid(True, alpha=0.3); ax.legend(loc='upper left')
 
     ax = axes[1]

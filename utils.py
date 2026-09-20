@@ -28,6 +28,10 @@ import glob
 from datetime import datetime
 from typing import Dict, List, Union, Optional, Any, Tuple
 import numpy as np
+try:
+    from metrics import metric_label as METRICS_LABELS  # noms affichés (source unique)
+except Exception:  # utils doit rester importable seul
+    METRICS_LABELS = None
 import pandas as pd
 from multiprocessing import Pool, cpu_count
 import warnings
@@ -171,10 +175,11 @@ def log_end_of_run(run_id: str, summary: Optional[Dict] = None,
         if summary:
             f.write(f"  Résumé:\n")
             for key, value in summary.items():
+                _lab = key if not METRICS_LABELS else METRICS_LABELS(key)
                 if isinstance(value, (int, float)):
-                    f.write(f"    - {key}: {value:.4f}\n")
+                    f.write(f"    - {_lab}: {value:.4f}\n")
                 else:
-                    f.write(f"    - {key}: {value}\n")
+                    f.write(f"    - {_lab}: {value}\n")
 
 
 # ============== SAUVEGARDE ET RESTAURATION ==============
