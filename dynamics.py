@@ -1935,7 +1935,8 @@ if __name__ == "__main__":
 # ============================================================================
 
 def compute_perception_deficit(kind: str, On_win: np.ndarray, An_win: np.ndarray,
-                               fn_win: np.ndarray, dt: float) -> np.ndarray:
+                               fn_win: np.ndarray, dt: float,
+                               fn_long_win: Optional[np.ndarray] = None) -> np.ndarray:
     """
     Déficit par strate pour un filtre de perception (entrée du gabarit).
 
@@ -1944,6 +1945,9 @@ def compute_perception_deficit(kind: str, On_win: np.ndarray, An_win: np.ndarray
               ('erreur' garde son chemin natif par pas ; 'neutre' = poids 1)
         On_win, An_win, fn_win: fenêtres (T_w, N) des dernières valeurs
         dt: pas de temps
+        fn_long_win: fenêtre LONGUE (≥200, N) de fₙ pour 'innovation' (C_JS a
+                     besoin de beaucoup de points) ; absente ou trop courte →
+                     déficit nul (aucun verdict, aucun poids)
 
     Returns:
         np.ndarray (N,) de déficits >= 0 (le gabarit auto-normalise par la
@@ -1972,12 +1976,12 @@ def compute_perception_deficit(kind: str, On_win: np.ndarray, An_win: np.ndarray
         # jerk de l'enveloppe fₙ), par strate : déficit = 1 − fluidité.
         return np.array([1.0 - metrics.compute_fluidity(fn_win[:, n]) for n in range(N)])
     if kind == 'innovation':
-        # MÊME métrique que le score de référence (metrics.compute_entropy_S),
-        # par strate sur Oₙ : déficit = 1 − entropie.
-        # TODO (mise à niveau, note reprise de main) : cible = complexité
-        # statistique C_JS (Jensen-Shannon, Rosso/MPR), validée comme la SEULE
-        # qui met le bruit au plancher. Mais C_JS (permutation) exige une fenêtre
-        # bien plus longue que W_f pour être stable → à câbler avec une fenêtre
-        # élargie/ré-échantillonnée. En attendant : entropie spectrale.
-        return np.array([1.0 - float(metrics.compute_entropy_S(On_win[:, n], 1.0 / dt)) for n in range(N)])
+        # MÊME métrique que le score de référence (metrics.compute_innovation_cjs,
+        # complexité statistique C_JS de l'enveloppe fₙ), par strate, sur la
+        # fenêtre LONGUE : déficit = metrics.innovation_deficit(C_JS_n).
+        # NB (Attention.md) : lier n'enrichit pas — ce déficit informe la
+        # saillance ; le geste « relâcher » reste à câbler.
+        src_win = fn_long_win if fn_long_win is not None else fn_win
+        return np.array([metrics.innovation_deficit(metrics.compute_innovation_cjs(src_win[:, n], dt))
+                         for n in range(N)])
     raise ValueError(f"filtre de perception inconnu : {kind}")

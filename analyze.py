@@ -668,7 +668,7 @@ def analyze_cross_metrics(run_data: Dict) -> Dict[str, float]:
     # Paires de métriques intéressantes
     pairs = [
         ('effort(t)', 'cpu_step(t)'),
-        ('entropy_S', 'fluidity'),
+        ('innovation_cjs', 'fluidity'),
         ('mean_abs_error', 'effort(t)'),
         ('C(t)', 'S(t)')
     ]

@@ -68,6 +68,38 @@ fenêtre `W_f` ; `adaptive_resilience_score` passe par `score_from_brackets`.
 Validation : 47 tests verts (`test_fps.py`, dont `TestReferenceScores`), pipeline
 complet exécuté sur T=40 (3 simulations, 23 figures, batch, comparaison, rapport).
 
+### Suite 20/09/2026 — innovation : `entropy_S` → `innovation_cjs`
+
+`main` a introduit `metrics.compute_innovation_cjs` (complexité statistique C_JS de
+l'enveloppe fₙ, moniteur lent, fenêtre ≥ 200 pas, τ auto-calibré) et la colonne
+`innovation_cjs`. Le remplacement est maintenant complet :
+
+- **supprimé** : `compute_entropy_S`, la colonne `entropy_S` (moteur, neutral,
+  Kuramoto), `final_entropy_S` / `entropy_S` du résumé de run (→ `innovation_cjs`,
+  `innovation_cjs_mean`), l'import `scipy.signal` de `metrics.py` ;
+- **rebranché sur `innovation_cjs`** : `compare_modes`, `kuramoto.compare_with_fps`,
+  le tableau de bord et les listes de colonnes de `visualize.py`, `main.py`
+  (scatter, matrice critères-termes), `analyze.py` (corrélations croisées),
+  `explore.py` (anomalies), `config.json` (`log_metrics`, `exploration.metrics`),
+  `validate_config.py` ;
+- **filtre de perception `innovation`** : `dynamics.compute_perception_deficit`
+  lit C_JS par strate sur une fenêtre longue de fₙ (`fn_long_win`, fournie par le
+  switch) via `metrics.innovation_deficit` = `1 − C_JS / seuil_haut_du_barème`
+  (source unique : `SCORE_BRACKETS['innovation']`) ; fenêtre trop courte → déficit
+  nul (aucun verdict, aucun poids) ;
+- **robustesse** : cellules vides (warmup) lues comme NaN par `explore.load_csv_data`
+  et ignorées par `detect_anomalies` ; le mode alerte ignore les `None`.
+
+Validation : 49 tests verts, pipeline complet sur T=60 (`innovation_cjs` rempli sur
+401/600 pas, FPS ≈ 0.26–0.30, Kuramoto 0.0, comparaison et rapport OK).
+
+Points d'attention sur C_JS (voir discussion du 20/09) : avec le τ auto-calibré, un
+sinus pur score ≈ 0.30 comme le chaos logistique (≈ 0.29) ; la « cloche » ne
+sépare donc que bruit ↔ structure, pas ordre ↔ nouveauté. Le plan (H, C) décrit
+dans `Attention.md` demande de logger aussi H pour lire la direction (relâcher /
+lier). Le déficit du filtre `innovation` pointe les strates peu complexes ; le geste
+« relâcher » reste à câbler.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*

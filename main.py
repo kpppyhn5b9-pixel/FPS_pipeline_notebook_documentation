@@ -605,7 +605,7 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
                 _default_pairs = [
                     ('S(t)', 'C(t)'),
                     ('effort(t)', 'fluidity'),
-                    ('entropy_S', 'mean_abs_error'),
+                    ('innovation_cjs', 'mean_abs_error'),
                     ('An_mean(t)', 'fn_mean(t)'),
                     ('gamma', 'adaptive_resilience'),
                     ('effort(t)', 'mean_abs_error'),
@@ -845,7 +845,7 @@ def get_criteria_terms_mapping() -> Dict[str, List[str]]:
         'Régulation': ['Fₙ(t)', 'G(x)', 'γ(t)', 'Aₙ(t)', 'mean_abs_error'],
         'Fluidité': ['γₙ(t)', 'σ(x)', 'envₙ(x,t)', 'μₙ(t)', 'fluidity'],
         'Résilience': ['Aₙ(t)', 'G(x,t)', 'effort(t)', 'adaptive_resilience'],
-        'Innovation': ['A_spiral(t)', 'Eₙ(t)', 'r(t)', 'entropy_S'],
+        'Innovation': ['A_spiral(t)', 'Eₙ(t)', 'r(t)', 'innovation_cjs'],
         'Effort interne': ['effort(t)', 'd_effort/dt', 'mean_high_effort']
     }
 

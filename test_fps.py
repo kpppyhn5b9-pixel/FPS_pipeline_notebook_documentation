@@ -416,20 +416,6 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(result_none['type'], 'none')
         self.assertEqual(result_none['metric_used'], 't_retour')
     
-    def test_compute_entropy_S(self):
-        """Test de l'entropie spectrale."""
-        # Signal mono-fréquence
-        t = np.linspace(0, 10, 100)
-        S_mono = np.sin(2 * np.pi * t)
-        entropy_mono = metrics.compute_entropy_S(S_mono, 10.0)
-        
-        # Signal multi-fréquence
-        S_multi = np.sin(2 * np.pi * t) + 0.5 * np.sin(6 * np.pi * t)
-        entropy_multi = metrics.compute_entropy_S(S_multi, 10.0)
-        
-        # Multi-fréquence doit avoir plus d'entropie
-        self.assertGreater(entropy_multi, entropy_mono)
-    
     def test_compute_effort_status(self):
         """Test de la détection d'état d'effort."""
         # Effort stable
@@ -530,6 +516,21 @@ class TestReferenceScores(unittest.TestCase):
         self.assertIsNone(raw['innovation'])
         sc = metrics.compute_reference_scores(hist, 0.1, signal='O', N=3)
         self.assertEqual(sc['innovation'], metrics.NEUTRAL_SCORE)
+
+    def test_innovation_deficit_uses_score_bracket(self):
+        # Déficit par strate = même métrique que le score, seuil haut du barème.
+        top = metrics.SCORE_BRACKETS['innovation']['thresholds'][0]
+        self.assertEqual(metrics.innovation_deficit(None), 0.0)
+        self.assertEqual(metrics.innovation_deficit(top), 0.0)
+        self.assertAlmostEqual(metrics.innovation_deficit(top / 2), 0.5)
+        self.assertEqual(metrics.innovation_deficit(2 * top), 0.0)
+        # Câblage dans le filtre de perception : fenêtre courte → aucun verdict → 0
+        short = np.ones((50, 3))
+        d = dynamics.compute_perception_deficit('innovation', short, short, short, 0.1)
+        self.assertTrue(np.all(d == 0.0))
+        long_flat = np.ones((300, 3))
+        d = dynamics.compute_perception_deficit('innovation', short, short, short, 0.1, fn_long_win=long_flat)
+        self.assertTrue(np.all(d == 1.0))  # plat : C_JS = 0 → déficit maximal
 
     def test_innovation_cjs_contract(self):
         # Fenêtre trop courte → None (score neutre en aval).

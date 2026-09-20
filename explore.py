@@ -238,19 +238,26 @@ def load_csv_data(csv_path: str) -> Dict[str, np.ndarray]:
             reader = csv.DictReader(f)
             for row in reader:
                 for key, value in row.items():
+                    # Cellule vide = donnée absente (verdict suspendu : warmup
+                    # d'innovation_cjs, résilience sans verdict…) → NaN, jamais
+                    # une chaîne qui casserait les statistiques glissantes.
+                    if value is None or value == '':
+                        data[key].append(float('nan'))
+                        continue
                     try:
                         # Convertir en float si possible
-                        if value and value.lower() not in ['stable', 'transitoire', 'chronique']:
+                        if value.lower() not in ['stable', 'transitoire', 'chronique']:
                             data[key].append(float(value))
                         else:
                             data[key].append(value)
                     except ValueError:
                         data[key].append(value)
         
-        # Convertir en arrays numpy
+        # Convertir en arrays numpy (colonnes numériques : au moins une valeur
+        # non-NaN et aucune chaîne)
         for key in data:
-            if data[key] and isinstance(data[key][0], (int, float)):
-                data[key] = np.array(data[key])
+            if data[key] and all(isinstance(v, (int, float)) for v in data[key]):
+                data[key] = np.array(data[key], dtype=float)
         
         return deep_convert(dict(data))
         
@@ -318,16 +325,21 @@ def detect_anomalies(data: Dict[str, np.ndarray], metrics: List[str],
         if metric not in data:
             continue
         
-        values = data[metric]
+        values = np.asarray(data[metric], dtype=float)
         if len(values) < 20:  # Pas assez de données
             continue
         
-        # Statistiques glissantes
+        # Statistiques glissantes (NaN = donnée absente, ignorée)
         window_size = min(50, len(values) // 4)
         
         for i in range(window_size, len(values)):
+            if not np.isfinite(values[i]):
+                continue
             # Fenêtre de référence
             window = values[i-window_size:i]
+            window = window[np.isfinite(window)]
+            if len(window) < max(3, window_size // 2):
+                continue
             mean_w = np.mean(window)
             std_w = np.std(window)
             
@@ -846,7 +858,7 @@ def export_all_correlations(history: List[Dict],
     if metrics_to_analyze is None:
         metrics_to_analyze = [
             'S(t)', 'C(t)', 'E(t)',
-            'effort(t)', 'entropy_S', 'fluidity',
+            'effort(t)', 'innovation_cjs', 'fluidity',
             'mean_abs_error',
             'gamma', 'gamma_mean(t)',
             'An_mean(t)', 'fn_mean(t)',
