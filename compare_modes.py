@@ -91,7 +91,7 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
     fps_res_ac = fps_result.get('metrics', {}).get('resilience_ac')
     kura_res_ac = kuramoto_result.get('metrics', {}).get('resilience_ac')
     neutral_res_ac = neutral_result.get('metrics', {}).get('resilience_ac')
-    print(f"   Résilience (autocorr CSD) - FPS: {fps_res_ac}, Kuramoto: {kura_res_ac}, Neutral: {neutral_res_ac}")
+    print(f"   {fps_metrics.SCORE_KEY_LABELS['resilience']} (autocorr) - FPS: {fps_res_ac}, Kuramoto: {kura_res_ac}, Neutral: {neutral_res_ac}")
     fps_resilience = _score(fps_res_ac, 'resilience')
     kura_resilience = _score(kura_res_ac, 'resilience')
     neutral_resilience = _score(neutral_res_ac, 'resilience')
@@ -109,7 +109,7 @@ def calculate_efficiency_metrics(fps_result, kuramoto_result, neutral_result):
     fps_cjs = fps_result.get('metrics', {}).get('innovation_cjs')
     kura_cjs = kuramoto_result.get('metrics', {}).get('innovation_cjs')
     neutral_cjs = neutral_result.get('metrics', {}).get('innovation_cjs')
-    print(f"   Innovation C_JS - FPS: {fps_cjs}, Kuramoto: {kura_cjs}, Neutral: {neutral_cjs}")
+    print(f"   {fps_metrics.SCORE_KEY_LABELS['innovation']} - FPS: {fps_cjs}, Kuramoto: {kura_cjs}, Neutral: {neutral_cjs}")
     fps_innovation = _score(fps_cjs, 'innovation')
     kura_innovation = _score(kura_cjs, 'innovation')
     neutral_innovation = _score(neutral_cjs, 'innovation')
@@ -256,11 +256,11 @@ def export_comparison_report(fps_result, kuramoto_result, neutral_result, output
         
         if vs_kura > 10:
             report['summary']['fps_advantages'].append(
-                f"{metric_name}: +{vs_kura:.1f}% vs Kuramoto"
+                f"{fps_metrics.metric_label(metric_name)}: +{vs_kura:.1f}% vs Kuramoto"
             )
         elif vs_kura < -10:
             report['summary']['fps_disadvantages'].append(
-                f"{metric_name}: {vs_kura:.1f}% vs Kuramoto"
+                f"{fps_metrics.metric_label(metric_name)}: {vs_kura:.1f}% vs Kuramoto"
             )
     
     # Verdict global
@@ -296,7 +296,7 @@ def export_comparison_report(fps_result, kuramoto_result, neutral_result, output
         f.write("DÉTAILS PAR CRITÈRE:\n")
         for metric_name, metric_data in metrics.items():
             if metric_name != 'global_score':
-                f.write(f"\n{metric_name.upper()}:\n")
+                f.write(f"\n{fps_metrics.metric_label(metric_name).upper()} ({metric_name}):\n")
                 f.write(f"  FPS: {metric_data['fps_value']:.3f}\n")
                 f.write(f"  Kuramoto: {metric_data['kuramoto_value']:.3f}\n")
                 f.write(f"  Neutral: {metric_data['neutral_value']:.3f}\n")

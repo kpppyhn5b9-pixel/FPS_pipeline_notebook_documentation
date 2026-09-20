@@ -101,7 +101,7 @@ def analyze_criteria_and_refine(logs_batch: List[str], config: Dict) -> Dict[str
     
     applied_funcs = set()
     for criterion, stats in refinements_needed.items():
-        print(f"\nCritère '{criterion}' déclenché sur {stats['trigger_rate']*100:.1f}% des runs")
+        print(f"\nCritère '{metrics.metric_label(criterion)}' ({criterion}) déclenché sur {stats['trigger_rate']*100:.1f}% des runs")
         
         # Appeler la fonction de raffinement appropriée (une seule fois par
         # fonction : 'activite' et 'effort_internal' partagent le même remède)
@@ -608,7 +608,7 @@ def log_refinement(changelog_path: str, date: datetime, run_id: str,
         old_str = str(old_value)
         new_str = str(new_value)
     
-    log_entry = f"[{timestamp}] | {run_id} | {criterion}: {old_str} → {new_str} | {reason}\n"
+    log_entry = f"[{timestamp}] | {run_id} | {metrics.metric_label(criterion)} ({criterion}): {old_str} → {new_str} | {reason}\n"
     
     with open(changelog_path, 'a') as f:
         f.write(log_entry)
@@ -719,18 +719,18 @@ if __name__ == "__main__":
     # Test raffinement fluidité
     test_stats = {'trigger_rate': 0.7, 'mean_values': [0.02, 0.03, 0.025]}
     changes = refine_fluidity(test_config.copy(), test_stats)
-    print(f"  Fluidité: {len(changes)} changements")
+    print(f"  {metrics.SCORE_KEY_LABELS['fluidity']}: {len(changes)} changements")
     
     # Test raffinement stabilité
     changes = refine_stability(test_config.copy(), test_stats)
-    print(f"  Stabilité: {len(changes)} changements")
+    print(f"  {metrics.SCORE_KEY_LABELS['dispersion']}: {len(changes)} changements")
     
     # Test raffinement innovation
     changes = refine_innovation(test_config.copy(), test_stats)
-    print(f"  Innovation: {len(changes)} changements")
+    print(f"  {metrics.SCORE_KEY_LABELS['innovation']}: {len(changes)} changements")
     
     # Test 3: Corrélation
-    print("\nTest 3 - Corrélation effort/CPU:")
+    print(f"\nTest 3 - Corrélation {metrics.SCORE_KEY_LABELS['activite']}/CPU:")
     effort_test = [0.5, 0.6, 0.8, 1.2, 1.5, 1.3, 1.1, 0.9, 0.7, 0.6]
     cpu_test = [0.01, 0.012, 0.015, 0.022, 0.025, 0.021, 0.018, 0.016, 0.013, 0.011]
     corr = compute_correlation_effort_cpu(effort_test, cpu_test)

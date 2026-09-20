@@ -559,7 +559,7 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
 
             # 11. Résilience (ralentissement critique, couche lente)
             try:
-                print("  → Résilience (CSD)...")
+                print(f"  → {FPS_MODULES['metrics'].SCORE_KEY_LABELS['resilience']}...")
                 fig10 = FPS_MODULES['visualize'].plot_resilience_csd(history)
                 if fig10 is not None:
                     path10 = os.path.join(dirs['figures'], 'resilience_csd.png')
@@ -722,7 +722,7 @@ def generate_visualizations(results: Dict, config: Dict, dirs: Dict) -> Dict[str
             # 20-22. Métriques clés en vue détaillée
             for _metric in ['effort(t)', 'fluidity', 'resilience_ac']:
                 try:
-                    print(f"  → Métrique détaillée : {_metric}...")
+                    print(f"  → Métrique détaillée : {FPS_MODULES['metrics'].metric_label(_metric)}...")
                     _slug = _metric.replace('(', '').replace(')', '').replace(' ', '_')
                     _path = os.path.join(dirs['figures'], f'metric_detail_{_slug}.png')
                     _fig = FPS_MODULES['visualize'].plot_single_metric_detailed(
@@ -840,13 +840,14 @@ def get_criteria_terms_mapping() -> Dict[str, List[str]]:
     et les termes mathématiques du système FPS.
     """
     # Les six critères de référence (ceux du switch de perception).
+    _L = FPS_MODULES['metrics'].SCORE_KEY_LABELS  # noms affichés : source unique
     return {
-        'Stabilité': ['S(t)', 'C(t)', 'φₙ(t)', 'L(t)', 'dispersion'],
-        'Régulation': ['Fₙ(t)', 'G(x)', 'γ(t)', 'Aₙ(t)', 'mean_abs_error'],
-        'Fluidité': ['γₙ(t)', 'σ(x)', 'envₙ(x,t)', 'μₙ(t)', 'fluidity'],
-        'Résilience': ['Aₙ(t)', 'G(x,t)', 'fₙ(t)', 'resilience_ac'],
-        'Innovation': ['A_spiral(t)', 'Eₙ(t)', 'r(t)', 'innovation_cjs'],
-        'Effort interne': ['effort(t)', 'd_effort/dt', 'mean_high_effort']
+        _L['dispersion']: ['S(t)', 'C(t)', 'φₙ(t)', 'L(t)', 'dispersion'],
+        _L['regulation']: ['Fₙ(t)', 'G(x)', 'γ(t)', 'Aₙ(t)', 'mean_abs_error'],
+        _L['fluidity']:   ['γₙ(t)', 'σ(x)', 'envₙ(x,t)', 'μₙ(t)', 'fluidity'],
+        _L['resilience']: ['Aₙ(t)', 'G(x,t)', 'fₙ(t)', 'resilience_ac'],
+        _L['innovation']: ['A_spiral(t)', 'Eₙ(t)', 'r(t)', 'innovation_cjs'],
+        _L['activite']:   ['effort(t)', 'd_effort/dt', 'mean_high_effort']
     }
 
 
@@ -960,7 +961,7 @@ def run_complete_pipeline(config_path: str, parallel: bool = False) -> bool:
         # Afficher les métriques finales FPS pour cohérence avec simulate.py
         fps_result = valid_results.get('fps')
         if fps_result and 'metrics' in fps_result:
-            print(f"📊 Métriques finales FPS : {fps_result['metrics']}")
+            print(f"📊 Métriques finales FPS : {FPS_MODULES['metrics'].labelled_summary(fps_result['metrics'])}")
         
         print("\n🌀 La danse FPS s'achève en harmonie ! 🌀")
         return True

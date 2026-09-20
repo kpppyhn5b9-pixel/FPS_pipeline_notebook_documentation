@@ -33,6 +33,7 @@ from scipy.stats import entropy
 import warnings
 from collections import defaultdict
 from utils import deep_convert
+import metrics  # noms affichés des métriques (source unique)
 
 # Imports pour cohérence avec les autres modules
 try:
@@ -787,7 +788,7 @@ def generate_report(events: List[Dict], report_path: str,
             
             for i, event in enumerate(top_events, 1):
                 f.write(f"### {i}. t={event['t_start']}-{event['t_end']}\n")
-                f.write(f"- **Métrique :** {event['metric']}\n")
+                f.write(f"- **Métrique :** {metrics.metric_label(event['metric'])} (`{event['metric']}`)\n")
                 f.write(f"- **Valeur :** {event['value']:.4f}\n")
                 f.write(f"- **Sévérité :** {event['severity']}\n")
                 
@@ -809,7 +810,7 @@ def generate_report(events: List[Dict], report_path: str,
                 by_metric[event['metric']].append(event)
             
             for metric, metric_events in by_metric.items():
-                f.write(f"### {metric}\n")
+                f.write(f"### {metrics.metric_label(metric)} (`{metric}`)\n")
                 f.write(f"- Patterns détectés : {len(metric_events)}\n")
                 
                 # Statistiques de corrélation
@@ -1018,7 +1019,7 @@ def find_correlations_with_metric(df_correlations: pd.DataFrame,
     
     # Afficher le top 10
     for _, row in result_normalized.head(10).iterrows():
-        print(f"   • {row['correlated_with']:25s}: {row['correlation']:+.3f} ({row['strength']})")
+        print(f"   • {metrics.metric_label(row['correlated_with']):32s}: {row['correlation']:+.3f} ({row['strength']})")
     
     if len(result_normalized) > 10:
         print(f"   ... et {len(result_normalized) - 10} autres")
