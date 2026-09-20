@@ -424,6 +424,66 @@ parenthèses, pour que le lecteur puisse retrouver la colonne.
 
 Hors périmètre : `notebooks/*.py` (copies figées) et le notebook.
 
+### Suite 20/09/2026 (octies) — activité : score relatif au repos du run (« la grenouille »)
+
+Constat (toutes campagnes, 4 seeds chacune, activité en régime) : calme →
+médiane 271, p90 334 ; fluctuation fₙ injectée ou rampe de latence → idem ;
+bruit d'entrée léger → 282 ; bruit d'entrée fort → 370 (p90 610). Avec le
+barème fixe de juillet [30, 45, 75, 150] (repos d'alors : 59), la FPS au repos
+lisait 1/5 par construction, et les seuils fixes de statut (chronique > 75,
+transitoire > 150), sous le niveau de repos, rendaient « stable » inatteignable
+(calme = 92 % transitoire, 8 % chronique).
+
+**Décision (Andréa, 20/09) : référence relative FIGÉE**, pas de nouveaux seuils
+fixes (qui périmeraient à la prochaine dérive d'échelle) et pas de référence
+glissante (qui absorberait une montée lente : la grenouille dans l'eau qui
+chauffe). L'activité n'a pas d'unité propre (somme de variations de paramètres,
+dépend de N, dt, de la dynamique) : la question honnête est « court-elle plus
+qu'à son repos ? ».
+
+- **Repos de référence** : `metrics.activity_reference` = médiane de l'activité
+  sur [`calib_start_t`, `calib_start_t` + `calib_window_t`] (config, bloc
+  `activite`, 20 + 20 u.t.), donc APRÈS l'exploration initiale de γ et G (gros
+  pic d'activité qui n'est pas du repos). Calibrée une fois par simulate, figée,
+  loggée à chaque pas (`activite_ref`, None avant) ; résumé `activite_ref`.
+- **Score `activite`** : `SCORE_BRACKETS['activite']` note le RAPPORT
+  activité / repos (`metrics.activity_ratio`), seuils = `ACTIVITY_FACTORS`
+  (1.1, 1.25, 1.5, 2) : 5 sous ×1.1, 4 sous ×1.25, 3 sous ×1.5, 2 sous ×2, 1
+  au-delà. Sans référence → None → neutre (verdict suspendu, comme la
+  résilience en échauffement). Le switch, γ, les figures et l'analyse de batch
+  lisent `activite_ref` dans les lignes d'historique / le CSV : aucun appel ne
+  change.
+- **Statuts** (`compute_effort_status(…, ref=)`) : transitoire = un pas au-delà
+  de ×2 du repos (pic) ; chronique = moyenne des 50 derniers pas tenue au-delà
+  de ×1.25 ; stable sinon. Sans référence (calibration en cours) : seul un pic à
+  +2σ est signalé, jamais « chronique ». Les clés `effort_chronique_threshold` /
+  `effort_transitoire_threshold` de `to_calibrate` ne sont plus lues (retirées
+  de config, avertissement « obsolète » si présentes).
+
+Ce que ça ne dit pas : un run agité dès sa naissance a une référence agitée et
+lit 5 — « pas plus qu'à son repos », ce qui est vrai, mais pas « calme ». Pour
+ce cas, la valeur brute `effort(t)` reste loggée et se compare entre runs.
+
+**Vérification in-situ** (seed 12345, T = 140, repos calibré sur [40, 60] ;
+`activite_rel` = niveau sur une respiration / repos, par tranche de 20 u.t.) :
+
+| run | repos (`activite_ref`) | t ∈ [60, 80) | [80, 100) | [100, 120) | [120, 140) |
+|---|---|---|---|---|---|
+| calme | 265 | 1.01 · score 5 · stable 100 % | 1.02 · 5 · stable | 1.01 · 5 · stable | 1.01 · 5 · stable |
+| bruit d'entrée fort dès t = 70 | 265 | 1.01 · 5 · stable (transitoire 34 % : premiers pics) | 2.22 · 1 (69 %) · chronique 95 % | 2.70 · 1 · chronique 100 % | 2.38 · 1 · chronique |
+| bruit d'entrée fort dès t = 0 | 398 | 0.93 · 5 · stable | 0.92 · 5 · stable | 0.97 · 5 · stable | 1.00 · 5 · stable |
+
+Lecture : au calme, 5 et « stable » sans exception (avant : 1 et 92 %
+« transitoire ») ; l'agitation qui s'installe après la calibration est lue en
+une respiration (×2.2 → score 1, statut chronique) ; l'agitation présente dès
+la naissance donne un repos agité (398) et un score 5 — c'est la limite
+annoncée, vraie au sens de la métrique (« pas plus qu'à son repos »), à lire
+avec `effort(t)` brut entre runs. Pourquoi le repos se calibre à 40 u.t. : la
+médiane par tranche de 20 u.t. au calme vaut 204, 234, puis 270 ± 1 % à partir
+de t = 40 (4 seeds) ; et pourquoi le niveau se lit sur 200 pas : sur 50 pas le
+rapport oscille entre 0.86 et 1.28 (la respiration de l'enveloppe fₙ), sur 200
+entre 0.98 et 1.02.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*

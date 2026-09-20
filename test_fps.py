@@ -361,20 +361,50 @@ class TestMetrics(unittest.TestCase):
         self.assertAlmostEqual(metrics.compute_fluidity(10 * noisy), f_noisy, places=9)
     
     def test_compute_effort_status(self):
-        """Test de la détection d'état d'effort."""
-        # Effort stable
-        effort_stable = [0.5] * 50
-        status = metrics.compute_effort_status(0.5, effort_stable, self.config)
-        self.assertEqual(status, "stable")
-        
-        # Effort transitoire (pic)
-        status = metrics.compute_effort_status(2.0, effort_stable, self.config)
-        self.assertEqual(status, "transitoire")
-        
-        # Effort chronique
-        effort_high = [1.5] * 50
-        status = metrics.compute_effort_status(1.5, effort_high, self.config)
-        self.assertIn(status, ["chronique", "transitoire"])
+        """Statut de l'activité en facteurs du repos du run (référence figée)."""
+        ref = 100.0
+        calm = [100.0 + 5 * np.sin(i / 3) for i in range(50)]
+        self.assertEqual(metrics.compute_effort_status(102.0, calm, self.config, ref=ref), "stable")
+        # Pic : un pas au-delà de ×2 du repos → transitoire
+        self.assertEqual(metrics.compute_effort_status(2.5 * ref, calm, self.config, ref=ref), "transitoire")
+        # Agitation installée : niveau (médiane sur une respiration) tenu au-delà de ×1.25 → chronique
+        high = [1.4 * ref] * 200
+        self.assertEqual(metrics.compute_effort_status(1.4 * ref, high, self.config, ref=ref), "chronique")
+        # La crête d'une respiration (période 200 pas, ±20 %) n'est PAS chronique
+        breath = [ref * (1 + 0.2 * np.sin(2 * np.pi * i / 200)) for i in range(400)]
+        self.assertEqual(metrics.compute_effort_status(breath[-1], breath, self.config, ref=ref), "stable")
+        self.assertTrue(0.98 <= metrics.activity_level(breath, 200) / ref <= 1.02)
+        self.assertIsNone(metrics.activity_level(breath[:100], 200))
+        # Sans référence (calibration en cours) : seul un pic à +2σ est signalé,
+        # jamais « chronique » ; les anciens seuils fixes de config sont ignorés
+        self.assertEqual(metrics.compute_effort_status(0.5, [0.5] * 50, self.config), "stable")
+        noisy = list(0.5 + 0.01 * np.random.RandomState(0).randn(50))
+        self.assertEqual(metrics.compute_effort_status(2.0, noisy, self.config), "transitoire")
+        self.assertEqual(metrics.compute_effort_status(1.5, [1.5] * 50, self.config), "stable")
+
+    def test_activity_reference_and_ratio(self):
+        # Repos du run : médiane sur [t_start, t_end] APRÈS l'exploration initiale
+        # (pic d'activité γ/G au début du run) ; None tant que la fenêtre n'est
+        # pas complète ; puis le score lit le RAPPORT au repos.
+        t = [i * 0.1 for i in range(600)]
+        eff = [2000.0 if ti < 5 else 270.0 + 30 * np.sin(ti) for ti in t]  # pic initial puis repos ≈ 270
+        self.assertIsNone(metrics.activity_reference(t[:300], eff[:300], 20.0, 40.0))  # fenêtre incomplète
+        ref = metrics.activity_reference(t, eff, 20.0, 40.0)
+        self.assertTrue(255 <= ref <= 285, ref)   # le pic initial n'entre pas dans la référence
+        self.assertIsNone(metrics.activity_ratio([300.0], None))
+        self.assertAlmostEqual(metrics.activity_ratio([270.0, 270.0], 270.0), 1.0)
+        # Barème en facteurs : repos → 5 ; ×1.3 → 3 ; ×2.5 → 1 (la grenouille)
+        for ratio, score in ((1.0, 5), (1.15, 4), (1.3, 3), (1.7, 2), (2.5, 1)):
+            self.assertEqual(metrics.score_from_brackets(ratio, 'activite'), score, ratio)
+        # Le scoreur lit 'activite_rel' loggé (niveau sur une respiration / repos) ;
+        # repli : moyenne de la fenêtre / 'activite_ref' ; rien → None → neutre
+        rows = [{'effort(t)': 351.0, 'activite_ref': 270.0, 'activite_rel': 1.05} for _ in range(20)]
+        self.assertAlmostEqual(metrics.compute_reference_metrics(rows, 0.1, signal='O', N=3)['activite'], 1.05)
+        rows = [{'effort(t)': 351.0, 'activite_ref': 270.0} for _ in range(20)]
+        rows_noref = [{'effort(t)': 351.0} for _ in range(20)]
+        self.assertAlmostEqual(metrics.compute_reference_metrics(rows, 0.1, signal='O', N=3)['activite'], 1.3)
+        self.assertIsNone(metrics.compute_reference_metrics(rows_noref, 0.1, signal='O', N=3)['activite'])
+        self.assertEqual(metrics.score_reference_metrics({'activite': None})['activite'], metrics.NEUTRAL_SCORE)
 
 
 class TestReferenceScores(unittest.TestCase):
@@ -392,7 +422,7 @@ class TestReferenceScores(unittest.TestCase):
             hist.append({
                 't': t, 'S(t)': float(np.sum(O)) * 0.5, 'O': O, 'E': E, 'fn': fn,
                 'mean_abs_error': float(np.mean(np.abs(E - O))),
-                'effort(t)': 20.0 + rng.rand(), 'resilience_ac': 0.30 + 0.0001 * i,  # moniteur lent loggé (autocorr CSD)
+                'effort(t)': 20.0 + rng.rand(), 'activite_ref': 20.5, 'resilience_ac': 0.30 + 0.0001 * i,  # moniteur lent loggé (autocorr CSD)
                 'On_mean(t)': float(np.mean(O)), 'fn_mean(t)': float(np.mean(fn)),
                 'innovation_cjs': 0.25 + 0.0001 * i,  # moniteur lent loggé (C_JS enveloppe fₙ)
             })
@@ -422,7 +452,7 @@ class TestReferenceScores(unittest.TestCase):
         # dernière valeur 'innovation_cjs' disponible dans la fenêtre, il ne la recalcule pas.
         self.assertAlmostEqual(raw['innovation'], float(hist[-1]['innovation_cjs']))
         self.assertAlmostEqual(raw['regulation'], float(np.mean([h['mean_abs_error'] for h in hist])))
-        self.assertAlmostEqual(raw['activite'], float(np.mean([h['effort(t)'] for h in hist])))
+        self.assertAlmostEqual(raw['activite'], float(np.mean([h['effort(t)'] for h in hist])) / 20.5)  # rapport au repos
         # résilience = moniteur lent loggé : dernière valeur 'resilience_ac' de la fenêtre
         self.assertAlmostEqual(raw['resilience'], float(hist[-1]['resilience_ac']))
         self.assertEqual(metrics.score_reference_metrics(raw)['resilience'],

@@ -19,6 +19,8 @@
         "L(t)",
         "cpu_step(t)",
         "effort(t)",
+        "activite_ref",
+        "activite_rel",
         "An_mean(t)",
         "fn_mean(t)",
         "fluidity",
@@ -212,8 +214,6 @@
   },
   "to_calibrate": {
     "d_effort_dt": 50,
-    "effort_chronique_threshold": 75,
-    "effort_transitoire_threshold": 150,
     "env_n": "gaussienne",
     "gamma_n": 1.0,
     "mean_high_effort": 20,
@@ -297,6 +297,10 @@
   },
   "visualization": {
     "strata_sample_percent": 0.15
+  },
+  "activite": {
+    "calib_start_t": 40.0,
+    "calib_window_t": 20.0
   },
   "resilience": {
     "W_res_t": 200.0,
