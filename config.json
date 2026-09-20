@@ -29,9 +29,11 @@
         "d_effort_dt",
         "mu_Rloc(t)",
         "resilience_ac",
+        "resilience_ac_smooth",
         "resilience_var",
         "resilience_lag",
         "resilience_alert",
+        "resilience_quiet",
         "resilience_score",
         "temporal_coherence",
         "tau_S",
@@ -297,14 +299,18 @@
     "strata_sample_percent": 0.15
   },
   "resilience": {
-    "W_res_t": 40.0,
+    "W_res_t": 200.0,
     "min_points": 200,
     "lag": null,
     "peak_ratio": 10.0,
-    "max_peaks": 5,
+    "max_peaks": 8,
     "alert_calm_n": 100,
     "alert_band": 0.06,
-    "alert_windows": 3
+    "alert_windows": 3,
+    "smooth_lags": 3,
+    "quiet_floor_rel": 1e-6,
+    "min_lags_per_window": 200,
+    "stride": 5
   },
   "perception": {
     "filter_mode": "auto",

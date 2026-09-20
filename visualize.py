@@ -2713,7 +2713,10 @@ def plot_resilience_csd(metrics_history: Union[Dict[str, List], List[Dict]]) -> 
         lag_txt = f" — lag calibré : {int(np.nanmax(lag_s))} pas"
 
     ax = axes[0]
-    ax.plot(x, ac, color=FPS_COLORS['primary'], linewidth=2, label='autocorr des résidus de fₙ (lag calibré)')
+    ax.plot(x, ac, color=FPS_COLORS['primary'], linewidth=1.2, alpha=0.6, label='autocorr des résidus de fₙ (brute, lag calibré)')
+    sm = _series('resilience_ac_smooth')
+    if sm is not None and np.isfinite(sm).any():
+        ax.plot(x, sm, color=FPS_COLORS['danger'], linewidth=2.2, label='lissée (médiane sur quelques lags) : ce que le score lit')
     thr = metrics.SCORE_BRACKETS['resilience']['thresholds']
     for s, v in zip((5, 4, 3, 2), thr):
         ax.axhline(v, color='gray', linestyle='--', alpha=0.4, linewidth=0.8)
