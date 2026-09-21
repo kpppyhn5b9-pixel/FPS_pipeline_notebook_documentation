@@ -696,6 +696,47 @@ s'accrocher (~5 u.t. d'après les runs) ; (d) l'effet sur O(t) est celui d'une
 synchronisation partielle locale, visible dans la dispersion : c'est voulu, et
 c'est ce que le gardien borne.
 
+### Suite 21/09/2026 (undecies) — l'erreur devient une mémoire de soi à deux étages
+
+Décision d'Andréa : l'erreur de régulation Eₙ − Oₙ n'est plus « suis-je un passe-bas
+de moi-même ». L'ancien Eₙ (Oₙ filtré à τ = 1 u.t., coupure 0.16 cycle/u.t.) ne
+pouvait suivre aucune strate : |E| ≈ 0.07·|O|, l'erreur valait |O| (corrélation
+0.988), et ne disait rien.
+
+**Ce qui est câblé (et rien d'autre).** `dynamics.init_self_memory`,
+`update_self_memory`, `compute_En_memory` ; dans `simulate`, `memory_state`
+(`config.memory` : enabled, birth_t 60, tau_s_t 2, tau_l_t 40) ; colonnes
+`surprise_mean`, `surprise_max` (CSV, historique, résumé `surprise_mean` /
+`surprise_final`) ; trois tests unitaires (`TestSelfMemory`).
+
+**Ce que c'est.** Par strate, sur des quantités RELATIVES au chœur (Aₙ/Ā, fₙ/f̄, donc
+insensibles à la respiration commune de γ) : un présent lissé sur une période propre
+(Aₙ ondule à la période de sa strate via l'enveloppe, la mémoire lit l'enveloppe,
+pas l'ondulation), une mémoire courte (τ_s = 2 u.t.) qui suit ce présent, une
+mémoire longue (τ_l = 40 u.t.) qui suit la courte. Un changement bref passe dans la
+courte et s'efface ; un changement durable finit dans la longue (assimilé à 95 % en
+3·τ_l). La surprise est l'écart entre les deux. Une fois la mémoire née (t ≥ 60),
+Eₙ = Oₙ · Â_l/â_p : la même onde que Oₙ, à l'amplitude remémorée. L'erreur devient la
+surprise d'amplitude, signée et en phase avec la sortie ; tous ses consommateurs
+(G, γ, filtre « erreur », `mean_abs_error`) restent valides.
+
+**Mesuré (N = 30, T = 200, calme, seed 12345, mémoire OFF / ON).**
+
+| | OFF | ON (t ≥ 120) |
+|---|---|---|
+| mean\|E−O\| | 0.0137 | **0.0014** |
+| fluidité, dispersion, activité | 0.973 · 0.015 · 96 | 0.973 · 0.017 · 90 |
+| scores finaux | identiques (régulation 5, dispersion 5, fluidité 5) | idem |
+| surprise moyenne | — | 0.27 à la naissance → 0.09 (plancher calme : le chœur renégocie sans cesse ses amplitudes relatives, ≈ ±8 % par 10 u.t.) |
+
+Transitoire de naissance : Eₙ ≈ Oₙ fait remonter l'enveloppe (activité 94 → 58
+pendant 20 u.t., puis retour) ; le σ relatif de l'enveloppe se réadapte.
+
+**Ce qu'on n'a pas fait exprès.** Pas d'attention câblée (ni consolidation, ni
+ancrage, ni seuils), pas de changement des brackets de régulation : la mémoire est un
+sens, pas une main. Le banc qui l'a validée hors pipeline :
+`calib/run_surprise_attention.py` (branche `claude/metrics-py-inventory-glxowx`).
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*

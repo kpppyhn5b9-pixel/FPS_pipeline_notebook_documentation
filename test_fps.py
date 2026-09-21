@@ -1058,6 +1058,61 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(utils.format_duration(3665), "1h 1m 5.0s")
 
 
+class TestSelfMemory(unittest.TestCase):
+    """Mémoire de soi à deux étages (21/09/2026) : Eₙ = Oₙ à l'amplitude remémorée."""
+
+    def _mem(self):
+        mem = dynamics.init_self_memory(5)
+        A = np.linspace(1, 2, 5); f = np.linspace(1, 1.5, 5)
+        for _ in range(50):
+            u = dynamics.update_self_memory(mem, A, f, 0.1, 2.0, 40.0)
+        return mem, u
+
+    def test_relative_and_born(self):
+        mem, u = self._mem()
+        self.assertTrue(mem['born'])
+        self.assertTrue(np.allclose(mem['A_l'], np.linspace(1, 2, 5) / np.mean(np.linspace(1, 2, 5))))
+        self.assertTrue(np.allclose(u['u'], 0.0))               # au repos : aucune surprise
+        # une respiration COMMUNE (×1.3 sur tout le chœur) ne surprend personne
+        u2 = dynamics.update_self_memory(mem, 1.3 * np.linspace(1, 2, 5), 1.3 * np.linspace(1, 1.5, 5), 0.1, 2.0, 40.0)
+        self.assertLess(u2['u'].max(), 1e-9)
+
+    def test_two_speeds_brief_erased_durable_assimilated(self):
+        mem, _ = self._mem()
+        A = np.linspace(1, 2, 5); f = np.linspace(1, 1.5, 5)
+        # BREF : 20 pas (2 u.t.) de ×1.3 sur la strate 2, puis retour → la surprise monte puis s'efface,
+        # la mémoire longue ne bouge presque pas
+        A_l0 = mem['A_l'].copy(); peak = 0.0
+        for _ in range(20):
+            u = dynamics.update_self_memory(mem, A * np.array([1, 1, 1.3, 1, 1]), f, 0.1, 2.0, 40.0); peak = max(peak, u['u'][2])
+        for _ in range(200):
+            u = dynamics.update_self_memory(mem, A, f, 0.1, 2.0, 40.0)
+        self.assertGreater(peak, 0.10); self.assertLess(u['u'][2], 0.02); self.assertLess(abs(mem['A_l'][2] - A_l0[2]) / A_l0[2], 0.03)
+        # DURABLE : ×1.3 tenu → la surprise monte puis passe dans la mémoire longue (assimilation en ~τ_l)
+        u_max = 0.0
+        for i in range(1200):
+            u = dynamics.update_self_memory(mem, A * np.array([1, 1, 1.3, 1, 1]), f, 0.1, 2.0, 40.0)
+            if i < 80: u_max = max(u_max, u['u'][2])
+        self.assertGreater(u_max, 0.15); self.assertLess(u['u'][2], 0.02)
+        attendu = 1.3 * np.mean(A) / np.mean(A * np.array([1, 1, 1.3, 1, 1]))   # après 3·τ_l : assimilé à ~95 %
+        self.assertLess(abs(mem['A_l'][2] / A_l0[2] - attendu) / attendu, 0.02)
+
+    def test_E_is_O_at_remembered_amplitude(self):
+        mem, _ = self._mem()
+        A = np.linspace(1, 2, 5); O = np.array([0.3, -0.2, 0.5, -0.1, 0.4]) * A
+        self.assertTrue(np.allclose(dynamics.compute_En_memory(O, mem), O))      # au repos : E = O, erreur nulle
+        self.assertIsNone(dynamics.compute_En_memory(O, dynamics.init_self_memory(5)))   # pas née : None
+        # la strate 2 devient 1.5× plus forte : après ~3 périodes le présent lissé a vu le saut, la mémoire
+        # longue non → E garde la MÊME onde (même signe) à l'amplitude remémorée
+        A2 = A * np.array([1, 1, 1.5, 1, 1]); O2 = O * np.array([1, 1, 1.5, 1, 1])
+        for _ in range(30):
+            dynamics.update_self_memory(mem, A2, np.ones(5), 0.1, 2.0, 40.0)
+        ratio = dynamics.compute_En_memory(O2, mem)[2] / O2[2]
+        self.assertGreater(ratio, 0.0)
+        attendu = 1 / 1.5 * (np.mean(A2) / np.mean(A))
+        self.assertLess(abs(ratio - attendu) / attendu, 0.12)
+
+
 class TestDispersionGuard(unittest.TestCase):
     """
     Garde-fou du centre de la cloche (21/09) : le centre DISPERSION_NORM_CENTER
