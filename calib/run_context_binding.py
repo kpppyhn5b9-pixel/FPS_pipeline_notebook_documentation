@@ -84,11 +84,14 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
         e = np.abs(np.asarray(hist[-1]['E'], dtype=float) - np.asarray(hist[-1]['O'], dtype=float)) if hist else np.zeros(n)
         a = 0.05 if saliency == 'deficit' else 0.02
         st['err_ema'] = e if st.get('err_ema') is None else (1 - a) * st['err_ema'] + a * e
+        s_hard = np.zeros(n); s_hard[np.argsort(st['err_ema'])[-DEFICIT_K:]] = 1.0
         if saliency == 'deficit':
-            s = np.zeros(n); s[np.argsort(st['err_ema'])[-DEFICIT_K:]] = 1.0
+            s = s_hard
         else:
-            x = st['err_ema'] / max(float(np.median(st['err_ema'])), 1e-9)   # « combien de fois la norme du chœur »
-            s = np.clip((x - 1.0) / 1.0, 0.0, 1.0)                          # 0 à la norme, 1 à 2× la norme
+            # continue DANS LE TEMPS : EMA (5 u.t.) de l'appartenance aux DEFICIT_K pires ; une strate
+            # entre et sort de la saillance en douceur, la fréquence ne saute pas (fluidité).
+            st['s_ema'] = s_hard if st.get('s_ema') is None else 0.98 * st['s_ema'] + 0.02 * s_hard
+            s = st['s_ema']
         ref = float(np.median(st['sigma_ref'][-200:])) if st['sigma_ref'] else sigma
         garde = float(np.clip((sigma / ref - 0.5) / 0.3, 0.0, 1.0))
     else:

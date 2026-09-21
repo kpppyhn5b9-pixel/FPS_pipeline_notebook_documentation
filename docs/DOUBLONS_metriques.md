@@ -687,6 +687,36 @@ peut-être le chaînon manquant, la « communication-through-coherence » de Fri
 suppose que quelque chose passe par la cohérence) ; (ii) lisser la saillance
 (≥ 5 u.t.) avant de la donner au liage, sinon l'activité paie le scintillement.
 
+**5. Le geste du jumeau sur l'erreur, rejoué, et ce que l'erreur est vraiment.**
+Geste : Δfₙ = K₀·sₙ·(f̄_voisines de couplage − fₙ) (`coupling=nnfreq`),
+K₀ = 0.5, saillance = 8 pires erreurs lissées, contre témoin (même seed) :
+
+| run | erreur des strates saillantes | erreur toutes | fluidité (score) | activité |
+|---|---|---|---|---|
+| témoin | 0.0160–0.0163 (les 8 pires, sans geste) | 0.0141 | 0.975 (5) | 265–271 |
+| geste, saillance dure (scintille) | 0.0161–0.0164 | 0.0141 | **0.88 (4)** | 264–271 |
+| geste, saillance lissée dans le temps (EMA 5 u.t.) + variation de Δf limitée | 0.0152–0.0162 | 0.0141 | **0.975 (5)** | 263–271 |
+
+Le coût de fluidité du cahier (5 → 4) est reproduit avec la saillance dure, et
+**disparaît** dès que la saillance est continue dans le temps (une strate entre
+et sort de l'attention en 5 u.t., la fréquence ne saute pas) : c'est la
+recette pour tout geste futur, pas seulement celui-ci. Le bénéfice sur l'erreur,
+lui, n'est pas reproduit (à 0.0002 près). Pourquoi aucun geste de fréquence ne peut agir
+sur cette erreur : Eₙ = (1−λ)Eₙ + λ·φ·Oₙ est un passe-bas de la propre sortie
+de la strate, τ = 1/λ_E = 10 pas = 1 u.t., coupure ≈ 0.16 cycle/u.t., alors
+que fₙ ∈ [0.41, 6.3]. La cible ne suit AUCUNE strate : |E| ≈ 0.07·|O|, et
+l'erreur vaut |O| (rapport médian 1.04, corrélation 0.988 ; corrélation avec
+fₙ : −0.07). **L'erreur de régulation, telle que définie, est l'amplitude de
+la sortie** : les strates « en déficit d'erreur » sont les plus fortes, pas
+celles qui décrochent. Ralentir ou lier une strate ne change rien tant qu'on
+ne la ralentit pas sous 0.16 cycle/u.t., c'est-à-dire tant qu'on ne l'éteint
+pas. Conséquences : (i) la valence « erreur → lier » du cahier n'a pas de
+prise sur cette erreur-là ; (ii) c'est la cible Eₙ qui mérite un regard : une
+cible qui ne peut pas suivre ne peut pas être visée, et la régulation qui la
+lit (G, γ) régule en fait l'amplitude ; (iii) le ×0.6 mesuré par le jumeau
+n'est pas reproduit ici avec le geste tel que décrit — à comparer sur le même
+script avant d'en tirer quoi que ce soit.
+
 Ce qui reste ouvert : (a) le geste agit sur le voisinage de l'îlot au sens de
 la saillance, pas du couplage w (deux voisins ∓0.1) : si la spirale doit
 compter, c'est w qu'il faut enrichir ; (b) « relâcher » n'a pas été testé ; (c)
