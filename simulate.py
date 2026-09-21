@@ -254,6 +254,33 @@ def run_fps_simulation(config, state, loggers, strict=False):
     # initiale de γ et G) puis FIGÉ ; le score 'activite' et les statuts
     # stable/transitoire/chronique se lisent en facteurs de ce repos.
     _acfg = config.get('activite', {})
+    # Mémoire de soi à deux étages + attention (21/09/2026, décision d'Andréa) :
+    # Eₙ = Oₙ à l'amplitude REMÉMORÉE (mémoire longue, relative au chœur) une fois
+    # la mémoire née ; l'attention ouvre la consolidation des strates en SURPRISE
+    # et ANCRE les strates qui TREMBLENT sur leur mémoire courte ; gardien = cloche
+    # de dispersion. Banc : calib/run_surprise_attention.py ; docs undecies.
+    _mcfg = config.get('memory', {}); _atcfg = config.get('attention', {})
+    self_memory = dynamics.init_self_memory(N)
+    memory_state = {
+        'enabled': bool(_mcfg.get('enabled', True)),
+        'birth_t': float(_mcfg.get('birth_t', 60.0)),
+        'tau_s': float(_mcfg.get('tau_s_t', 2.0)), 'tau_l': float(_mcfg.get('tau_l_t', 40.0)),
+        'E_last': None,            # dernier Eₙ remémoré (pour l'enveloppe, en tête de pas)
+        'surprise': None,          # dernier vecteur de surprise
+    }
+    attention_state = {
+        'cons_gain': float(_atcfg.get('consolidation_gain', 3.0)),
+        'anchor_gain': float(_atcfg.get('anchor_gain', 0.9)),
+        # saillances RELATIVES à la norme du chœur (× médiane) : le chœur FPS renégocie sans cesse
+        # ses amplitudes relatives (surprise médiane ≈ 0.06 au calme, N=30) ; l'attention se pose
+        # là où une strate se reconfigure NETTEMENT plus que les autres (calibré 21/09).
+        'u_floor': float(_atcfg.get('surprise_floor', 3.0)), 'u_full': float(_atcfg.get('surprise_full', 6.0)),
+        'shake_floor': float(_atcfg.get('shake_floor', 2.0)), 'shake_full': float(_atcfg.get('shake_full', 5.0)),
+        'k_sal': min(1.0, dt / max(float(_atcfg.get('saliency_tau_t', 3.0)), dt)),
+        'guard_edge': float(_atcfg.get('guard_edge', 1.35)), 'guard_zero': float(_atcfg.get('guard_zero', 2.0)),
+        'sal_cons': np.zeros(N), 'sal_anchor': np.zeros(N),
+        'fn_prev': None, 'shake_ema': np.zeros(N), 'garde': 1.0, 'dispersion_last': None,
+    }
     activite_state = {
         'ref': None,
         't_start': float(_acfg.get('calib_start_t', 20.0)),
@@ -392,6 +419,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 phi_reg = config.get('regulation', {}).get('phi_fixed_value', 1.618)
             
             En_t = dynamics.compute_En(t, state, history, config, phi_reg, effort_history) if hasattr(dynamics, 'compute_En') else None
+            if memory_state['enabled'] and memory_state['E_last'] is not None:
+                En_t = memory_state['E_last']   # mémoire née : l'enveloppe lit l'attendu remémoré du pas précédent
 
             # a) Amplitude, fréquence, phase, latence par strate (avec statique/dynamique, config.json)
             try:
@@ -423,6 +452,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 config_with_history = config.copy()
                 config_with_history['history'] = history
                 fn_t = dynamics.compute_fn(t, state, An_t, F_n_t_fn, config_with_history)
+                # ATTENTION-ANCRAGE (21/09) : la strate qui tremble est ramenée vers sa
+                # propre mémoire courte (saillance de rythme du pas précédent, gardien).
+                if memory_state['enabled'] and attention_state['anchor_gain'] > 0 and self_memory['born']:
+                    fn_t = fn_t + dynamics.anchor_delta_fn(fn_t, self_memory, attention_state['sal_anchor'],
+                                                           attention_state['anchor_gain'], attention_state['garde'])
                 fn_history.append(fn_t.copy())
                 # Calculer et stocker delta_fn pour l'historique
                 delta_fn_t = np.zeros(N)
@@ -500,7 +534,32 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 On_t = An_t
                 if En_t is None:
                     En_t = An_t
-            
+
+            # MÉMOIRE DE SOI (21/09) : un pas de mémoire une fois née (t ≥ birth_t),
+            # consolidation ouverte là où l'attention se pose ; Eₙ = Oₙ à l'amplitude
+            # remémorée ; surprise par strate ; saillances lissées ; gardien.
+            surprise_vec = None; surprise_mean = None; surprise_max = None
+            if memory_state['enabled'] and t >= memory_state['birth_t']:
+                _cons = attention_state['cons_gain'] * attention_state['sal_cons']
+                _u = dynamics.update_self_memory(self_memory, An_t, fn_t, dt, memory_state['tau_s'], memory_state['tau_l'],
+                                                 consolidation=_cons)
+                surprise_vec = _u['u']; surprise_mean = float(np.mean(surprise_vec)); surprise_max = float(np.max(surprise_vec))
+                memory_state['surprise'] = surprise_vec
+                _E_mem = dynamics.compute_En_memory(On_t, An_t, self_memory)
+                if _E_mem is not None:
+                    En_t = _E_mem; memory_state['E_last'] = _E_mem
+                # saillance de SURPRISE (consolidation) et de RYTHME (ancrage), lissées τ_sal
+                _ks = attention_state['k_sal']
+                _umed = max(float(np.median(surprise_vec)), 1e-9)
+                attention_state['sal_cons'] += _ks * (dynamics.saliency_from_deficit(surprise_vec / _umed, attention_state['u_floor'], attention_state['u_full']) - attention_state['sal_cons'])
+                _shake = dynamics.rhythm_shake(fn_t, attention_state['fn_prev'])
+                attention_state['shake_ema'] += 0.1 * (_shake - attention_state['shake_ema'])
+                _med = max(float(np.median(attention_state['shake_ema'])), 1e-9)
+                attention_state['sal_anchor'] += _ks * (dynamics.saliency_from_deficit(attention_state['shake_ema'] / _med, attention_state['shake_floor'], attention_state['shake_full']) - attention_state['sal_anchor'])
+                attention_state['garde'] = dynamics.attention_guard(attention_state['dispersion_last'], metrics.DISPERSION_NORM_CENTER,
+                                                                    attention_state['guard_edge'], attention_state['guard_zero'])
+            attention_state['fn_prev'] = fn_t.copy()
+
             # d) Régulation/adaptation feedback
             try:                
                 # NOUVEAU : Logger détaillé pour diagnostic
@@ -806,6 +865,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 _dn = float(np.std(O_sum_history[-_W_ref:])) / np.sqrt(N)
                 dispersion_raw_history.append(_dn)
                 dispersion_norm = float(np.median(dispersion_raw_history[-(metrics.DISPERSION_SMOOTH_WINDOWS * _W_ref):]))
+                attention_state['dispersion_last'] = dispersion_norm   # lu par le gardien de l'attention au pas suivant
 
             # INNOVATION = moniteur LENT (métrique d'identité, pas d'attention) :
             # complexité statistique C_JS de l'enveloppe fₙ sur une fenêtre LONGUE
@@ -953,6 +1013,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,  # jerk de l'enveloppe fₙ (métrique de référence)
                 'dispersion_norm': dispersion_norm,  # std(ΣO)/√N lissé, sur O brut (identité) ; None en warmup
+                'surprise_mean': surprise_mean,      # mémoire de soi : surprise moyenne du chœur (None avant la naissance)
+                'surprise_max': surprise_max,
+                'attention_cons_share': (float(np.mean(attention_state['sal_cons'] > 0.5)) if surprise_vec is not None else None),
+                'attention_anchor_share': (float(np.mean(attention_state['sal_anchor'] > 0.5)) if surprise_vec is not None else None),
+                'attention_garde': (float(attention_state['garde']) if surprise_vec is not None else None),
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'innovation_H': innovation_H,  # entropie de permutation : H bas = ordre, H haut = bruit
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
@@ -999,7 +1064,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm'):
+            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm',
+                        'surprise_mean', 'surprise_max', 'attention_cons_share', 'attention_anchor_share', 'attention_garde'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -1008,7 +1074,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                                  'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm'}
+                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm',
+                                 'surprise_mean', 'surprise_max', 'attention_cons_share', 'attention_anchor_share', 'attention_garde'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -1018,7 +1085,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                              'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm'}
+                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm',
+                                 'surprise_mean', 'surprise_max', 'attention_cons_share', 'attention_anchor_share', 'attention_garde'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -1125,6 +1193,12 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'A_mean(t)': A_mean_t, 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,
                 'dispersion_norm': dispersion_norm,
+                'surprise_mean': surprise_mean, 'surprise_max': surprise_max,
+                'attention_cons_share': (float(np.mean(attention_state['sal_cons'] > 0.5)) if surprise_vec is not None else None),
+                'attention_anchor_share': (float(np.mean(attention_state['sal_anchor'] > 0.5)) if surprise_vec is not None else None),
+                'surprise': (surprise_vec.copy() if surprise_vec is not None else None),
+                'sal_cons': attention_state['sal_cons'].copy(), 'sal_anchor': attention_state['sal_anchor'].copy(),
+                'attention_garde': (float(attention_state['garde']) if surprise_vec is not None else None),
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
                 'En_mean(t)': En_mean_t,
@@ -1245,6 +1319,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'mean_S': np.mean(S_history) if S_history else 0.0,
             'std_S': np.std(S_history) if S_history else 0.0,
             'dispersion_norm': (float(dispersion_norm) if 'dispersion_norm' in locals() and dispersion_norm is not None else None),
+            'surprise_mean': (float(np.nanmean([h['surprise_mean'] for h in history if h.get('surprise_mean') is not None]))
+                              if any(h.get('surprise_mean') is not None for h in history) else None),
+            'surprise_final': (float(surprise_mean) if 'surprise_mean' in locals() and surprise_mean is not None else None),
+            'attention_cons_steps': int(sum(1 for h in history if h.get('sal_cons') is not None and np.any(np.asarray(h['sal_cons']) > 0.5))),
+            'attention_anchor_steps': int(sum(1 for h in history if h.get('sal_anchor') is not None and np.any(np.asarray(h['sal_anchor']) > 0.5))),
             'activite_ref': (float(activite_state['ref']) if activite_state['ref'] is not None else None),
             'activite_rel': (float(activite_rel) if 'activite_rel' in locals() and activite_rel is not None else None),
             'mean_effort': np.mean(effort_history) if effort_history else 0.0,

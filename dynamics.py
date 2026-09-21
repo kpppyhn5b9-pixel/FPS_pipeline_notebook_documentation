@@ -1481,6 +1481,132 @@ def compute_En(t: float, state: List[Dict], history: List[Dict], config: Dict,
     return En_t
 
 
+# ============== MÉMOIRE DE SOI À DEUX ÉTAGES (21/09/2026) ==============
+# Décision (Andréa) : Eₙ devient une mémoire de soi à deux vitesses, RELATIVE au
+# chœur (Aₙ/Ā, fₙ/f̄ : la latence γ fait respirer toutes les fréquences ensemble,
+# en absolu le système se surprenait de respirer). La mémoire COURTE suit le
+# présent (τ_s), la LONGUE suit la courte (τ_l). La SURPRISE est leur écart :
+# brève, elle vit dans la courte et s'efface ; durable, elle passe dans la
+# longue (assimilation). Née une fois le système posé (birth_t ≈ 60 u.t., même
+# repère que le repos de l'activité : avant, tout le chœur est surpris de naître).
+#
+# Ce que lit chacun : la latence et la régulation lisent le NIVEAU global de
+# surprise (bas = flow, ils se taisent ; haut et durable = reconfiguration) ;
+# l'attention lit la surprise PAR STRATE (où se reconfigure-t-on) et, là où elle
+# se pose, ouvre la consolidation (la mémoire longue apprend plus vite : porte de
+# plasticité). Elle ne touche pas la dynamique par ce geste-là.
+# Banc : calib/run_surprise_attention.py, docs/DOUBLONS_metriques.md (undecies).
+
+def init_self_memory(N: int) -> Dict[str, Any]:
+    """État de la mémoire de soi (par strate) ; born=False tant que birth_t n'est pas atteint."""
+    return {'a_p': None, 'f_p': None, 'A_s': None, 'A_l': None, 'f_s': None, 'f_l': None,
+            'born': False, 'N': int(N)}
+
+
+def update_self_memory(mem: Dict[str, Any], An_t: np.ndarray, fn_t: np.ndarray, dt: float,
+                       tau_s: float, tau_l: float,
+                       consolidation: Optional[np.ndarray] = None) -> Dict[str, np.ndarray]:
+    """
+    Un pas de mémoire. Quantités RELATIVES au chœur : a = Aₙ/mean(A), f = fₙ/mean(f).
+      présent lissé : p ← p + (dt·fₙ)(x − p)   (τ = une période propre : Aₙ ondule
+                      à la période de sa strate via env(Eₙ−Oₙ), la mémoire lit
+                      l'ENVELOPPE, pas l'ondulation ; corrigé 21/09, ripple ÷ 15)
+      courte : m_s ← m_s + (dt/τ_s)(p − m_s)
+      longue : m_l ← m_l + (dt/τ_l)(1 + cₙ)(m_s − m_l)   (cₙ ≥ 0 : consolidation par l'attention)
+    À la naissance (premier appel), les deux mémoires valent le présent.
+    Renvoie la surprise : 'u' (sans dimension, ≥ 0) = |a_s − a_l|/a_l + |f_s − f_l|/f_l,
+    'uA' et 'uf' ses deux parts SIGNÉES (> 0 : plus fort / plus rapide que remémoré).
+    """
+    A = np.asarray(An_t, dtype=float); F = np.asarray(fn_t, dtype=float)
+    a = A / max(float(np.mean(A)), 1e-12); f = F / max(float(np.mean(F)), 1e-12)
+    if not mem['born']:
+        mem['a_p'], mem['f_p'] = a.copy(), f.copy()
+        mem['A_s'], mem['A_l'], mem['f_s'], mem['f_l'] = a.copy(), a.copy(), f.copy(), f.copy(); mem['born'] = True
+    k_p = np.clip(dt * np.abs(F), 0.0, 1.0)                      # une période propre par strate
+    mem['a_p'] = mem['a_p'] + k_p * (a - mem['a_p']); mem['f_p'] = mem['f_p'] + k_p * (f - mem['f_p'])
+    k_s = min(1.0, dt / max(tau_s, dt)); k_l = min(1.0, dt / max(tau_l, dt))
+    mem['A_s'] = mem['A_s'] + k_s * (mem['a_p'] - mem['A_s']); mem['f_s'] = mem['f_s'] + k_s * (mem['f_p'] - mem['f_s'])
+    c = np.zeros_like(a) if consolidation is None else np.clip(np.asarray(consolidation, dtype=float), 0.0, None)
+    k_ln = np.minimum(1.0, k_l * (1.0 + c))
+    mem['A_l'] = mem['A_l'] + k_ln * (mem['A_s'] - mem['A_l']); mem['f_l'] = mem['f_l'] + k_ln * (mem['f_s'] - mem['f_l'])
+    uA = (mem['A_s'] - mem['A_l']) / np.maximum(np.abs(mem['A_l']), 1e-9)
+    uf = (mem['f_s'] - mem['f_l']) / np.maximum(np.abs(mem['f_l']), 1e-9)
+    return {'u': np.abs(uA) + np.abs(uf), 'uA': uA, 'uf': uf}
+
+
+def compute_En_memory(On_t: np.ndarray, An_t: np.ndarray, mem: Dict[str, Any]) -> Optional[np.ndarray]:
+    """
+    Sortie attendue selon la mémoire de soi : LA MÊME onde que Oₙ, à l'amplitude
+    REMÉMORÉE (mémoire longue) rapportée au présent LISSÉ (enveloppe, une période
+    propre) — deux quantités relatives au chœur, leur rapport est sans échelle :
+        Eₙ = Oₙ · (Â_l,n / â_p,n)
+    Ainsi Eₙ − Oₙ = (Â_l/â_p − 1)·Oₙ : l'erreur de régulation devient la surprise
+    d'amplitude, signée et en phase avec la sortie (l'ancien passe-bas ne pouvait
+    suivre aucune strate : |E| ≈ 0.07·|O|, l'erreur valait |O|, 21/09). Tous les
+    consommateurs de E (G, γ, filtre 'erreur', mean_abs_error) restent valides.
+    None tant que la mémoire n'est pas née (le caller garde alors compute_En).
+    """
+    if not mem.get('born'):
+        return None
+    O = np.asarray(On_t, dtype=float)
+    if mem.get('a_p') is not None:
+        present = mem['a_p']
+    else:  # repli (mémoire d'une version antérieure) : présent brut relatif
+        A = np.asarray(An_t, dtype=float)
+        present = A / max(float(np.mean(A)), 1e-12)
+    return O * (mem['A_l'] / np.maximum(present, 1e-9))
+
+
+# ============== ATTENTION : SAILLANCES ET ANCRAGE (21/09/2026) ==============
+# Deux saillances, deux natures de trouble (banc undecies) : la SURPRISE désigne
+# une strate qui se reconfigure (l'attention ouvre sa consolidation) ; la
+# SECOUSSE de rythme (|Δfₙ/fₙ| lissé, au-dessus de la norme du chœur) désigne
+# une strate qui tremble (l'attention l'ANCRE sur sa propre mémoire courte : la
+# cible est lisse par construction, et suit un changement durable, donc l'ancre
+# ne combat pas l'assimilation ; secousse ÷ 8, fluidité 1 → 3, gardiens intacts).
+# « Lier vers les voisines » n'a de prise que sur une strate isolée qui décroche
+# de sa cascade ; « relâcher » n'a pas de déficit à servir aujourd'hui.
+
+def saliency_from_deficit(x: np.ndarray, floor: float, full: float) -> np.ndarray:
+    """Saillance brute ∈ [0, 1] : 0 sous `floor`, 1 à partir de `full`, linéaire entre."""
+    x = np.asarray(x, dtype=float)
+    return np.clip((x - floor) / max(full - floor, 1e-12), 0.0, 1.0)
+
+
+def rhythm_shake(fn_t: np.ndarray, fn_prev: Optional[np.ndarray]) -> np.ndarray:
+    """Secousse relative de rythme par strate : |fₙ − fₙ(t−dt)| / |fₙ|."""
+    F = np.asarray(fn_t, dtype=float)
+    if fn_prev is None:
+        return np.zeros_like(F)
+    return np.abs(F - np.asarray(fn_prev, dtype=float)) / np.maximum(np.abs(F), 1e-9)
+
+
+def anchor_delta_fn(fn_t: np.ndarray, mem: Dict[str, Any], sal_rhythm: np.ndarray,
+                    gain: float, garde: float) -> np.ndarray:
+    """
+    Ancrage : Δfₙ = gain · sₙ · garde · (f̂_s,n · f̄ − fₙ), la strate qui tremble
+    ramenée vers ce qu'elle faisait il y a ~τ_s (sa mémoire courte, à l'échelle du
+    chœur). Nul tant que la mémoire n'est pas née.
+    """
+    F = np.asarray(fn_t, dtype=float)
+    if not mem.get('born') or gain <= 0 or garde <= 0:
+        return np.zeros_like(F)
+    f_self = mem['f_s'] * max(float(np.mean(F)), 1e-12)
+    return gain * np.asarray(sal_rhythm, dtype=float) * float(garde) * (f_self - F)
+
+
+def attention_guard(dispersion_norm: Optional[float], center: float, edge: float = 1.35, zero: float = 2.0) -> float:
+    """
+    Gardien de l'attention par la cloche de dispersion : 1 tant que le repli
+    max(v/c, c/v) reste sous `edge` (bande saine), 0 à `zero`, linéaire entre.
+    Sans lecture (échauffement) → 1.
+    """
+    if dispersion_norm is None or not np.isfinite(dispersion_norm) or dispersion_norm <= 0 or center <= 0:
+        return 1.0
+    fold = max(dispersion_norm / center, center / dispersion_norm)
+    return float(np.clip((zero - fold) / max(zero - edge, 1e-9), 0.0, 1.0))
+
+
 # ============== SPIRALISATION ==============
 
 def compute_r(t: float, phi: float, epsilon: float, omega: float, theta: float) -> float:

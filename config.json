@@ -25,6 +25,11 @@
         "fn_mean(t)",
         "fluidity",
         "dispersion_norm",
+        "surprise_mean",
+        "surprise_max",
+        "attention_cons_share",
+        "attention_anchor_share",
+        "attention_garde",
         "innovation_cjs",
         "innovation_H",
         "mean_abs_error",
@@ -298,6 +303,23 @@
   },
   "visualization": {
     "strata_sample_percent": 0.15
+  },
+  "memory": {
+    "enabled": true,
+    "birth_t": 60.0,
+    "tau_s_t": 2.0,
+    "tau_l_t": 40.0
+  },
+  "attention": {
+    "consolidation_gain": 3.0,
+    "anchor_gain": 0.9,
+    "surprise_floor": 3.0,
+    "surprise_full": 6.0,
+    "shake_floor": 2.0,
+    "shake_full": 5.0,
+    "saliency_tau_t": 3.0,
+    "guard_edge": 1.35,
+    "guard_zero": 2.0
   },
   "activite": {
     "calib_start_t": 40.0,

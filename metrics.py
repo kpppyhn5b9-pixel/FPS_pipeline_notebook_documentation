@@ -715,7 +715,12 @@ SCORE_BRACKETS = {
     # cloche (voir DISPERSION_NORM_CENTER) : 5 à l'amplitude saine, baisse des deux côtés.
     'dispersion':  {'direction': 'bell', 'center': DISPERSION_NORM_CENTER,
                     'thresholds': list(DISPERSION_FOLD_FACTORS)},
-    'regulation': {'direction': 'lower',  'thresholds': [0.1, 0.3, 0.5, 1.0]},
+    # regulation : SURPRISE moyenne du chœur (mémoire de soi à deux étages, 21/09) :
+    # sans dimension, ≈ 0.04 en flow, ≈ 0.2 sur les strates qui se reconfigurent
+    # (banc undecies). 5 sous 0.05 (flow : la régulation se tait), 1 au-delà de 0.4.
+    # Repli (CSV ancien sans 'surprise_mean') : mean|E−O|, autre échelle — score
+    # indicatif seulement.
+    'regulation': {'direction': 'lower',  'thresholds': [0.12, 0.18, 0.27, 0.40]},   # surprise moyenne ; calme ≈ 0.08 (N=30/100), naissance ≈ 0.15
     # fluidity : mesurée par le JERK de l'enveloppe fₙ (cf. cahier de validation).
     # Seuils calibrés in-situ par balayage d'intensité (repos 0,94 → bruit fort
     # 0,78, monotone) pour que toute l'échelle 1-5 soit atteignable :
@@ -822,6 +827,11 @@ COLUMN_LABELS = {
     'activite_ref':         'Activité (repos de référence)',
     'activite_rel':         'Activité / repos',
     'dispersion_norm':      'Dispersion (std ΣO / √N, lissée)',
+    'surprise_mean':        'Surprise moyenne (mémoire de soi)',
+    'surprise_max':         'Surprise max (mémoire de soi)',
+    'attention_cons_share': 'Attention : part de strates en consolidation',
+    'attention_anchor_share': 'Attention : part de strates ancrées',
+    'attention_garde':      'Attention : gardien (cloche de dispersion)',
     'effort_internal':      'Activité chronique',
     'effort_transient':     'Activité transitoire',
     'mean_abs_error':       'Régulation (|E−O|)',
@@ -1101,13 +1111,18 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
         # cloche sur l'écart-type normalisé √N ; N inconnu → verdict suspendu (neutre).
         dispersion = (disp_raw / np.sqrt(N_eff)) if (disp_raw is not None and N_eff) else None
 
+    # régulation = SURPRISE moyenne (mémoire de soi, colonne 'surprise_mean' loguée par
+    # simulate), moyenne sur la fenêtre ; None avant la naissance de la mémoire → neutre.
+    # Repli (CSV ancien) : mean|E−O|, autre échelle.
+    surpr = [v for v in (_num(h.get('surprise_mean')) for h in history_window) if v is not None]
     errors = []
-    for h in history_window:
-        e = _num(h.get('mean_abs_error'))
-        if e is None and h.get('E') is not None and h.get('O') is not None:
-            e = _num(compute_mean_abs_error(np.asarray(h['E'], dtype=float), np.asarray(h['O'], dtype=float)))
-        if e is not None:
-            errors.append(e)
+    if not surpr:
+        for h in history_window:
+            e = _num(h.get('mean_abs_error'))
+            if e is None and h.get('E') is not None and h.get('O') is not None:
+                e = _num(compute_mean_abs_error(np.asarray(h['E'], dtype=float), np.asarray(h['O'], dtype=float)))
+            if e is not None:
+                errors.append(e)
     efforts = [v for v in (_num(h.get('effort(t)')) for h in history_window) if v is not None]
     # activité = RAPPORT au repos du run ('activite_ref', calibré une fois par
     # simulate puis figé, loggé à chaque pas) ; pas de référence → None → neutre.
@@ -1134,7 +1149,7 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
         'dispersion': dispersion,
         'fluidity':   compute_fluidity(fn_means),
         'innovation': (innov[-1] if innov else None),
-        'regulation': float(np.mean(errors)) if errors else 0.0,
+        'regulation': (float(np.mean(surpr)) if surpr else (float(np.mean(errors)) if errors else None)),
         'activite':   (act_rel[-1] if act_rel else activity_ratio(efforts, act_ref[-1] if act_ref else None)),
         'resilience': (resil[-1] if resil else None),
     }

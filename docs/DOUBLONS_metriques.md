@@ -841,6 +841,104 @@ mémoire par strate dans simulate (N × 4 nombres, rien de lourd) ; la
 résilience par strate n'a pas encore d'événement propre sur ce banc ; et le
 « relâcher » n'a toujours pas été testé.
 
+### Suite 21/09/2026 (duodecies) — câblage dans le pipeline : Eₙ mémoire, surprise, consolidation, ancrage
+
+Décision d'Andréa (21/09) : « va pour Eₙ mémoire à deux étages, l'attention sur
+l'erreur qui aide la mémoire long terme, l'attention sur la fluidité qui ancre ».
+Câblé, testé, mesuré jusqu'à T = 300 (N = 30) et T = 150 (N = 100).
+
+**Ce qui est câblé.**
+
+- `dynamics.py` (bloc « mémoire de soi » avant la spiralisation) :
+  `init_self_memory`, `update_self_memory` (mémoires courte τ_s et longue τ_l
+  des quantités RELATIVES au chœur Aₙ/Ā et fₙ/f̄, la longue suit la courte,
+  consolidation cₙ ≥ 0 = la longue apprend (1 + cₙ) fois plus vite),
+  `compute_En_memory` (Eₙ = Oₙ · Â_l,n / â_p,n : la même onde à l'amplitude
+  remémorée), `saliency_from_deficit`, `rhythm_shake`, `anchor_delta_fn`
+  (Δfₙ = gain · sₙ · garde · (f̂_s,n · f̄ − fₙ)), `attention_guard` (cloche
+  de dispersion : 1 sous un repli de 1.35, 0 à 2.0).
+- `simulate.py` : `memory_state` et `attention_state` ; en tête de pas le
+  dernier Eₙ remémoré alimente l'enveloppe ; après `compute_fn` l'ancrage ;
+  après Oₙ la mise à jour de la mémoire (avec consolidation = 3 · saillance de
+  surprise), Eₙ remémoré, saillances lissées (τ = 3 u.t.), gardien. Colonnes :
+  `surprise_mean`, `surprise_max`, `attention_cons_share`,
+  `attention_anchor_share`, `attention_garde` (CSV + historique, vecteurs
+  `surprise`, `sal_cons`, `sal_anchor` dans l'historique) ; résumé
+  `surprise_mean`, `surprise_final`, `attention_cons_steps`,
+  `attention_anchor_steps`.
+- `metrics.py` : le score **régulation** lit désormais la surprise moyenne du
+  chœur (`SCORE_BRACKETS['regulation']` = [0.12, 0.18, 0.27, 0.40], plus bas =
+  mieux ; repli sur mean|E−O| pour un CSV d'avant).
+- `config.json` : `memory` {enabled, birth_t 60, tau_s_t 2, tau_l_t 40} et
+  `attention` {consolidation_gain 3, anchor_gain 0.9, surprise_floor 3 /
+  surprise_full 6 (× médiane du chœur), shake_floor 2 / shake_full 5 (idem),
+  saliency_tau_t 3, guard_edge 1.35, guard_zero 2}. `validate_config.py`
+  connaît les cinq colonnes.
+- `test_fps.py` : `TestSelfMemoryAndAttention` (six tests unitaires) et le test
+  gardien `TestDispersionGuard.test_calm_run_reads_5` étendu (T = 160 : surprise,
+  parts d'attention, régulation 5).
+
+**Trois choses apprises en câblant (le banc ne pouvait pas les voir).**
+
+1. *Aₙ ondule à sa propre période.* Dans le pipeline Aₙ = A₀·σ(Iₙ)·env(Eₙ−Oₙ),
+   et Eₙ−Oₙ oscille avec Oₙ : Aₙ n'est pas une enveloppe (écart-type relatif
+   ≈ 0.5, période 1.2 u.t.). Lu tel quel par la mémoire courte, ce ripple
+   faisait une surprise permanente de 0.11. Remède : un étage « présent lissé »
+   par strate (τ = une période propre, 1/fₙ) avant la mémoire courte ; Eₙ
+   rapporte la mémoire longue à ce présent lissé. Ripple ÷ 15.
+2. *Le chœur FPS n'est jamais immobile.* Sans aucune mémoire, les amplitudes
+   relatives des strates se renégocient sans cesse (≈ ±8 % par fenêtre de
+   10 u.t., davantage sur les strates lentes). La surprise a donc un
+   **plancher calme ≈ 0.08** (médiane 0.06, max ≈ 0.33), stable jusqu'à
+   T = 300, à N = 30 comme à N = 100, quels que soient τ_s ∈ {2, 5, 10} et
+   τ_l ∈ {40, 80, 100} (balayage hors ligne). Ce plancher est la vie du chœur,
+   pas un défaut. Deux conséquences : les seuils absolus du banc (0.03/0.10)
+   ouvraient la consolidation sur la MOITIÉ des strates en permanence
+   (τ_l effectif ≈ 10 : la mémoire longue n'était plus longue) → la saillance
+   de surprise est maintenant **relative à la norme du chœur** (× médiane,
+   comme la secousse) : au calme 1–4 % des strates, ancrage 0 % ; et les
+   brackets de régulation sont calés sur ce plancher (5 sous 0.12).
+3. *Un changement durable modéré est une rampe, et il passe.* Un ×1.3 forcé
+   sur cinq strates devient, à travers l'enveloppe et le σ relatif, une rampe
+   (×1.1 → ×1.39 en 50 u.t.) que la mémoire longue assimile sans que la
+   surprise sorte de l'errance naturelle (+0.04 sur ces strates). La porte de
+   consolidation ne s'ouvre donc que pour une reconfiguration NETTE (u > 3 ×
+   la médiane du chœur, soit ≈ ×2). Le tremblement de rythme, lui, est vu
+   immédiatement : ancrage sur 97 % des strates secouées, 0 % ailleurs.
+
+**Mesures (calme, seed 12345, avec / sans mémoire).**
+
+| | sans mémoire | avec mémoire (t ≥ 180) |
+|---|---|---|
+| mean\|E−O\| | 0.0137 | **0.0013** (Eₙ est enfin la même onde que Oₙ) |
+| surprise moyenne / max | — | 0.08 / 0.30 |
+| consolidation / ancrage (part de strates) | — | 1–4 % / 0 % |
+| gardien | — | 1.00 |
+| fluidité, dispersion, activité, résilience | 0.973, 0.015, 96, 3→5→2 | 0.973, 0.017, 88, 3→5→2 (mêmes événements, mêmes fenêtres) |
+| régulation | 5 (ancienne lecture) | **5** dès t ≈ 120–150 |
+
+Transitoire de naissance (t = 60 → ~180, soit ~3·τ_l) : Eₙ ≈ Oₙ fait remonter
+l'enveloppe (effort 94 → 58 pendant 20 u.t., puis retour), le σ relatif se
+réadapte, la surprise descend 0.26 → 0.13 (t = 100–120) → 0.10 (130–160) →
+0.08. Pendant ce temps la régulation lit 4. Le témoin sans mémoire reproduit
+exactement la baisse de fluidité vue à t ≈ 210 et les scores de résilience :
+ce sont des événements du système, pas de la mémoire.
+
+**Ce que le score régulation dit maintenant.** Non plus « la sortie suit-elle
+un passe-bas d'elle-même » (toujours vrai à 7 % près) mais « le chœur est-il
+ce qu'il se souvient être » : 5 tant que les strates ne se reconfigurent pas
+plus que leur errance ordinaire ; il ne descend que pour une reconfiguration
+nette, relative, de plusieurs strates. Une perturbation globale d'Iₙ (choc,
+rampe) déplace tout le chœur ensemble et laisse la surprise relative presque
+muette : c'est voulu (mémoire relative), et c'est aussi la limite à garder en
+tête.
+
+Points ouverts, dans l'ordre convenu : résilience par strate (banc avec
+coup + ancre comme force de rappel, risque de rigidité), activité par strate,
+calage des constantes avec les tests gardiens ; « relâcher » n'a pas de
+déficit à servir ; la métrique d'expression de la chimère (quel groupe devient
+audible dans S(t)) reste une idée à poser.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*

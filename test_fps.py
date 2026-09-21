@@ -1058,6 +1058,93 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(utils.format_duration(3665), "1h 1m 5.0s")
 
 
+class TestSelfMemoryAndAttention(unittest.TestCase):
+    """Mémoire de soi à deux étages, E remémoré, surprise, attention (21/09/2026)."""
+
+    def _mem(self, N=5, steps=60, A=None, f=None):
+        mem = dynamics.init_self_memory(N)
+        A = np.linspace(1, 2, N) if A is None else A; f = np.linspace(1, 1.5, N) if f is None else f
+        u = None
+        for _ in range(steps):
+            u = dynamics.update_self_memory(mem, A, f, 0.1, 2.0, 40.0)
+        return mem, u
+
+    def test_memory_is_relative_and_born_at_rest(self):
+        mem, u = self._mem()
+        self.assertTrue(mem['born']); self.assertTrue(np.allclose(u['u'], 0.0))   # au repos : aucune surprise
+        # relative au chœur : multiplier TOUTES les amplitudes par 3 ne surprend personne (la respiration de γ)
+        A = np.linspace(1, 2, 5); f = np.linspace(1, 1.5, 5)
+        u2 = dynamics.update_self_memory(mem, 3 * A, 1.2 * f, 0.1, 2.0, 40.0)
+        self.assertTrue(np.allclose(u2['u'], 0.0, atol=1e-9))
+
+    def test_two_speeds_brief_erased_durable_assimilated(self):
+        mem, _ = self._mem()
+        A = np.linspace(1, 2, 5); f = np.linspace(1, 1.5, 5)
+        # BREF : 20 pas (2 u.t.) de ×1.3 sur la strate 2, puis retour → la surprise monte puis s'efface,
+        # la mémoire longue ne bouge presque pas
+        A_l0 = mem['A_l'].copy(); peak = 0.0
+        for _ in range(20):
+            u = dynamics.update_self_memory(mem, A * np.array([1, 1, 1.3, 1, 1]), f, 0.1, 2.0, 40.0); peak = max(peak, u['u'][2])
+        for _ in range(200):
+            u = dynamics.update_self_memory(mem, A, f, 0.1, 2.0, 40.0)
+        self.assertGreater(peak, 0.10); self.assertLess(u['u'][2], 0.02); self.assertLess(abs(mem['A_l'][2] - A_l0[2]) / A_l0[2], 0.03)
+        # DURABLE : ×1.3 tenu → la surprise monte puis passe dans la mémoire longue (assimilation en ~τ_l)
+        u_max = 0.0
+        for i in range(1200):
+            u = dynamics.update_self_memory(mem, A * np.array([1, 1, 1.3, 1, 1]), f, 0.1, 2.0, 40.0)
+            if i < 80: u_max = max(u_max, u['u'][2])     # le pic vient après le présent lissé (~1/fₙ) et τ_s
+        self.assertGreater(u_max, 0.15); self.assertLess(u['u'][2], 0.02)
+        self.assertAlmostEqual(mem['A_l'][2] / mem['A_s'][2], 1.0, delta=0.02)   # assimilé
+
+    def test_consolidation_speeds_up_long_memory(self):
+        A = np.linspace(1, 2, 5); f = np.linspace(1, 1.5, 5); Ad = A * np.array([1, 1, 1.3, 1, 1])
+        mem_a, _ = self._mem(); mem_b, _ = self._mem()
+        for _ in range(150):
+            dynamics.update_self_memory(mem_a, Ad, f, 0.1, 2.0, 40.0)
+            dynamics.update_self_memory(mem_b, Ad, f, 0.1, 2.0, 40.0, consolidation=np.array([0, 0, 3.0, 0, 0]))
+        gap_a = abs(mem_a['A_l'][2] - mem_a['A_s'][2]); gap_b = abs(mem_b['A_l'][2] - mem_b['A_s'][2])
+        self.assertLess(gap_b, 0.5 * gap_a)   # l'attention posée sur la strate 2 : elle assimile bien plus vite
+
+    def test_E_is_O_at_remembered_amplitude(self):
+        mem, _ = self._mem()
+        A = np.linspace(1, 2, 5); O = np.array([0.3, -0.2, 0.5, -0.1, 0.4]) * A
+        E = dynamics.compute_En_memory(O, A, mem)
+        self.assertTrue(np.allclose(E, O))                      # au repos : E = O, erreur nulle
+        # la strate 2 devient 1.5× plus forte : E lit le présent LISSÉ (une période propre), pas l'instant.
+        # À l'instant du saut, E suit encore O (l'enveloppe n'a pas bougé) ; après ~3 périodes le présent
+        # lissé a vu le saut, la mémoire longue non → E garde la MÊME onde (même signe) à l'amplitude remémorée.
+        A2 = A * np.array([1, 1, 1.5, 1, 1]); O2 = O * np.array([1, 1, 1.5, 1, 1])
+        self.assertTrue(np.allclose(dynamics.compute_En_memory(O2, A2, mem), O2))
+        f = np.ones(5)
+        for _ in range(30):
+            dynamics.update_self_memory(mem, A2, f, 0.1, 2.0, 40.0)
+        E2 = dynamics.compute_En_memory(O2, A2, mem)
+        ratio = E2[2] / O2[2]
+        self.assertGreater(ratio, 0.0)                          # même onde, même signe
+        attendu = 1 / 1.5 * (np.mean(A2) / np.mean(A))          # amplitude remémorée, à l'échelle du chœur
+        self.assertLess(abs(ratio - attendu) / attendu, 0.12)   # à 12 % près (présent lissé à ~95 %)
+        self.assertIsNone(dynamics.compute_En_memory(O, A, dynamics.init_self_memory(5)))   # pas née → None
+
+    def test_saliency_anchor_and_guard(self):
+        self.assertTrue(np.allclose(dynamics.saliency_from_deficit(np.array([0.0, 0.03, 0.065, 0.10, 0.5]), 0.03, 0.10), [0, 0, 0.5, 1, 1]))
+        mem, _ = self._mem()
+        f = np.linspace(1, 1.5, 5); F = f * np.array([1, 1, 1.4, 1, 1])            # la strate 2 tremble (+40 % ce pas)
+        d = dynamics.anchor_delta_fn(F, mem, np.array([0, 0, 1.0, 0, 0]), 0.9, 1.0)
+        self.assertLess(d[2], 0); self.assertTrue(np.allclose(d[[0, 1, 3, 4]], 0))     # ramenée vers sa mémoire courte, les autres intactes
+        self.assertTrue(np.allclose(dynamics.anchor_delta_fn(F, mem, np.ones(5), 0.9, 0.0), 0))  # gardien fermé → aucun geste
+        self.assertTrue(np.allclose(dynamics.rhythm_shake(F, f)[[0, 2]], [0.0, 0.4 / 1.4]))
+        c = metrics.DISPERSION_NORM_CENTER
+        self.assertEqual(dynamics.attention_guard(c, c), 1.0); self.assertEqual(dynamics.attention_guard(None, c), 1.0)
+        self.assertEqual(dynamics.attention_guard(2.5 * c, c), 0.0); self.assertTrue(0 < dynamics.attention_guard(1.6 * c, c) < 1)
+
+    def test_regulation_score_reads_surprise(self):
+        rows = [{'surprise_mean': 0.04, 'effort(t)': 1.0, 'fn_mean(t)': 1.0} for _ in range(20)]
+        self.assertEqual(metrics.score_reference_metrics(metrics.compute_reference_metrics(rows, 0.1, signal='O', N=3))['regulation'], 5)
+        rows = [{'surprise_mean': 0.35} for _ in range(20)]
+        self.assertEqual(metrics.score_reference_metrics(metrics.compute_reference_metrics(rows, 0.1, signal='O', N=3))['regulation'], 2)
+        self.assertIsNone(metrics.compute_reference_metrics([{'fn_mean(t)': 1.0}] * 20, 0.1, signal='O', N=3)['regulation'])  # ni surprise ni E/O → neutre
+
+
 class TestDispersionGuard(unittest.TestCase):
     """
     Garde-fou du centre de la cloche (21/09) : le centre DISPERSION_NORM_CENTER
@@ -1072,7 +1159,7 @@ class TestDispersionGuard(unittest.TestCase):
         import simulate
         with open('config.json') as f:
             config = json.load(f)
-        config['system']['N'] = 30; config['system']['T'] = 60; config['system']['seed'] = 12345
+        config['system']['N'] = 30; config['system']['T'] = 160; config['system']['seed'] = 12345
         config['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
         config['analysis'] = {**config.get('analysis', {}), 'compare_kuramoto': False}
         tmp = tempfile.mkdtemp(); cwd = os.getcwd()
@@ -1101,6 +1188,19 @@ class TestDispersionGuard(unittest.TestCase):
         self.assertLess(max(folds), metrics.DISPERSION_FOLD_FACTORS[0], max(folds))
         scores = [metrics.score_from_brackets(x['dispersion_norm'], 'dispersion') for x in regime]
         self.assertTrue(all(s == 5 for s in scores), set(scores))
+        # Mémoire de soi (21/09) : née à t = 60 ; le transitoire de naissance dure ~3·τ_l
+        # (E ≈ O fait remonter l'enveloppe, le σ relatif se réadapte, la mémoire longue
+        # s'installe : surprise 0.26 → 0.13 à t=100-120 → 0.10 à 130-160 → plancher 0.08 dès
+        # t ≈ 180, N=30 et N=100, mesuré jusqu'à T=300 : errance naturelle des amplitudes
+        # relatives). Dès t ≥ 130 la régulation lit 5 et l'attention ne se pose (presque)
+        # nulle part : consolidation < 10 % des strates, ancrage nul.
+        mem_rows = [x for x in h if x.get('t', 0) >= 130 and x.get('surprise_mean') is not None]
+        self.assertGreater(len(mem_rows), 100)
+        self.assertLess(np.median([x['surprise_mean'] for x in mem_rows]), 0.12)
+        self.assertLess(np.mean([x['attention_cons_share'] for x in mem_rows]), 0.10)
+        self.assertLess(np.mean([x['attention_anchor_share'] for x in mem_rows]), 0.05)
+        sc = metrics.compute_reference_scores(h[-metrics.reference_window(config, 0.1):], 0.1, signal='O', N=30)
+        self.assertEqual(sc['regulation'], 5, sc)
 
 
 class TestIntegration(unittest.TestCase):
