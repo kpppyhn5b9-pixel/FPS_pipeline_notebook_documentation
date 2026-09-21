@@ -16,6 +16,12 @@ usage: python run_surprise_attention.py <nom> <K> <T> [seed] [tau_s] [tau_l] [fa
   mode 'lier'        : l'attention LIE les strates en déficit de RYTHME (tremblement de fₙ : saillance = |Δfₙ| relatif
                        au-dessus de la norme du chœur, lissée) vers leurs voisines calmes, Δf limité par pas ;
   mode 'both'        : consolidation (sur la surprise) + lier (sur le tremblement) — cohabitation.
+  mode 'ancrer'      : la strate en déficit de rythme est ramenée vers SA PROPRE mémoire courte (f̂_s·f̄) :
+                       la cible est lisse par construction (EMA 2 u.t.), donc le geste l'est aussi (pas de limite
+                       de pente), et elle suit un changement durable (ce n'est pas la mémoire longue) : ne
+                       combat pas l'assimilation. Même mémoire, deux usages.
+  mode 'both_ancrer' : consolidation + ancrer.
+  [slew] 9ᵉ argument : limite de variation de Δf par pas pour 'lier' (défaut 0.02 ; 0 = aucune).
 Troisième événement : TREMBLEMENT (bruit blanc relatif sur fₙ des strates 20–28 à partir de t_jit) — un déficit de
 fluidité et d'activité qui vit dans le rythme."""
 import sys, os, json, io, contextlib, numpy as np
@@ -28,11 +34,12 @@ tau_s = float(sys.argv[5]) if len(sys.argv) > 5 else 2.0
 tau_l = float(sys.argv[6]) if len(sys.argv) > 6 else 40.0
 fac = float(sys.argv[7]) if len(sys.argv) > 7 else 1.15
 mode = sys.argv[8] if len(sys.argv) > 8 else 'gesture'
+SLEW_ARG = float(sys.argv[9]) if len(sys.argv) > 9 else 0.02
 os.makedirs(name, exist_ok=True); os.chdir(name)
 dt = 0.1; t_mem = 60.0; t_dur = 90.0; t_bref = 140.0; t_jit = 110.0
 JIT = list(range(20, 29)); JIT_AMP = 0.05   # tremblement : ±5 % de fₙ par pas, bruit blanc
 DUR = list(range(40, 49)); BREF = list(range(70, 79))
-U0, U1, SLEW, TAU_SAL = 0.03, 0.10, 0.02, 3.0   # plancher / plein de saillance (surprise), limite Δf, lissage saillance
+U0, U1, TAU_SAL = 0.03, 0.10, 3.0   # plancher / plein de saillance (surprise), limite Δf, lissage saillance
 c = json.load(open(os.path.join(ROOT, 'config.json')))
 c['system']['T'] = T; c['system']['seed'] = seed
 c['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
@@ -73,7 +80,7 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
             st['As'], st['fs'] = A_rel.copy(), f_rel.copy(); st['Al'], st['fl'] = A_rel.copy(), f_rel.copy()
         st['As'] = (1 - a_s) * st['As'] + a_s * A_rel;  st['fs'] = (1 - a_s) * st['fs'] + a_s * f_rel
         # consolidation : là où l'attention se pose, la mémoire longue apprend plus vite (porte de plasticité)
-        a_l_n = a_l * (1.0 + K * s) if (mode in ('consolidate', 'both') and K > 0) else a_l
+        a_l_n = a_l * (1.0 + K * s) if (mode in ('consolidate', 'both', 'both_ancrer') and K > 0) else a_l
         st['Al'] = (1 - a_l_n) * st['Al'] + a_l_n * st['As']; st['fl'] = (1 - a_l_n) * st['fl'] + a_l_n * st['fs']
         u = np.abs(st['As'] - st['Al']) / np.maximum(st['Al'], 1e-9) + np.abs(st['fs'] - st['fl']) / np.maximum(st['fl'], 1e-9)
         s_raw = np.clip((u - U0) / (U1 - U0), 0.0, 1.0)
@@ -103,7 +110,12 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
             wcalm = pw * (1.0 - s_g[idx]) if idx.size else pw
             f_nb[i] = np.sum(wcalm * fn[idx]) / wcalm.sum() if idx.size and wcalm.sum() > 1e-9 else fn[i]
         d = K * s_g * garde * (f_nb - fn)
-        d = st['dprev'] + np.clip(d - st['dprev'], -SLEW, SLEW); st['dprev'] = d
+        if SLEW_ARG > 0:
+            d = st['dprev'] + np.clip(d - st['dprev'], -SLEW_ARG, SLEW_ARG); st['dprev'] = d
+        fn = fn + d
+    elif K > 0 and t >= t_mem and mode in ('ancrer', 'both_ancrer') and st['fs'] is not None:
+        f_self = st['fs'] * max(float(np.mean(fn)), 1e-9)                 # ce que la strate faisait il y a ~2 u.t., à l'échelle du chœur
+        d = K * s_lier * garde * (f_self - fn)                             # ancrer la strate qui tremble sur sa propre mémoire courte
         fn = fn + d
     st['phase'] = st['phase'] + 2 * np.pi * fn * dt
     st['log'].append((t, u.copy(), s.copy(), f_rel.copy(), (st['fl'].copy() if st['fl'] is not None else f_rel.copy()), sigma, garde, rloc.copy(), fn.copy(), s_lier.copy()))

@@ -794,9 +794,37 @@ mémoire longue des strates saillantes apprend plus vite : τ_l / (1 + 3·sₙ))
   se retire vite. Beaucoup d'îlots qui durent = un système qui n'assimile plus ;
   aucun jamais = un système que rien ne touche.
 
+**Cohabitation, et le rythme (troisième événement : TREMBLEMENT).** Neuf
+strates (20–28) reçoivent un bruit blanc de ± 5 % sur fₙ à chaque pas à partir
+de t = 110 : un déficit qui vit dans le rythme (fluidité, activité). Saillance
+de rythme = |Δfₙ/fₙ| lissé, au-dessus de 2× la norme du chœur. Quatre runs :
+
+| | témoin | lier (voisines calmes, K = 0.5, pente limitée) | consolidation | les deux |
+|---|---|---|---|---|
+| secousse relative du groupe / autres | 0.18 / 0.0001 | 0.165 / 0.0001 | 0.18 | 0.175 |
+| saillance de rythme sur le groupe | 0.66 → 1.0 | idem | idem | idem |
+| surprise du groupe qui tremble | 0.04 (pas élevée) | idem | idem | idem |
+| fluidité globale | 0.53 (score 1) | 0.53 (1) | 0.53 (1) | 0.53 (1) |
+| assimilation du durable ≥ 0.98 | t ≈ 120–130 | idem | t ≈ 100–110 | t ≈ 100–110 |
+| dispersion, σ_Rloc, activité | 5 / 0.31 / 240–320 | idem | idem | idem |
+
+Lecture. (a) Les deux saillances séparent deux natures de trouble : le
+tremblement n'est PAS une surprise (les mémoires relatives moyennent un bruit
+blanc), et le changement durable n'est pas un tremblement ; la surprise
+désigne la reconfiguration, la secousse désigne le déficit de rythme. (b) Les
+deux actions cohabitent sans interférence : « les deux » = consolidation +
+lier, additifs à la troisième décimale, gardiens intacts. (c) Mais « lier vers
+les voisines calmes » ne répare presque pas un tremblement (−7 %) : la pente
+limitée qui protège la fluidité empêche de suivre un bruit blanc, et à
+l'intérieur du bloc les voisines tremblent aussi. Un tremblement se soigne par
+de l'INERTIE, pas par du voisinage → geste « ancrer » (la strate qui tremble
+est ramenée vers sa propre mémoire courte, lisse par construction et qui suit
+un changement durable, donc ne combat pas l'assimilation) : ANCRER_PLACEHOLDER
+
 Points ouverts : le facteur de consolidation (×3 ici) et les deux τ sont des
 réglages, à caler comme le reste ; la saillance par strate demande une
-mémoire par strate dans simulate (N × 4 nombres, rien de lourd) ; et le
+mémoire par strate dans simulate (N × 4 nombres, rien de lourd) ; la
+résilience par strate n'a pas encore d'événement propre sur ce banc ; et le
 « relâcher » n'a toujours pas été testé.
 
 ---
