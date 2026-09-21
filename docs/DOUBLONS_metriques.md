@@ -819,7 +819,21 @@ limitée qui protège la fluidité empêche de suivre un bruit blanc, et à
 l'intérieur du bloc les voisines tremblent aussi. Un tremblement se soigne par
 de l'INERTIE, pas par du voisinage → geste « ancrer » (la strate qui tremble
 est ramenée vers sa propre mémoire courte, lisse par construction et qui suit
-un changement durable, donc ne combat pas l'assimilation) : ANCRER_PLACEHOLDER
+un changement durable, donc ne combat pas l'assimilation) :
+
+| tremblement à partir de t = 110 | témoin | lier voisines, pente libre | **ancrer K = 0.5** | **ancrer K = 0.9** |
+|---|---|---|---|---|
+| secousse relative du groupe (autres : 0.0001) | 0.18 | 0.12 | 0.09 | **0.023** |
+| fluidité globale (score) | 0.53 (1) | 0.56 (1) | 0.65–0.70 (1) | **0.85–0.87 (3)** |
+| assimilation du durable, surprise, dispersion, σ_Rloc, activité | — | inchangés | inchangés | inchangés |
+
+Ancrer divise la secousse par 8 et remonte la fluidité globale de 1 à 3 (le
+résidu vient des neuf strates encore à 0.023 contre 0.0001 ailleurs), sans
+toucher ni l'assimilation du changement durable ni les gardiens. La même
+mémoire de soi sert donc les deux actions de l'attention : la longue, ouverte
+par la consolidation, pour assimiler ce qui change ; la courte, comme ancre,
+pour tenir ce qui tremble. Et le déficit de rythme trouve son vrai remède,
+l'inertie de soi, là où le voisinage n'avait qu'une prise faible.
 
 Points ouverts : le facteur de consolidation (×3 ici) et les deux τ sont des
 réglages, à caler comme le reste ; la saillance par strate demande une
