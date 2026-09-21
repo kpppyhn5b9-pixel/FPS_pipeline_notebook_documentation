@@ -78,9 +78,11 @@ retombe sous elles après (0.04 contre 0.08) : le contact ne laisse pas de trace
    sur trois ne s'allument même pas. Le mécanisme est lisible : la relaxation
    fₙ₊₁ ← ½fₙ₊₁ + ½·r·fₙ fait que chaque strate hérite de sa voisine, les voisines se
    ressemblent, et un îlot de voisines qui se ressemblent se lie à peu de frais. Un
-   rapport au hasard casse cette ressemblance de proche en proche. La même structure
-   donne aussi la fluidité du substrat lui-même (0.98 contre 0.38 sans cascade) : le
-   tempo lisse et la susceptibilité au contexte ont la même cause.
+   rapport au hasard casse cette ressemblance de proche en proche. *(Correction
+   21/09, carte d'ablation : la fluidité du substrat, 0.98 contre 0.38 sans cascade,
+   n'a PAS la même cause. Elle lit la respiration ε·sin de r(t) que la cascade porte
+   dans f̄ ; sans respiration, cascade gardée, elle tombe à 0.37, plancher du jerk sur
+   un signal plat. Voir `docs/ABLATIONS_elements_design.md`.)*
 
 3. **Le nombre d'or, lui, n'est pas distinguable ici.** r = 1.5 fait aussi bien que
    φ (4.5 contre 4.2 ; +0.21 contre +0.16 sur le seed 12345). Ce qui compte, c'est
