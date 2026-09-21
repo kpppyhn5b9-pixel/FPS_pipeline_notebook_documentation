@@ -693,8 +693,23 @@ ACTIVITY_STATUS_CHRONIC = 1.25  # statut 'chronique' : moyenne récente tenue au
 # déplace l'amplitude que modérément) ; d'où « observation seule ». Si un jour
 # d'autres régimes divergent, l'escalade est une référence figée par run (comme
 # 'activite'/'la grenouille'), pas un centre en dur.
+# Ce qu'EST le centre (vérifié 21/09 sur toutes les campagnes, rapport 1.00–1.07) :
+# pour N sinusoïdes d'amplitude A et de phases indépendantes, std(ΣO) = A·√(N/2),
+# donc std(ΣO)/√N = ⟨Aₙ⟩/√2. Le centre est l'amplitude moyenne d'une strate
+# du chœur incohérent au premier ordre (Aₙ ≈ 0.022 en régime → 0.0157). Il se
+# recalibre en une ligne (calib/dispersion_center.py) et bouge avec le régime
+# d'amplitude (A₀, échelle d'entrée, enveloppe), jamais avec N. La cloche lit
+# donc amplitude × cohérence collective : le côté « emballement » est aussi la
+# synchronisation (somme cohérente, ∝ N et non √N), le côté « gel » la chute
+# d'amplitude ou l'annulation en antiphase — les deux morts de la chimère.
+# Lecture LISSÉE : simulate logge 'dispersion_norm' = médiane sur
+# DISPERSION_SMOOTH_WINDOWS fenêtres W_f (par fenêtre, le repli sain atteint
+# 1.40–1.46 au calme : un point isolé ne fait pas verdict). Toujours sur O(t) :
+# l'identité se lit sur le signal BRUT, jamais sur le perçu S(t) (un filtre de
+# perception change ce que le système regarde, pas qui il est).
 DISPERSION_NORM_CENTER = 0.0157
 DISPERSION_FOLD_FACTORS = (1.35, 1.7, 2.5, 4.0)
+DISPERSION_SMOOTH_WINDOWS = 3
 
 SCORE_BRACKETS = {
     # cloche (voir DISPERSION_NORM_CENTER) : 5 à l'amplitude saine, baisse des deux côtés.
@@ -806,6 +821,7 @@ COLUMN_LABELS = {
     'effort_status':        "État d'activité",
     'activite_ref':         'Activité (repos de référence)',
     'activite_rel':         'Activité / repos',
+    'dispersion_norm':      'Dispersion (std ΣO / √N, lissée)',
     'effort_internal':      'Activité chronique',
     'effort_transient':     'Activité transitoire',
     'mean_abs_error':       'Régulation (|E−O|)',
@@ -1043,8 +1059,9 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
     Valeurs brutes des six métriques de référence sur une fenêtre d'historique.
 
     Mêmes calculs que le switch de perception, à l'identique :
-      dispersion  = std(signal) / √N  (cloche autour de l'amplitude saine ;
-                    compute_dispersion, normalisé — voir DISPERSION_NORM_CENTER)
+      dispersion  = std(ΣOₙ) / √N, TOUJOURS sur O (identité), lissé : colonne
+                    'dispersion_norm' de simulate, repli compute_dispersion/√N
+                    (cloche autour de l'amplitude saine — voir DISPERSION_NORM_CENTER)
       fluidity    = jerk de la moyenne de fₙ           (compute_fluidity)
       innovation  = complexité statistique C_JS de fₙ  (compute_innovation_cjs,
                     moniteur lent lu dans la colonne innovation_cjs)
@@ -1060,20 +1077,29 @@ def compute_reference_metrics(history_window: List[Dict], dt: float,
                 'S' (perçu — gamma_adaptive_aware)
         N: nombre de strates (utile quand seul On_mean(t) est disponible)
     """
-    series = [v for v in signal_series(history_window, signal, N) if np.isfinite(v)]
+    # DISPERSION = métrique d'IDENTITÉ : toujours sur O(t) brut, quel que soit
+    # `signal` (γ note S(t) pour les autres ; l'identité ne dépend pas du filtre
+    # de perception). Lue de préférence dans 'dispersion_norm' (moniteur logué par
+    # simulate : std(ΣO)/√N lissé sur quelques fenêtres W_f), dernière valeur ;
+    # repli : std(ΣO)/√N de la fenêtre (CSV ancien, tests).
     fn_means = _fn_mean_series(history_window)
-    # N pour la normalisation de la dispersion (std(ΣO) ≈ k·√N) : celui passé,
-    # sinon déduit d'un vecteur Oₙ de la fenêtre (chemin live gamma, sans N).
-    N_eff = N
-    if N_eff is None:
-        for h in history_window:
-            O = h.get('O')
-            if O is not None and np.ndim(O) > 0:
-                N_eff = len(O)
-                break
-    disp_raw = compute_dispersion(series) if series else None
-    # cloche sur l'écart-type normalisé √N ; N inconnu → verdict suspendu (neutre).
-    dispersion = (disp_raw / np.sqrt(N_eff)) if (disp_raw is not None and N_eff) else None
+    disp_col = [v for v in (_num(h.get('dispersion_norm')) for h in history_window) if v is not None]
+    if disp_col:
+        dispersion = disp_col[-1]
+    else:
+        o_series = [v for v in signal_series(history_window, 'O', N) if np.isfinite(v)]
+        # N pour la normalisation (std(ΣO) ≈ k·√N) : celui passé, sinon déduit
+        # d'un vecteur Oₙ de la fenêtre (chemin live gamma, sans N).
+        N_eff = N
+        if N_eff is None:
+            for h in history_window:
+                O = h.get('O')
+                if O is not None and np.ndim(O) > 0:
+                    N_eff = len(O)
+                    break
+        disp_raw = compute_dispersion(o_series) if o_series else None
+        # cloche sur l'écart-type normalisé √N ; N inconnu → verdict suspendu (neutre).
+        dispersion = (disp_raw / np.sqrt(N_eff)) if (disp_raw is not None and N_eff) else None
 
     errors = []
     for h in history_window:

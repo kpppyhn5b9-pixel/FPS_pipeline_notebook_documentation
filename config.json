@@ -24,6 +24,7 @@
         "An_mean(t)",
         "fn_mean(t)",
         "fluidity",
+        "dispersion_norm",
         "innovation_cjs",
         "innovation_H",
         "mean_abs_error",

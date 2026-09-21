@@ -223,6 +223,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
             _pw = np.array([])
         _rloc_neigh.append((_idx, _pw))
     mu_Rloc_history = []
+    O_sum_history = []            # ΣOₙ par pas (dispersion d'identité, sur O brut)
+    dispersion_raw_history = []   # std(ΣO)/√N par fenêtre W_f, avant lissage
     # Résilience = ralentissement critique sur la couche lente (New_Attention.md) :
     # autocorrélation à lag calibré des résidus détrendés de l'enveloppe fₙ, sur
     # une fenêtre LONGUE. Le lag est calibré UNE fois (relaxation 1/e) puis figé :
@@ -794,6 +796,17 @@ def run_fps_simulation(config, state, loggers, strict=False):
             _W_ref = perception_state['W_f']
             fluidity = metrics.compute_fluidity([float(np.mean(f)) for f in fn_history[-_W_ref:]])
 
+            # DISPERSION = métrique d'IDENTITÉ loguée par pas, sur O(t) BRUT :
+            # std(ΣOₙ)/√N sur la fenêtre W_f (cloche autour de l'amplitude saine,
+            # metrics.DISPERSION_NORM_CENTER = ⟨Aₙ⟩/√2), puis médiane sur
+            # DISPERSION_SMOOTH_WINDOWS fenêtres : un point bruité ne fait pas verdict.
+            O_sum_history.append(float(np.sum(On_t)))
+            dispersion_norm = None
+            if len(O_sum_history) >= _W_ref:
+                _dn = float(np.std(O_sum_history[-_W_ref:])) / np.sqrt(N)
+                dispersion_raw_history.append(_dn)
+                dispersion_norm = float(np.median(dispersion_raw_history[-(metrics.DISPERSION_SMOOTH_WINDOWS * _W_ref):]))
+
             # INNOVATION = moniteur LENT (métrique d'identité, pas d'attention) :
             # complexité statistique C_JS de l'enveloppe fₙ sur une fenêtre LONGUE
             # (_W_innov ≥ 200, bien plus large que W_f~50) ; tant qu'on n'a pas
@@ -939,6 +952,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'A_mean(t)': A_mean_t,
                 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,  # jerk de l'enveloppe fₙ (métrique de référence)
+                'dispersion_norm': dispersion_norm,  # std(ΣO)/√N lissé, sur O brut (identité) ; None en warmup
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'innovation_H': innovation_H,  # entropie de permutation : H bas = ordre, H haut = bruit
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
@@ -985,7 +999,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel'):
+            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -994,7 +1008,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                                  'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel'}
+                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -1004,7 +1018,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                              'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel'}
+                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -1110,6 +1124,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'effort(t)': effort_t, 'activite_ref': activite_ref, 'activite_rel': activite_rel, 'cpu_step(t)': cpu_step,
                 'A_mean(t)': A_mean_t, 'f_mean(t)': f_mean_t,
                 'fluidity': fluidity,
+                'dispersion_norm': dispersion_norm,
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
                 'En_mean(t)': En_mean_t,
@@ -1229,6 +1244,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
         metrics_summary = {
             'mean_S': np.mean(S_history) if S_history else 0.0,
             'std_S': np.std(S_history) if S_history else 0.0,
+            'dispersion_norm': (float(dispersion_norm) if 'dispersion_norm' in locals() and dispersion_norm is not None else None),
             'activite_ref': (float(activite_state['ref']) if activite_state['ref'] is not None else None),
             'activite_rel': (float(activite_rel) if 'activite_rel' in locals() and activite_rel is not None else None),
             'mean_effort': np.mean(effort_history) if effort_history else 0.0,

@@ -463,9 +463,11 @@ class TestReferenceScores(unittest.TestCase):
         hist = self._history()[-50:]
         raw_O = metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)
         raw_S = metrics.compute_reference_metrics(hist, 0.1, signal='S', N=3)
-        for k in ('fluidity', 'regulation', 'activite', 'resilience'):
-            self.assertEqual(raw_O[k], raw_S[k])
-        self.assertNotEqual(raw_O['dispersion'], raw_S['dispersion'])
+        # Depuis le 21/09, la dispersion (identité) se lit sur O brut : aucune des
+        # six ne dépend du signal noté. Les scores S (γ) et O (switch) coïncident ;
+        # la plomberie `signal` reste pour une future métrique du perçu.
+        for k in metrics.REFERENCE_SCORE_KEYS:
+            self.assertEqual(raw_O[k], raw_S[k], k)
 
     def test_csv_like_rows_use_On_mean(self):
         hist = self._history()[-50:]
@@ -513,6 +515,22 @@ class TestReferenceScores(unittest.TestCase):
         # N inconnu et non déductible (pas de vecteur O) → verdict suspendu.
         rows = [{'On_mean(t)': 0.001, 'S(t)': 0.1, 'fn_mean(t)': 1.0} for _ in range(60)]
         self.assertIsNone(metrics.compute_reference_metrics(rows, 0.1, signal='O', N=None)['dispersion'])
+
+    def test_dispersion_reads_O_only_and_logged_monitor(self):
+        # Identité : la dispersion se lit sur O brut quel que soit le signal noté
+        # (γ note S(t) ; un filtre de perception change ce que le système regarde,
+        # pas qui il est). Ici S(t) = 0.5·ΣO : la dispersion S serait 2× plus petite.
+        hist = self._history()[-50:]
+        dO = metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)['dispersion']
+        dS = metrics.compute_reference_metrics(hist, 0.1, signal='S', N=3)['dispersion']
+        self.assertAlmostEqual(dO, dS)
+        self.assertAlmostEqual(dO, float(np.std([float(np.sum(h['O'])) for h in hist])) / np.sqrt(3))
+        # Moniteur logué par simulate ('dispersion_norm', lissé) : lu de préférence,
+        # dernière valeur ; sans la colonne → repli sur la fenêtre.
+        for i, h in enumerate(hist):
+            h['dispersion_norm'] = 0.0157 * (1 + 0.001 * i)
+        self.assertAlmostEqual(metrics.compute_reference_metrics(hist, 0.1, signal='O', N=3)['dispersion'], hist[-1]['dispersion_norm'])
+        self.assertEqual(metrics.compute_reference_scores(hist, 0.1, signal='S', N=3)['dispersion'], 5)
 
     def test_dispersion_is_observe_only(self):
         # Métrique d'identité : notée et visible, jamais engagée comme remède.
@@ -1038,6 +1056,51 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(utils.format_duration(45.3), "45.3s")
         self.assertEqual(utils.format_duration(125), "2m 5.0s")
         self.assertEqual(utils.format_duration(3665), "1h 1m 5.0s")
+
+
+class TestDispersionGuard(unittest.TestCase):
+    """
+    Garde-fou du centre de la cloche (21/09) : le centre DISPERSION_NORM_CENTER
+    est un portrait de la chimère saine (⟨Aₙ⟩/√2 sur la config standard). Si le
+    régime d'amplitude change (A₀, échelle d'entrée, enveloppe), ce test casse au
+    lieu de laisser un voyant d'identité lire 4 en silence pendant deux mois
+    (le piège de l'activité en juillet). Recette : calib/dispersion_center.py.
+    Run réel, court (N=30, T=60 : l'invariance en √N tient), ~5 s, sans figures.
+    """
+
+    def test_calm_run_reads_5(self):
+        import simulate
+        with open('config.json') as f:
+            config = json.load(f)
+        config['system']['N'] = 30; config['system']['T'] = 60; config['system']['seed'] = 12345
+        config['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
+        config['analysis'] = {**config.get('analysis', {}), 'compare_kuramoto': False}
+        tmp = tempfile.mkdtemp(); cwd = os.getcwd()
+        try:
+            os.chdir(tmp)
+            with open('cfg.json', 'w') as f:
+                json.dump(config, f)
+            import io, contextlib
+            with contextlib.redirect_stdout(io.StringIO()):
+                res = simulate.run_simulation('cfg.json', 'FPS')
+        finally:
+            os.chdir(cwd); shutil.rmtree(tmp, ignore_errors=True)
+        h = res['history']
+        # Régime : t ≥ 45. Jusqu'à t ≈ 40 l'amplitude Aₙ décroît encore (0.12 → 0.022)
+        # et la médiane lissée traîne le transitoire (rapport 1.7 à t=20-30, 1.1 à
+        # 30-40, 1.0 ensuite, mesuré N=30 et N=100) ; même repère que le repos de
+        # l'activité (calib_start_t = 40).
+        regime = [x for x in h if x.get('t', 0) >= 45 and x.get('dispersion_norm') is not None]
+        self.assertGreater(len(regime), 100)
+        c = metrics.DISPERSION_NORM_CENTER
+        folds = [max(x['dispersion_norm'] / c, c / x['dispersion_norm']) for x in regime]
+        # Le centre est bien ⟨Aₙ⟩/√2 de ce run (rapport ~1), et la cloche lit 5
+        # sur tout le régime (lissée : aucune fenêtre isolée ne fait verdict).
+        A_mean = float(np.mean([x['An_mean(t)'] for x in regime]))
+        self.assertLess(abs(np.median([x['dispersion_norm'] for x in regime]) / (A_mean / np.sqrt(2)) - 1.0), 0.15)
+        self.assertLess(max(folds), metrics.DISPERSION_FOLD_FACTORS[0], max(folds))
+        scores = [metrics.score_from_brackets(x['dispersion_norm'], 'dispersion') for x in regime]
+        self.assertTrue(all(s == 5 for s in scores), set(scores))
 
 
 class TestIntegration(unittest.TestCase):

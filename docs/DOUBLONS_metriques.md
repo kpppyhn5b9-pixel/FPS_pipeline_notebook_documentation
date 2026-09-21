@@ -484,6 +484,56 @@ de t = 40 (4 seeds) ; et pourquoi le niveau se lit sur 200 pas : sur 50 pas le
 rapport oscille entre 0.86 et 1.28 (la respiration de l'enveloppe fₙ), sur 200
 entre 0.98 et 1.02.
 
+### Suite 21/09/2026 (nonies) — dispersion : ce qu'est le centre, lecture lissée, sur O seulement
+
+La cloche de dispersion (commit 87f2943, session jumelle) note std(ΣOₙ)/√N
+autour de 0.0157, des deux côtés (gel, emballement), en observation seule. Trois
+ajustements, à trois mains (Andréa, la session jumelle, celle-ci).
+
+**1. Le centre n'est pas une constante empirique : c'est ⟨Aₙ⟩/√2.** Pour N
+sinusoïdes d'amplitude A et de phases indépendantes, std(ΣO) = A·√(N/2), donc
+std(ΣO)/√N = A/√2. Vérifié sur toutes les campagnes (rapport std(ΣO)/√N sur
+⟨Aₙ⟩/√2) :
+
+| condition | std(ΣO)/√N | ⟨Aₙ⟩/√2 | rapport |
+|---|---|---|---|
+| calme (4 seeds) | 0.0154–0.0160 | 0.0153 | 1.00–1.05 |
+| fluctuation fₙ injectée, rampe de latence | 0.0156–0.0158 | 0.0153 | 1.01–1.03 |
+| bruit d'entrée fort | 0.0181–0.0187 | 0.0176 | 1.02–1.07 |
+
+Conséquences : (a) l'invariance en N est expliquée ; (b) le centre bouge avec
+le régime d'amplitude (A₀, échelle d'entrée, enveloppe), jamais avec N — c'est
+exactement ce qu'il faut surveiller ; (c) la cloche lit amplitude × cohérence
+collective : « emballement » = aussi la synchronisation (somme cohérente ∝ N),
+« gel » = chute d'amplitude ou annulation en antiphase ; (d) la chimère saine
+est incohérente au premier ordre (rapport 1), l'accord spiralé C(t) vit au
+second ordre. Recette rangée : `calib/dispersion_center.py` (mesure les deux
+sur un CSV et la distribution du repli par fenêtre). **Garde-fou** :
+`TestDispersionGuard` fait tourner un run calme réel (N=30, T=40) et exige que
+le centre soit ⟨Aₙ⟩/√2 à 15 % près et que la cloche lise 5 sur tout le régime :
+un régime d'amplitude qui change casse la suite au lieu de laisser un voyant
+d'identité lire 4 en silence (le piège de l'activité en juillet).
+
+**2. Lecture lissée.** Par fenêtre W_f, le repli sain atteint 1.40–1.46 au
+calme (1–2 % de fenêtres à 4) et jusqu'à 16 % de fenêtres à 4 sous bruit fort
+(régime sain, amplitude plus haute). simulate logge `dispersion_norm` =
+std(ΣO)/√N sur W_f, médiane sur `DISPERSION_SMOOTH_WINDOWS` = 3 fenêtres ; le
+scoreur lit cette colonne (dernière valeur), repli sur la fenêtre pour un CSV
+ancien. Le bord du 5 reste ×1.35 : la cloche garde sa finesse, le point bruité
+ne fait plus verdict.
+
+**3. Sur O(t) brut, jamais sur S(t).** La dispersion était la seule métrique
+qui dépendait du signal noté, et γ note S(t). Quand un filtre de perception
+pondère les strates, std(S) quitte le centre pour une raison qui n'a rien à
+voir avec la chimère : γ aurait vu un 4 fabriqué par l'attention elle-même. Un
+filtre change ce que le système regarde, pas qui il est : la dispersion rejoint
+la fluidité et l'innovation parmi les métriques agnostiques au signal.
+Conséquence à nommer : aujourd'hui aucune des six ne dépend du signal, donc les
+scores sur S(t) (γ) et sur O(t) (switch) sont identiques. La plomberie
+`signal='S'` reste, inerte, pour le jour où une métrique lira légitimement le
+perçu (une erreur perçue, par exemple). Le panneau S vs O de la figure le dit
+désormais tel quel.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*
