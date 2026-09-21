@@ -1127,9 +1127,12 @@ compute_mu_n → le hook désactivé (renvoie le scalaire statique). ← à rév
 compute_fn(t, state, An_t, …) → reçoit An_t mais ne l'utilise pas : le hook An→fn est déjà là, prêt. ← à brancher
 Notre cloche de dispersion → le juge « chimère préservée ». ✓
 Aujourd'hui la saillance ne va que dans S(t) (la perception). Notre pas, c'est la faire descendre dans μ_n → An (→ fn) : de percevoir ce qui compte à l'engager.
+
+Précisions passées pour la stabilité migrante :
+
 Trois brins, chacun ancré dans du réel du code :
 Perception (saillance) = la couche d'amplitude, mise au point par μₙ adaptatif. Sortie : une saillance par strate sₙ(t) = "où ça compte maintenant". μₙ dit ce que "compter" veut dire.
-Action (liage local) = le geste d'aujourd'hui : lier f0 et φ_signature (la double-ancre) des strates saillantes. Force proportionnelle à sₙ.
+Action (liage local) = le geste : lier f0 et φ_signature (la double-ancre) des strates saillantes. Force proportionnelle à sₙ.
 Perception de soi (la valeur / le garde-fou) = le système lit sa propre cohérence : μ_Rloc (cohérence locale moyenne) et σ_Rloc (le contraste chimère) — déjà calculés en direct dans simulate (mu_Rloc_history). Il les relit pour moduler le liage.
 Ce que le système doit savoir de lui-même, sous quelle forme : deux choses, déjà disponibles — un scalaire σ(t) (la santé de son identité chimère) et un vecteur Rloc_n(t) de la phase accumulée avec couplage de voisinage (où il est lié).
 Comment ça agit sur la synchronisation : conceptuellement, la force de liage et de dérive devient
