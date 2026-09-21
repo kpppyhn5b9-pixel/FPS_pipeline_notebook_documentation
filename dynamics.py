@@ -1481,6 +1481,68 @@ def compute_En(t: float, state: List[Dict], history: List[Dict], config: Dict,
     return En_t
 
 
+# ============== MÉMOIRE DE SOI : Eₙ À DEUX ÉTAGES (21/09/2026) ==============
+# L'erreur de régulation Eₙ − Oₙ n'est plus « suis-je un passe-bas de moi-même »
+# (l'ancien Eₙ, filtré à τ = 1 u.t., ne pouvait suivre aucune strate : |E| ≈ 0.07·|O|,
+# l'erreur valait |O|). Eₙ devient une MÉMOIRE DE SOI à deux vitesses, par strate,
+# sur des quantités RELATIVES au chœur (Aₙ/Ā, fₙ/f̄, donc insensibles à la respiration
+# commune de γ) : une mémoire courte (τ_s) qui suit le présent, une mémoire longue
+# (τ_l) qui suit la courte. Un changement BREF passe dans la courte et s'efface ; un
+# changement DURABLE finit dans la longue (assimilé en ~τ_l). La SURPRISE est l'écart
+# entre les deux. Eₙ = Oₙ à l'amplitude remémorée : l'erreur devient la surprise
+# d'amplitude, signée, en phase avec la sortie. Banc : calib/run_surprise_attention.py.
+
+def init_self_memory(N: int) -> Dict[str, Any]:
+    """État de la mémoire de soi (par strate) ; born=False tant que birth_t n'est pas atteint."""
+    return {'a_p': None, 'f_p': None, 'A_s': None, 'A_l': None, 'f_s': None, 'f_l': None,
+            'born': False, 'N': int(N)}
+
+
+def update_self_memory(mem: Dict[str, Any], An_t: np.ndarray, fn_t: np.ndarray, dt: float,
+                       tau_s: float, tau_l: float) -> Dict[str, np.ndarray]:
+    """
+    Un pas de mémoire. Quantités RELATIVES au chœur : a = Aₙ/mean(A), f = fₙ/mean(f).
+      présent lissé : p ← p + (dt·fₙ)(x − p)   (τ = une période propre : Aₙ ondule à la
+                      période de sa strate via env(Eₙ−Oₙ), la mémoire lit l'ENVELOPPE,
+                      pas l'ondulation)
+      courte : m_s ← m_s + (dt/τ_s)(p − m_s)
+      longue : m_l ← m_l + (dt/τ_l)(m_s − m_l)
+    À la naissance (premier appel), toutes les mémoires valent le présent.
+    Renvoie la surprise : 'u' (sans dimension, ≥ 0) = |a_s − a_l|/a_l + |f_s − f_l|/f_l,
+    'uA' et 'uf' ses deux parts SIGNÉES (> 0 : plus fort / plus rapide que remémoré).
+    """
+    A = np.asarray(An_t, dtype=float); F = np.asarray(fn_t, dtype=float)
+    a = A / max(float(np.mean(A)), 1e-12); f = F / max(float(np.mean(F)), 1e-12)
+    if not mem['born']:
+        mem['a_p'], mem['f_p'] = a.copy(), f.copy()
+        mem['A_s'], mem['A_l'], mem['f_s'], mem['f_l'] = a.copy(), a.copy(), f.copy(), f.copy(); mem['born'] = True
+    k_p = np.clip(dt * np.abs(F), 0.0, 1.0)                      # une période propre par strate
+    mem['a_p'] = mem['a_p'] + k_p * (a - mem['a_p']); mem['f_p'] = mem['f_p'] + k_p * (f - mem['f_p'])
+    k_s = min(1.0, dt / max(tau_s, dt)); k_l = min(1.0, dt / max(tau_l, dt))
+    mem['A_s'] = mem['A_s'] + k_s * (mem['a_p'] - mem['A_s']); mem['f_s'] = mem['f_s'] + k_s * (mem['f_p'] - mem['f_s'])
+    mem['A_l'] = mem['A_l'] + k_l * (mem['A_s'] - mem['A_l']); mem['f_l'] = mem['f_l'] + k_l * (mem['f_s'] - mem['f_l'])
+    uA = (mem['A_s'] - mem['A_l']) / np.maximum(np.abs(mem['A_l']), 1e-9)
+    uf = (mem['f_s'] - mem['f_l']) / np.maximum(np.abs(mem['f_l']), 1e-9)
+    return {'u': np.abs(uA) + np.abs(uf), 'uA': uA, 'uf': uf}
+
+
+def compute_En_memory(On_t: np.ndarray, mem: Dict[str, Any]) -> Optional[np.ndarray]:
+    """
+    Sortie attendue selon la mémoire de soi : LA MÊME onde que Oₙ, à l'amplitude
+    REMÉMORÉE (mémoire longue) rapportée au présent LISSÉ (enveloppe) — deux
+    quantités relatives au chœur, leur rapport est sans échelle :
+        Eₙ = Oₙ · (Â_l,n / â_p,n)
+    Ainsi Eₙ − Oₙ = (Â_l/â_p − 1)·Oₙ : l'erreur de régulation devient la surprise
+    d'amplitude, signée et en phase avec la sortie. Tous les consommateurs de E
+    (G, γ, filtre 'erreur', mean_abs_error) restent valides. None tant que la mémoire
+    n'est pas née (le caller garde alors compute_En).
+    """
+    if not mem.get('born'):
+        return None
+    O = np.asarray(On_t, dtype=float)
+    return O * (mem['A_l'] / np.maximum(mem['a_p'], 1e-9))
+
+
 # ============== SPIRALISATION ==============
 
 def compute_r(t: float, phi: float, epsilon: float, omega: float, theta: float) -> float:

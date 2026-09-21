@@ -25,6 +25,8 @@
         "fn_mean(t)",
         "fluidity",
         "dispersion_norm",
+        "surprise_mean",
+        "surprise_max",
         "innovation_cjs",
         "innovation_H",
         "mean_abs_error",
@@ -302,6 +304,12 @@
   "activite": {
     "calib_start_t": 40.0,
     "calib_window_t": 20.0
+  },
+  "memory": {
+    "enabled": true,
+    "birth_t": 60.0,
+    "tau_s_t": 2.0,
+    "tau_l_t": 40.0
   },
   "resilience": {
     "W_res_t": 200.0,

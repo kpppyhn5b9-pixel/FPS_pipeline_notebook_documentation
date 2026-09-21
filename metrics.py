@@ -822,6 +822,8 @@ COLUMN_LABELS = {
     'activite_ref':         'Activité (repos de référence)',
     'activite_rel':         'Activité / repos',
     'dispersion_norm':      'Dispersion (std ΣO / √N, lissée)',
+    'surprise_mean':        'Surprise (mémoire de soi, moyenne)',
+    'surprise_max':         'Surprise (mémoire de soi, max)',
     'effort_internal':      'Activité chronique',
     'effort_transient':     'Activité transitoire',
     'mean_abs_error':       'Régulation (|E−O|)',
