@@ -534,6 +534,79 @@ scores sur S(t) (γ) et sur O(t) (switch) sont identiques. La plomberie
 perçu (une erreur perçue, par exemple). Le panneau S vs O de la figure le dit
 désormais tel quel.
 
+### Suite 21/09/2026 (decies) — métastabilité migrante contextuelle : germe, mécanisme, prototype
+
+Question (Andréa, Attention.md « La métastabilité migrante contextuelle ») : la
+migration de la cohérence est-elle en germe dans la FPS, et comment la câbler
+pour qu'elle serve sans rien casser ? Résultats du jumeau (kymographes, φ gelé,
+c = 0/0.1/0.5, projecteur de contexte) : chimère imposée, non émergente ;
+contexte → amplitude parfaitement, cohérence pas du tout. Ici : le mécanisme
+exact derrière ces observations, puis un prototype de câblage hors pipeline.
+
+**1. Anatomie de la lentille couplage (mesuré sur la config standard).**
+
+- Le voisinage de couplage est de DEUX strates, n−1 et n+1, poids ∓0.1 (somme
+  nulle) ; μ_Rloc normalise en |w| → 0.5/0.5. Donc
+  **Rloc_n = |cos((θ_{n+1} − θ_{n−1})/2)|** : la cohérence locale d'une strate est
+  l'alignement de ses deux voisines. Sa propre phase n'y entre pas, le contexte
+  non plus.
+- La contrainte spirale de `compute_fn` (fₙ₊₁ ← ½ fₙ₊₁ + ½ r·fₙ, r ≈ 1.618) est
+  une **moyenne mobile exponentielle le long de la chaîne** (mémoire ~5 strates,
+  gain 2.6) : corrélation 0.9999 entre fₙ mesuré et cette prédiction sur f₀.
+  C'est elle qui fabrique la cascade lisse fₙ ∈ [0.4, 6.3] à partir de f₀ ∈
+  [0.4, 2.4], puis × (1 + β·γ) : toutes les fréquences respirent ensemble avec
+  γ (± 20 %, période 20 u.t.).
+- Le « plaid » des kymographes est donc un **battement** à la fréquence
+  f_{n+1} − f_{n−1} (médiane 0.12 cycle/u.t., période 8 u.t.). La moyenne
+  temporelle de |cos| vaut 2/π = 0.64 : c'est μ_Rloc au repos (0.63 mesuré).
+  La « strate épinglée » vers 30 n'est pas un bord : entre 28 et 31 la cascade
+  lissée est plate (Δf ≈ 0.01, battement de ~100 u.t.), un renversement du
+  bruit de f₀ ; la strate 96 l'est davantage (Δf = 0.0004).
+- Le contraste σ_Rloc (0.31) est invariant parce que chaque Rloc_n balaie [0, 1]
+  à son propre rythme : la distribution instantanée sur n ne dépend d'aucun
+  paramètre lent. D'où l'invariance à γ, à l'entrée, au couplage.
+- **La route contexte → fréquence existe et vaut 2·10⁻⁴** : |α·Sᵢ·β| / f₀,
+  médiane 2·10⁻⁴, max 2·10⁻³ (Sᵢ = Σ w·O ≈ 2·10⁻³, poids 0.1 sur deux voisins,
+  O ≈ 0.02). Morte par petitesse, pas par absence ; ×30 sur α ne change rien
+  (20/09). Le germe de migration-de-cohérence n'est pas là : confirmé et expliqué.
+
+**2. Prototype de câblage (`calib/run_context_binding.py`, hors pipeline).**
+Projecteur de contexte gaussien (largeur 4 strates) posé 20 u.t. sur les
+strates 20, 80, 50, 20 ; saillance sₙ = le projecteur ; après `compute_fn`
+(donc après le lissage spiral), deux gestes pondérés par sₙ et par garde(σ) :
+
+- **rapprocher les fréquences** : fₙ ← fₙ + κ·sₙ·(f̄_s − fₙ) (le levier des
+  ratios, celui que le jumeau avait triangulé) ;
+- **accrocher les phases** : Δfₙ = Kₙ/2π · Σ_j pw_j sin(θ_j − θ_n) sur le
+  voisinage de couplage, Kₙ = K₀·sₙ·garde(σ)·gₙ.
+
+Trois enseignements de banc, dans l'ordre où ils sont venus :
+
+1. *L'accrochage de phase seul ne lie pas* (K₀ = 2, 6, 30 : cohérence dedans =
+   dehors). Tirer la strate du milieu vers deux voisines qui s'écartent l'une de
+   l'autre à 0.2–0.5 cycle/u.t., c'est tirer dans les deux sens ; verrouiller
+   une chaîne de neuf strates contre ce gradient demanderait K ≫ gradient × L²/8.
+2. *Rapprocher les fréquences seul ne lie pas non plus* (κ = 0.5, 1.0) : les
+   phases cessent de dériver mais restent figées à leur écart du moment ; la
+   moyenne de |cos| sur l'îlot reste 0.64. Il faut les DEUX gestes : les
+   fréquences pour arrêter la dérive, la phase pour fermer l'écart. C'est la
+   double-ancre du jumeau, retrouvée par la dynamique.
+3. *Le facteur (1 − Rloc_n) empêche de tenir* : la force s'annule exactement
+   quand l'îlot est aligné, le résidu de désaccord aux bords (s < 1) le
+   re-désynchronise, Rloc retombe, la force revient : cycle 0.99 → 0.3 → 0.99
+   (diagnostic au centre du projecteur). Les rendements décroissants doivent
+   porter sur l'allocation de saillance, pas sur la force qui tient.
+4. *Le Kuramoto premier-voisin ne ferme pas l'écart, même sans ce facteur* :
+   sur une chaîne, le couplage symétrique aux deux voisines a pour point fixe
+   TOUTE torsion uniforme (½ sin δ + ½ sin(−δ) = 0). Il uniformise la torsion
+   mais ne la fixe pas ; or Rloc_n = |cos δ| dérive avec elle. Le cœur de
+   l'îlot se verrouille puis se déverrouille par cycles (0.83 → 0.34 sur deux
+   demi-postes). Pour fermer l'écart il faut tirer chaque strate vers la phase
+   MOYENNE de l'îlot (paramètre d'ordre Z_s, pas de mode neutre) : c'est le
+   liage « champ moyen d'îlot », en cours de mesure.
+
+**Résultats du liage champ moyen d'îlot** : en cours de mesure (quatre variantes κ / K₀), chiffres ci-dessous dès disponibles.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*
