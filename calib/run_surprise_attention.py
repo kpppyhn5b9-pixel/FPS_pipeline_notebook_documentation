@@ -46,13 +46,18 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
             pw = np.abs(w[idx]); pw = pw / pw.sum() if idx.size else pw
             st['neigh'].append((idx, pw))
         st['phase'] = np.zeros(n); st['sal'] = np.zeros(n); st['dprev'] = np.zeros(n)
+    # Mémoire de soi sur des quantités RELATIVES au chœur (fₙ / f̄, Aₙ / Ā) : la latence γ fait respirer
+    # toutes les fréquences ensemble (±20 %, période 20 u.t.) ; en absolu, la mémoire courte suivait la
+    # respiration et la longue la moyennait → surprise permanente partout (premier banc, 21/09).
+    # « Toucher au relatif, pas à l'absolu » (Attention.md) vaut aussi pour se souvenir de soi.
     A = np.asarray(An_t, dtype=float)
+    A_rel = A / max(float(np.mean(A)), 1e-9); f_rel = fn / max(float(np.mean(fn)), 1e-9)
     # ---- mémoire de soi à deux vitesses (après l'échauffement) ----
     u = np.zeros(n); s = st['sal']
     if t >= t_mem:
         if st['As'] is None:
-            st['As'], st['fs'] = A.copy(), fn.copy(); st['Al'], st['fl'] = A.copy(), fn.copy()
-        st['As'] = (1 - a_s) * st['As'] + a_s * A;  st['fs'] = (1 - a_s) * st['fs'] + a_s * fn
+            st['As'], st['fs'] = A_rel.copy(), f_rel.copy(); st['Al'], st['fl'] = A_rel.copy(), f_rel.copy()
+        st['As'] = (1 - a_s) * st['As'] + a_s * A_rel;  st['fs'] = (1 - a_s) * st['fs'] + a_s * f_rel
         st['Al'] = (1 - a_l) * st['Al'] + a_l * st['As']; st['fl'] = (1 - a_l) * st['fl'] + a_l * st['fs']
         u = np.abs(st['As'] - st['Al']) / np.maximum(st['Al'], 1e-9) + np.abs(st['fs'] - st['fl']) / np.maximum(st['fl'], 1e-9)
         s_raw = np.clip((u - U0) / (U1 - U0), 0.0, 1.0)
@@ -76,7 +81,7 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
         d = st['dprev'] + np.clip(d - st['dprev'], -SLEW, SLEW); st['dprev'] = d
         fn = fn + d
     st['phase'] = st['phase'] + 2 * np.pi * fn * dt
-    st['log'].append((t, u.copy(), s.copy(), fn.copy(), (st['fl'].copy() if st['fl'] is not None else fn.copy()), sigma, garde, rloc.copy()))
+    st['log'].append((t, u.copy(), s.copy(), f_rel.copy(), (st['fl'].copy() if st['fl'] is not None else f_rel.copy()), sigma, garde, rloc.copy()))
     return fn
 dynamics.compute_fn = patched
 buf = io.StringIO()
@@ -93,7 +98,7 @@ L = st['log']; tl = np.array([l[0] for l in L]); U = np.array([l[1] for l in L])
 Fn = np.array([l[3] for l in L]); Fl = np.array([l[4] for l in L]); sig = np.array([l[5] for l in L]); gar = np.array([l[6] for l in L])
 f0_new = np.array([s_['f0'] for s_ in res['state']]) if 'state' in res else None
 print(f"[{name}] K={K} τ_s={tau_s} τ_l={tau_l} facteur={fac} | durable strates {DUR[0]}–{DUR[-1]} à t={t_dur} ; bref strates {BREF[0]}–{BREF[-1]} à t={t_bref} (2 u.t.)")
-print(f"[{name}]   t   | surprise durable | attention durable | assimilation f̂_l/f_courant | surprise bref | attention bref | surprise ailleurs | fluidité (score) | dispersion | σ_Rloc | garde | activité")
+print(f"[{name}]   t   | surprise durable | attention durable | assimilation f̂_l/f_rel courant | surprise bref | attention bref | surprise ailleurs | fluidité (score) | dispersion | σ_Rloc | garde | activité")
 rows = []
 others = [i for i in range(N) if i not in DUR and i not in BREF]
 for a in range(int(t_mem), T, 10):
