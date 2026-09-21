@@ -657,6 +657,36 @@ suit-elle la saillance) et le nombre de pas où garde < 1 (la rareté des
 interventions, l'indice de flow du cahier). Deux gestes seulement : lier (K₀ >
 0) ; relâcher = K₀ < 0 sur le champ moyen (diverger), à tester avant d'y croire.
 
+**Figure** : `docs/figures/kymo_context_binding.png` (kymographe Rloc(t, n) avec
+le projecteur, cohérence sous / hors projecteur, gardiens en × du repos ;
+script `calib/plot_context_binding.py` sur le `kymo.npz` d'un run).
+
+**4. Et sur un déficit ? Premier test, négatif.** Saillance = déficit
+(`saliency=deficit` : les 8 strates à plus forte erreur |Eₙ − Oₙ| lissée), liage
+champ moyen K₀ = 2, κ = 1, contre un témoin sans liage (même seed, même
+sélection) :
+
+| t | erreur moyenne (témoin / lié) | erreur des strates liées (témoin / lié) | autres |
+|---|---|---|---|
+| [60, 80) | 0.0141 / 0.0142 | 0.0160 / 0.0166 | 0.0141 / 0.0141 |
+| [100, 120) | 0.0141 / 0.0140 | 0.0162 / 0.0162 | 0.0139 / 0.0139 |
+| [120, 140) | 0.0141 / 0.0140 | 0.0162 / 0.0162 | 0.0140 / 0.0138 |
+
+Lier les strates en erreur ne réduit pas leur erreur (à 0.0002 près, dans les
+deux sens), et l'activité monte à ×1.11 (score 4) parce que l'ensemble lié
+change de composition d'un pas à l'autre (la saillance-déficit scintille) et
+que chaque changement est un saut de fréquence. Lecture : l'erreur |E − O| est
+une quantité d'enveloppe (amplitude, cible Eₙ), la cohérence est une quantité
+de phase ; aligner les phases ne rapproche pas O de E. Le geste « lier » est
+donc non-invasif et pilotable, mais le bénéfice sur un déficit n'est pas
+démontré, et pour l'erreur il n'est probablement pas là : la table de valence
+du cahier (erreur → lier) est à revoir. Deux pistes honnêtes : (i) mesurer le
+bénéfice là où la cohérence compte par construction (une communication entre
+strates via leur phase, qui n'existe pas encore dans la dynamique : c'est
+peut-être le chaînon manquant, la « communication-through-coherence » de Fries
+suppose que quelque chose passe par la cohérence) ; (ii) lisser la saillance
+(≥ 5 u.t.) avant de la donner au liage, sinon l'activité paie le scintillement.
+
 Ce qui reste ouvert : (a) le geste agit sur le voisinage de l'îlot au sens de
 la saillance, pas du couplage w (deux voisins ∓0.1) : si la spirale doit
 compter, c'est w qu'il faut enrichir ; (b) « relâcher » n'a pas été testé ; (c)
