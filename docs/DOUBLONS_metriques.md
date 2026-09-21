@@ -605,7 +605,66 @@ Trois enseignements de banc, dans l'ordre où ils sont venus :
    MOYENNE de l'îlot (paramètre d'ordre Z_s, pas de mode neutre) : c'est le
    liage « champ moyen d'îlot », en cours de mesure.
 
-**Résultats du liage champ moyen d'îlot** : en cours de mesure (quatre variantes κ / K₀), chiffres ci-dessous dès disponibles.
+**Résultats du liage champ moyen d'îlot** (projecteur 20 → 80 → 50 → 20, 20 u.t.
+par poste ; R îlot = Rloc moyen des strates où s > 0.5 ; dehors = s < 0.05 ;
+« ancienne zone » = le poste précédent) :
+
+| variante | R îlot | R dehors | corr(s, R) | R ancienne zone | σ_Rloc | dispersion (score) | activité |
+|---|---|---|---|---|---|---|---|
+| contrôle (K₀ = 0) | 0.53–0.70 | 0.61–0.66 | −0.2…+0.1 | 0.65–0.73 | 0.30–0.31 | 0.015 (5) | 1.01 |
+| premier-voisin, κ = 1, K₀ = 6, sans (1−R) | 0.34–0.83 (cycles) | 0.62–0.66 | −0.55…+0.40 | 0.57–0.67 | 0.30–0.31 | 0.016 (5) | 1.02 |
+| **champ moyen, κ = 1, K₀ = 2** | **0.78–0.99** | 0.62–0.66 | +0.29…+0.52 | 0.57–0.74 | 0.31–0.32 | 0.018–0.022 (5) | 1.00 |
+| champ moyen, κ = 0.5, K₀ = 3 | 0.71–0.98 | 0.62–0.66 | +0.20…+0.55 | 0.56–0.74 | 0.31 | 0.017–0.021 (5) | 1.01 |
+| champ moyen, κ = 0, K₀ = 6 (phase seule) | 0.85–0.99 | 0.63–0.66 | +0.39…+0.57 | 0.56–0.74 | 0.30–0.31 | 0.021–0.023 (5, limite) | 1.02 |
+| champ moyen, κ = 1, K₀ = 6 | 0.95–1.00 | 0.62–0.66 | +0.51…+0.66 | 0.56–0.75 | 0.31–0.32 | 0.021–0.024 (**4**) | 1.01 |
+
+Lecture.
+
+- **La cohérence suit le contexte**, franchement : l'îlot passe de 0.64 (le
+  2/π du battement) à 0.8–1.0, le reste du chœur ne bouge pas (0.62–0.66), et
+  la corrélation spatiale saillance ↔ cohérence passe de ~0 à +0.5. C'est la
+  migration-de-cohérence contextuelle, pilotée, pas en germe mais câblée.
+- **Réversible sans mémoire** : l'ancienne zone revient au battement (0.56–0.75)
+  dès le poste suivant, parce que le geste s'applique à fₙ pas à pas, jamais à
+  f₀ ; retirer le contexte, c'est retirer le geste.
+- **La chimère tient** : σ_Rloc reste à 0.31 ± 0.01 dans toutes les variantes ;
+  un îlot de 9 strates ne change pas le contraste global. Activité inchangée
+  (≈ 1.0 du repos), régulation, fluidité, innovation à 5.
+- **Le gardien, c'est la cloche de dispersion** : neuf strates parfaitement
+  cohérentes ajoutent une somme cohérente à ΣO (∝ 9 au lieu de √9), std(ΣO)/√N
+  monte de 0.015 à 0.022–0.024, repli 1.45 → score 4 à K₀ = 6. À K₀ = 2–3 la
+  cohérence reste LÂCHE (0.8–0.95) et la cloche reste à 5. C'est la cohérence
+  partielle de Fries, avec sa mesure de garde intégrée : lier sans fusionner.
+- Le champ moyen d'îlot seul (κ = 0, K₀ = 6) suffit à verrouiller contre le
+  gradient de fréquences ; la compression κ permet de tenir avec un K₀ plus
+  faible, donc plus doux. Les deux ancres du jumeau, à nouveau.
+
+**3. Proposition de câblage (à décider, rien n'est branché).** Dans
+`simulate.py`, juste après `fn_t = dynamics.compute_fn(...)` (donc après le
+lissage spiral, avant `phase_acc += 2π fn dt`) :
+
+    Z_s  = Σ sₙ e^{iθₙ} / Σ sₙ            (θ = phase_inst du pas précédent)
+    fₙ  += κ·garde·sₙ·(f̄_s − fₙ)          (rapprocher, optionnel)
+    fₙ  += K₀·garde·sₙ · |Z_s| sin(arg Z_s − θₙ) / 2π   (accrocher)
+
+avec sₙ la saillance du filtre courant (déjà : `compute_perception_deficit` +
+`_echelle_attention`, ramenée dans [0, 1]), ou un contexte spatial Iₙ quand il
+existera ; garde = 1 tant que la cloche de dispersion et σ_Rloc sont sains,
+décroissante sinon (les deux voyants existent) ; K₀ ∈ [2, 3], κ ∈ [0.5, 1] ;
+pas de facteur (1 − Rloc_n) sur la force (le mettre, si on y tient, sur
+l'allocation de sₙ). À logger : |Z_s| (l'engagement : la cohérence locale
+suit-elle la saillance) et le nombre de pas où garde < 1 (la rareté des
+interventions, l'indice de flow du cahier). Deux gestes seulement : lier (K₀ >
+0) ; relâcher = K₀ < 0 sur le champ moyen (diverger), à tester avant d'y croire.
+
+Ce qui reste ouvert : (a) le geste agit sur le voisinage de l'îlot au sens de
+la saillance, pas du couplage w (deux voisins ∓0.1) : si la spirale doit
+compter, c'est w qu'il faut enrichir ; (b) « relâcher » n'a pas été testé ; (c)
+la saillance réelle (déficit par strate) est bruitée et migre vite, il faudra
+un lissage court avant de la donner au liage, sinon l'îlot n'a pas le temps de
+s'accrocher (~5 u.t. d'après les runs) ; (d) l'effet sur O(t) est celui d'une
+synchronisation partielle locale, visible dans la dispersion : c'est voulu, et
+c'est ce que le gardien borne.
 
 ---
 
