@@ -628,8 +628,10 @@ def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
     ax.set_title('Scores 1-5 comparés (fenêtre W_f)', fontweight='bold')
     ax.legend(); ax.grid(True, alpha=0.3, axis='y')
 
-    # 3. Métriques brutes : seule la dispersion dépend du signal (fluidité et
-    # innovation lisent l'enveloppe fₙ, identique pour S et O)
+    # 3. Métriques brutes : aucune ne dépend du signal depuis le 21/09 (la
+    # dispersion, métrique d'identité, se lit sur O brut ; fluidité et innovation
+    # lisent l'enveloppe fₙ). Les barres S/O sont donc identiques : le panneau
+    # le montre, c'est le point.
     ax = axes[1, 0]
     raw_keys = ['dispersion', 'fluidity', 'innovation']
     x = np.arange(len(raw_keys))
@@ -654,10 +656,10 @@ def plot_signal_scores_S_vs_O(history: List[Dict], config: Dict = None,
         lines.append(f"{c:16s}{sc_S[c]:>10d}{sc_O[c]:>10d}")
     lines += ["──────────────────────────────────────",
               "γ note S(t) ; switch, figures et",
-              "rapports notent O(t). Seule la",
-              "dispersion dépend du signal : les",
-              "cinq autres lisent fₙ, E−O ou",
-              "l'activité."]
+              "rapports notent O(t). Aucune des six",
+              "ne dépend du signal : la dispersion",
+              "(identité) se lit sur O brut, les",
+              "autres sur fₙ, E−O ou l'activité."]
     ax.text(0.02, 0.98, "\n".join(lines), transform=ax.transAxes, va='top', ha='left',
             family='monospace', fontsize=10)
 
