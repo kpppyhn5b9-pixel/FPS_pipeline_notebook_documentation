@@ -28,7 +28,10 @@ seed = int(sys.argv[6]) if len(sys.argv) > 6 else 12345
 kappa = float(sys.argv[7]) if len(sys.argv) > 7 else 0.0
 gate = sys.argv[8] if len(sys.argv) > 8 else 'full'
 coupling = sys.argv[9] if len(sys.argv) > 9 else 'nn'
-saliency = sys.argv[10] if len(sys.argv) > 10 else 'projector'   # 'projector' | 'deficit' (8 strates à plus forte erreur lissée, après t_on)
+saliency = sys.argv[10] if len(sys.argv) > 10 else 'projector'   # 'projector' | 'deficit' (8 pires, dur) | 'deficit_smooth' (continu, EMA 5 u.t.)
+slew = float(sys.argv[11]) if len(sys.argv) > 11 else 0.0   # limite de variation de Δf par pas (cycles/u.t.), 0 = aucune
+# coupling 'nnfreq' : Δfₙ = K₀·sₙ·(f̄_voisines − fₙ) (geste du jumeau, 21/09) ; 'downfreq' : témoin, Δfₙ = −K₀·sₙ·|f̄_voisines − fₙ|
+# (ralentir d'autant sans référence aux voisines : si l'erreur baisse pareil, le bénéfice est « ralentir », pas « se lier »).
 DEFICIT_K = 8   # 'nn' = voisins de couplage ; 'mf' = champ moyen de l'îlot
 # Diagnostic 21/09 (bis) : sur une chaîne, le Kuramoto premier-voisin symétrique a pour point fixe
 # TOUTE torsion uniforme (0.5·sin(δ) + 0.5·sin(−δ) = 0) ; il uniformise la torsion mais ne la fixe pas,
@@ -75,11 +78,17 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
     ctr = center_at(t)
     if ctr is None:
         st['sigma_ref'].append(sigma); s = np.zeros(n); garde = 1.0
-    elif saliency == 'deficit':
-        # saillance = déficit : erreur |Eₙ − Oₙ| lissée (EMA ~2 u.t.), les DEFICIT_K pires strates
+    elif saliency in ('deficit', 'deficit_smooth'):
+        # saillance = déficit : erreur |Eₙ − Oₙ| lissée ; 'deficit' = les DEFICIT_K pires (dur, scintille) ;
+        # 'deficit_smooth' = continue, EMA 5 u.t., gabarit saturant recentré (comme _echelle_attention) ramené dans [0, 1]
         e = np.abs(np.asarray(hist[-1]['E'], dtype=float) - np.asarray(hist[-1]['O'], dtype=float)) if hist else np.zeros(n)
-        st['err_ema'] = e if st.get('err_ema') is None else 0.95 * st['err_ema'] + 0.05 * e
-        s = np.zeros(n); s[np.argsort(st['err_ema'])[-DEFICIT_K:]] = 1.0
+        a = 0.05 if saliency == 'deficit' else 0.02
+        st['err_ema'] = e if st.get('err_ema') is None else (1 - a) * st['err_ema'] + a * e
+        if saliency == 'deficit':
+            s = np.zeros(n); s[np.argsort(st['err_ema'])[-DEFICIT_K:]] = 1.0
+        else:
+            x = st['err_ema'] / max(float(np.median(st['err_ema'])), 1e-9)   # « combien de fois la norme du chœur »
+            s = np.clip((x - 1.0) / 1.0, 0.0, 1.0)                          # 0 à la norme, 1 à 2× la norme
         ref = float(np.median(st['sigma_ref'][-200:])) if st['sigma_ref'] else sigma
         garde = float(np.clip((sigma / ref - 0.5) / 0.3, 0.0, 1.0))
     else:
@@ -90,7 +99,13 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
         if kappa > 0 and s.sum() > 0:
             f_bar = float(np.sum(s * fn) / np.sum(s))          # fréquence moyenne de la zone saillante
             fn = fn + kappa * garde * s * (f_bar - fn)         # rapprocher les fréquences (ratios)
-        if K0 > 0:
+        if K0 > 0 and coupling in ('nnfreq', 'downfreq'):
+            f_nb = np.array([np.sum(pw * fn[idx]) if idx.size else fn[i] for i, (idx, pw) in enumerate(st['neigh'])])
+            d = K0 * s * garde * ((f_nb - fn) if coupling == 'nnfreq' else -np.abs(f_nb - fn))
+            if slew > 0:
+                prev = st.get('dprev', np.zeros(n)); d = prev + np.clip(d - prev, -slew, slew); st['dprev'] = d
+            fn = fn + d
+        elif K0 > 0:
             if coupling == 'mf':
                 Z = np.sum(s * np.exp(1j * theta)) / max(np.sum(s), 1e-12)      # paramètre d'ordre de l'îlot
                 dtheta = np.abs(Z) * np.sin(np.angle(Z) - theta)                 # tirer vers la phase moyenne
@@ -135,12 +150,13 @@ for a in range(int(t_on) - 20, T, 10):
                mu_Rloc=float(np.nanmean(mu[mh])), disp_norm=float(np.nanmedian(dn[mh])) if np.isfinite(dn[mh]).any() else float('nan'), effort=float(np.nanmedian(eff[mh])))
     out.append(row)
     print(f"[{name}] t∈[{a},{a+10}) centre={str(c0):>4s} | R dedans {inside:.3f} dehors {outside:.3f} corr(s,R) {corr:+.2f} | R ancienne zone {old:.3f} | σ_Rloc {row['sigma']:.3f} garde {row['garde']:.2f} | μ_Rloc {row['mu_Rloc']:.3f} disp {row['disp_norm']:.4f} | effort {row['effort']:.0f}")
-if saliency == 'deficit':
+if saliency.startswith('deficit'):
     E = np.array([np.asarray(x['E'], dtype=float) for x in h]); O = np.array([np.asarray(x['O'], dtype=float) for x in h]); err = np.abs(E - O)
     for a in range(int(t_on) - 20, T, 20):
         m = (t >= a) & (t < a + 20); ml = (tl >= a) & (tl < a + 20)
         Sm = Sal[ml].mean(0); bound = Sm > 0.5
-        print(f"[{name}] t∈[{a},{a+20}): erreur moyenne toutes strates {err[m].mean():.4f} | strates liées ({int(bound.sum())}) {err[m][:, bound].mean() if bound.any() else float('nan'):.4f} | autres {err[m][:, ~bound].mean():.4f}")
+        fl = np.array([np.nan if x.get('fluidity') is None else x['fluidity'] for x in h], dtype=float)[m]
+        print(f"[{name}] t∈[{a},{a+20}): erreur toutes {err[m].mean():.4f} | saillantes ({int(bound.sum())}) {err[m][:, bound].mean() if bound.any() else float('nan'):.4f} | autres {err[m][:, ~bound].mean():.4f} | fluidité méd {np.nanmedian(fl):.3f} (score {metrics.score_from_brackets(float(np.nanmedian(fl)), 'fluidity')}) | activité {np.nanmedian(eff[m]):.0f}")
 sc = metrics.compute_reference_scores(h[-metrics.reference_window(c, dt):], dt, signal='O', N=N)
 print(f"[{name}] scores finaux :", metrics.labelled_scores(sc), "| résumé activite_rel", res['metrics'].get('activite_rel'), "dispersion_norm", res['metrics'].get('dispersion_norm'))
 json.dump({'rows': out, 'scores': sc}, open('summary.json', 'w'), indent=1)
