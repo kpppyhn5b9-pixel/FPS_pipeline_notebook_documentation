@@ -8,7 +8,12 @@ geste = ramener le rythme de la strate surprise vers celui de ses voisines de co
 leur calme (1 − s_j) : Δfₙ = K·sₙ·garde·(f̄_voisines calmes − fₙ), variation limitée par pas.
 Événements : DURABLE (f₀ × facteur sur un groupe, à t_dur) et BREF (fₙ × facteur pendant 2 u.t. sur un
 autre groupe, à t_bref). On compare attention éteinte (K = 0) et allumée.
-usage: python run_surprise_attention.py <nom> <K> <T> [seed] [tau_s] [tau_l] [facteur]"""
+usage: python run_surprise_attention.py <nom> <K> <T> [seed] [tau_s] [tau_l] [facteur] [mode]
+  mode 'gesture'     : l'attention agit sur le RYTHME (Δfₙ vers les voisines calmes) — inerte sur une cascade
+                       lisse et sur un bloc qui change ensemble (f̄_voisines ≈ fₙ), mesuré 21/09 ;
+  mode 'consolidate' : l'attention agit sur la MÉMOIRE : la mémoire longue des strates saillantes apprend
+                       plus vite (τ_l / (1 + K·sₙ)) — attention = porte de consolidation ; ne touche pas la dynamique.
+  mode 'both'        : les deux."""
 import sys, os, json, io, contextlib, numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # racine du dépôt
 sys.path.insert(0, ROOT)
@@ -18,8 +23,9 @@ seed = int(sys.argv[4]) if len(sys.argv) > 4 else 12345
 tau_s = float(sys.argv[5]) if len(sys.argv) > 5 else 2.0
 tau_l = float(sys.argv[6]) if len(sys.argv) > 6 else 40.0
 fac = float(sys.argv[7]) if len(sys.argv) > 7 else 1.15
+mode = sys.argv[8] if len(sys.argv) > 8 else 'gesture'
 os.makedirs(name, exist_ok=True); os.chdir(name)
-dt = 0.1; t_mem = 40.0; t_dur = 70.0; t_bref = 120.0
+dt = 0.1; t_mem = 60.0; t_dur = 90.0; t_bref = 140.0
 DUR = list(range(40, 49)); BREF = list(range(70, 79))
 U0, U1, SLEW, TAU_SAL = 0.03, 0.10, 0.02, 3.0   # plancher / plein de saillance (surprise), limite Δf, lissage saillance
 c = json.load(open(os.path.join(ROOT, 'config.json')))
@@ -58,7 +64,9 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
         if st['As'] is None:
             st['As'], st['fs'] = A_rel.copy(), f_rel.copy(); st['Al'], st['fl'] = A_rel.copy(), f_rel.copy()
         st['As'] = (1 - a_s) * st['As'] + a_s * A_rel;  st['fs'] = (1 - a_s) * st['fs'] + a_s * f_rel
-        st['Al'] = (1 - a_l) * st['Al'] + a_l * st['As']; st['fl'] = (1 - a_l) * st['fl'] + a_l * st['fs']
+        # consolidation : là où l'attention se pose, la mémoire longue apprend plus vite (porte de plasticité)
+        a_l_n = a_l * (1.0 + K * s) if (mode in ('consolidate', 'both') and K > 0) else a_l
+        st['Al'] = (1 - a_l_n) * st['Al'] + a_l_n * st['As']; st['fl'] = (1 - a_l_n) * st['fl'] + a_l_n * st['fs']
         u = np.abs(st['As'] - st['Al']) / np.maximum(st['Al'], 1e-9) + np.abs(st['fs'] - st['fl']) / np.maximum(st['fl'], 1e-9)
         s_raw = np.clip((u - U0) / (U1 - U0), 0.0, 1.0)
         st['sal'] = (1 - a_sal) * st['sal'] + a_sal * s_raw; s = st['sal']
@@ -72,7 +80,7 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
     garde = float(np.clip((sigma / ref - 0.5) / 0.3, 0.0, 1.0)) if ref > 1e-9 else 1.0   # t=0 : phases nulles, σ = 0
     # ---- attention : appuyer la strate surprise sur ses voisines calmes ----
     d = np.zeros(n)
-    if K > 0 and t >= t_mem:
+    if K > 0 and t >= t_mem and mode in ('gesture', 'both'):
         f_nb = np.zeros(n)
         for i, (idx, pw) in enumerate(st['neigh']):
             wcalm = pw * (1.0 - s[idx]) if idx.size else pw
@@ -97,7 +105,7 @@ th = col('t'); fl_col = col('fluidity'); dn = col('dispersion_norm'); eff = col(
 L = st['log']; tl = np.array([l[0] for l in L]); U = np.array([l[1] for l in L]); Sal = np.array([l[2] for l in L])
 Fn = np.array([l[3] for l in L]); Fl = np.array([l[4] for l in L]); sig = np.array([l[5] for l in L]); gar = np.array([l[6] for l in L])
 f0_new = np.array([s_['f0'] for s_ in res['state']]) if 'state' in res else None
-print(f"[{name}] K={K} τ_s={tau_s} τ_l={tau_l} facteur={fac} | durable strates {DUR[0]}–{DUR[-1]} à t={t_dur} ; bref strates {BREF[0]}–{BREF[-1]} à t={t_bref} (2 u.t.)")
+print(f"[{name}] K={K} mode={mode} τ_s={tau_s} τ_l={tau_l} facteur={fac} | durable strates {DUR[0]}–{DUR[-1]} à t={t_dur} ; bref strates {BREF[0]}–{BREF[-1]} à t={t_bref} (2 u.t.)")
 print(f"[{name}]   t   | surprise durable | attention durable | assimilation f̂_l/f_rel courant | surprise bref | attention bref | surprise ailleurs | fluidité (score) | dispersion | σ_Rloc | garde | activité")
 rows = []
 others = [i for i in range(N) if i not in DUR and i not in BREF]
