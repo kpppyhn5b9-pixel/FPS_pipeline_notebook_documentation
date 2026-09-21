@@ -726,6 +726,79 @@ s'accrocher (~5 u.t. d'après les runs) ; (d) l'effet sur O(t) est celui d'une
 synchronisation partielle locale, visible dans la dispersion : c'est voulu, et
 c'est ce que le gardien borne.
 
+### Suite 21/09/2026 (undecies) — mémoire de soi à deux vitesses, surprise, attention d'assimilation
+
+Décision de design (Andréa, 21/09), à l'épreuve du banc (`calib/run_surprise_
+attention.py`, hors pipeline) : l'erreur devient une **mémoire de soi à deux
+vitesses** ; la **surprise** (écart entre les deux) dit quelles strates se
+reconfigurent et lesquelles sont en flow ; l'**attention** se pose sur les
+strates en surprise pour les aider à assimiler, puis se retire ; la
+métastabilité migrante n'est pas le flow, c'est ce qui le rend récupérable.
+
+**Banc.** Par strate, mémoire courte (τ_s = 2 u.t.) et longue (τ_l = 40 u.t.,
+suit la courte) de l'amplitude et de la fréquence ; surprise uₙ = écart relatif
+entre les deux. Événements : DURABLE (f₀ × 1.15 sur les strates 40–48 à t = 90)
+et BREF (fₙ × 1.15 pendant 2 u.t. sur 70–78 à t = 140). Trois runs : témoin ;
+attention-geste (rythme vers les voisines calmes) ; attention-consolidation (la
+mémoire longue des strates saillantes apprend plus vite : τ_l / (1 + 3·sₙ)).
+
+**Trois leçons, dans l'ordre.**
+
+1. *Se souvenir de soi par rapport au chœur, pas en absolu.* Sur Aₙ et fₙ
+   bruts, la surprise était permanente (0.15–0.35) partout : la latence γ fait
+   respirer toutes les fréquences ensemble (± 20 %, période 20 u.t.), la
+   mémoire courte suivait la respiration et la longue la moyennait. Sur fₙ/f̄
+   et Aₙ/Ā la respiration disparaît. « Toucher au relatif, pas à l'absolu »
+   vaut pour la mémoire aussi. Et naître à la mémoire une fois posé (t ≥ 60,
+   même repère que l'activité) : avant, tout le chœur est « surpris » de naître.
+2. *La mémoire à deux vitesses fait ce qu'on voulait.* Le durable apparaît dans
+   la surprise du groupe (0.21 contre 0.12 ailleurs), la mémoire longue le
+   rattrape (rapport mémoire/rythme 0.926 → 0.98 en ~40 u.t.), la surprise
+   redescend : assimilé. Le bref fait une bosse de 10 u.t. et s'efface sans
+   toucher la mémoire longue.
+3. *L'attention doit agir sur la mémoire, pas sur le rythme.* Le geste
+   « rythme vers les voisines » est inerte (témoin et geste identiques à la
+   troisième décimale) : sur une cascade lisse la moyenne des voisines vaut déjà
+   la strate, et dans un bloc qui change ensemble l'intérieur n'a que des
+   voisines changées. Ce levier n'existe que pour UNE strate isolée qui
+   décroche. En revanche l'**attention-consolidation** (porte de plasticité :
+   là où elle se pose, la mémoire longue apprend plus vite) :
+
+| | témoin | attention-consolidation |
+|---|---|---|
+| surprise du groupe durable revenue au niveau des autres | t ≈ 150 | t ≈ 110 |
+| assimilation (mémoire longue / rythme) ≥ 0.98 | t ≈ 120–130 | t ≈ 100–110 |
+| attention sur le groupe durable | — | 0.57 → 0.48 → 0.31 → 0.20 (retrait spontané) |
+| événement bref | bosse 10 u.t., effacé | bosse 10 u.t., effacé, attention 0.2 → 0.1 (pas consolidé) |
+| fluidité, dispersion, σ_Rloc, activité | 5 / 0.015 / 0.31 / 240–320 | identiques (la dynamique n'est pas touchée) |
+
+   La surprise de naissance (t = 60–90) est elle aussi absorbée deux fois plus
+   vite : le système assimile sa propre naissance. Figure :
+   `docs/figures/surprise_attention.png` (`calib/plot_surprise_attention.py`).
+
+**Ce que ça dessine pour le cœur du système** (à décider, rien n'est branché) :
+
+- Eₙ → deux mémoires par strate (courte, longue) de (Aₙ/Ā, fₙ/f̄), nées à
+  t ≈ 60 ; l'« erreur » de régulation devient la surprise uₙ (sans dimension) ;
+  son niveau global est ce que lisent la latence et la régulation : bas = flow,
+  ils se taisent ; haut et durable = reconfiguration, ils s'adaptent.
+- L'attention lit la surprise (saillance lissée ≥ 3 u.t.) et, là où elle se
+  pose, ouvre la consolidation (τ_l plus court). Elle ne touche pas la
+  dynamique : aucun coût de fluidité, de dispersion ni de chimère par
+  construction, et elle se retire d'elle-même quand la surprise tombe.
+- Le geste sur le rythme (lier / relâcher, liage champ moyen d'îlot, suite
+  decies) reste disponible pour les déficits qui vivent dans le rythme, sous
+  la boucle d'observation « l'effet a-t-il eu lieu, l'identité a-t-elle tenu ».
+  Innovation et dispersion : jamais visées.
+- Indice de santé (efficience de la considération) : l'attention voyage peu et
+  se retire vite. Beaucoup d'îlots qui durent = un système qui n'assimile plus ;
+  aucun jamais = un système que rien ne touche.
+
+Points ouverts : le facteur de consolidation (×3 ici) et les deux τ sont des
+réglages, à caler comme le reste ; la saillance par strate demande une
+mémoire par strate dans simulate (N × 4 nombres, rien de lourd) ; et le
+« relâcher » n'a toujours pas été testé.
+
 ---
 
 *Ci-dessous : l'état des lieux qui a servi de base au chantier (lignes d'avant).*
