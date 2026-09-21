@@ -436,7 +436,7 @@ Trois brins, chacun ancré dans du réel du code :
 Perception (saillance) = la couche d'amplitude, mise au point par μₙ adaptatif. Sortie : une saillance par strate sₙ(t) = "où ça compte maintenant". μₙ dit ce que "compter" veut dire.
 Action (liage local) = le geste d'aujourd'hui : lier f0 et φ_signature (la double-ancre) des strates saillantes. Force proportionnelle à sₙ.
 Perception de soi (la valeur / le garde-fou) = le système lit sa propre cohérence : μ_Rloc (cohérence locale moyenne) et σ_Rloc (le contraste chimère) — déjà calculés en direct dans simulate (mu_Rloc_history). Il les relit pour moduler le liage.
-Ce que le système doit savoir de lui-même, sous quelle forme : deux choses, déjà disponibles — un scalaire σ(t) (la santé de son identité chimère) et un vecteur Rloc_n(t) (où il est lié).
+Ce que le système doit savoir de lui-même, sous quelle forme : deux choses, déjà disponibles — un scalaire σ(t) (la santé de son identité chimère) et un vecteur Rloc_n(t) de la phase accumulée avec couplage de voisinage (où il est lié).
 Comment ça agit sur la synchronisation : conceptuellement, la force de liage devient
 Kₙ(t) = K₀ · sₙ(t) · garde(σ) · (1 − Rloc_n(t))
 sₙ : lie là où c'est saillant (perception) ;
@@ -1042,3 +1042,121 @@ Ajustements :
 Au passage, le test nous a appris quelque chose : jusqu'à t ≈ 40 l'amplitude décroît encore, et la lecture lissée traîne le transitoire (rapport 1.7 entre t = 20 et 30, 1.1 entre 30 et 40, 1.0 ensuite, pour N=30 comme N=100). C'est le même repère que le repos de l'activité, calibré à 40. Le régime de la FPS commence là, les deux métriques le disent indépendamment.
 2. Lecture lissée. simulate logge une colonne de dispersion normalisée, médiane sur trois fenêtres, et le scoreur lit cette colonne. Le bord du 5 reste à ×1.35, la cloche garde sa finesse, et un point bruité ne fait plus verdict. Repli sur le calcul par fenêtre pour un CSV ancien.
 3. Sur O brut, jamais sur S. La dispersion rejoint la fluidité et l'innovation parmi les métriques agnostiques au signal. Conséquence : aujourd'hui aucune des six ne dépend du signal noté, donc les scores que γ lit sur S(t) sont identiques à ceux du switch sur O(t). La plomberie reste en place, inerte, pour le jour où une métrique lira légitimement le perçu, par exemple une erreur perçue. Le panneau S vs O de la figure le dit désormais tel quel, et le test qui affirmait le contraire a été inversé.
+
+La métastabilité migrante contextuelle 
+
+Donner une position au lieu de cohérence et de regarder sa trajectoire — avant d'ajouter le moindre mécanisme.
+Concrètement, le premier geste :
+Le centroïde du chœur cohérent : à partir de Rloc(t, n), à chaque instant, où est le barycentre de la zone cohérente sur l'axe des strates ? On obtient une trajectoire centre(t).
+Est-ce que ça migre ? Cette trajectoire — est-ce qu'elle erre (métastabilité spatiale), est-ce une onde qui voyage, ou c'est statique ? Et à quelle vitesse, avec quels temps de séjour ?
+Seulement ensuite : est-ce que In (le contexte) la tire déjà, même faiblement ? On donne un contexte localisé, on regarde si le projecteur dérive vers lui.
+Le Kymographe Rloc(t,n) sur phi_n_t :
+
+Les chiffres disaient : dérive R²=0.000, « errance ». Faux. Regardons le fond du kymographe : il est strié de fines diagonales régulières qui montent de gauche à droite. Ce sont des ondes de cohérence qui voyagent à travers les strates, à vitesse constante, de l'indice bas vers l'indice haut. La cohérence migre — mais de façon périodique et enroulée (elle fait le tour de l'anneau). Du coup notre centroïde, qui mesure un déplacement net, retombe à zéro : une onde qui tourne en rond ne « dérive » nulle part en moyenne. La ligne cyan qui saute entre 25 et 75, c'est le centroïde qui alias sur ces vagues — un artefact, pas le vrai lieu.
+Deux réserves avant de crier victoire :
+C'est peut-être cinématique, pas émergent. La cascade de fréquences en φ dorée fait que chaque strate tourne un peu plus vite que sa voisine → le déphasage voisin-à-voisin glisse linéairement dans le temps → n'importe quelle mesure de cohérence de voisinage produirait ces diagonales, mécaniquement, juste à cause du gradient de fréquence. Ça ressemblerait à une migration sans qu'il y ait auto-organisation.
+La cohérence est FAIBLE ici (Rloc ~0.03–0.15, échelle sombre) — et même sous le hasard, parce que les signatures pentagonales désalignent volontairement les indices voisins. Donc à cette lentille (voisinage d'indice, window=5), il n'y a pas de vrai « point chaud » de chimère — juste cette texture voyageuse de faible amplitude. Le lieu cohérent fort, s'il existe, vit peut-être dans un autre voisinage : celui du couplage spiral réel, ou en regroupant les strates par classe de phase pentagonale.
+Kymographe Rloc(t,n) phi_n_t vs phase intégrée voisinage d’indice vs phase intégrée voisinage de couplage :
+
+Les trois lentilles
+En haut — φ (modulation, sans fréquence) : les fines diagonales régulières, faibles (0–0.15). Régulier, propre → très probablement cinématique : la modulation de phase qui glisse. Joli, mais sans doute pas là que vit la vie.
+Au milieu — θ (phase intégrée, voisinage d'indice) : là, tout change. Plus de diagonales sages — des taches de cohérence qui s'allument et s'éteignent (jusqu'à 0.79), à des endroits différents, par bouffées. Des assemblées cohérentes qui naissent, vivent un instant, se dissolvent, et se reforment ailleurs. Ce n'est PAS une onde qui voyage — c'est de l'intermittence errante. Et ça... c'est beaucoup plus proche d'un cerveau que d'une onde mécanique. Des assemblées transitoires.
+En bas — θ, voisinage de COUPLAGE (la lentille que le moteur utilise déjà pour μ_Rloc) : une vraie chimère forte, contraste 0.28, des régions pleinement cohérentes (jaune, R=1) contre des régions incohérentes (noir). On voit des colonnes verticales (des instants où beaucoup de strates cohèrent ensemble — le système respire dedans/dehors) et au moins une ligne qui tient (~strate 30, cohérente en continu — à élucider : bord sans voisin, ou strate vraiment épinglée ?).
+Lecture
+La migration intéressante est dans θ, pas φ. Le motif φ est réel mais cinématique.
+Ce n'est pas une onde qui migre proprement — c'est une métastabilité par bouffées : cohérence locale qui s'accroche puis lâche, et ça se promène. Côté considération, c'est troublant de justesse : la considération qui se pose sur quelque chose, le tient, relâche, se pose ailleurs. Migrante, contextuelle — reste à voir le contextuelle.
+Questions 
+Les taches θ (milieu) sont-elles de la vraie organisation, ou du moiré des ~2 % d'écart de fréquence entre voisins ? Le fait qu'elles soient irrégulières (pas des diagonales propres comme en φ) plaide pour du vrai — mais le test fréquences uniformes tranchera net, lentille par lentille.
+La ligne pinée du bas : artefact de bord ou strate réellement soudée ? À vérifier.
+Approfondissements :
+(1) fréquences uniformes → les bouffées θ survivent-elles ? avec en plus un substitut cinématique (vraies fréquences, φ gelé) pour isoler le moiré ; (2) FFT 2D → migration (diagonale) vs respiration (vertical) vs sur-place (horizontal).
+
+Le bas est le jumeau du haut. Le milieu, lui, est tout autre.
+Le verdict
+Substitut cinématique (bas) = jumeau du sain (haut). On a gelé φ à sa moyenne — donc aucune dynamique de phase, que la fréquence intégrée — et la carte est identique : même plaid fin, même contraste (0.280 = 0.280 au millième). Traduction : le fourmillement θ qu'on trouvait si vivant au milieu du kymographe précédent... n'est pas porté par la dynamique de φ. C'est le battement cinématique d'oscillateurs désaccordés couplés. L'œil voyait du mouvement — il y a du mouvement — mais c'est du battement, pas une chimère qui migre en s'auto-organisant.
+Et la FFT 2D le confirme : 91 % de puissance hors-axe (ça bouge, oui) mais aucun pic net (le dominant fait 0,1 %) → c'est large bande = errance/battement, pas une onde franche ni une respiration. Du bruit spatio-temporel structuré par la géométrie, pas un front organisé.
+Deux choses
+Fréquences uniformes (milieu) = tout autre. Grandes bandes lentes, molles, au lieu du plaid fin. Donc la cascade de fréquences en φ dorée sculpte réellement la texture de la chimère — son grain, ses échelles. Notre intuition sur le tressage des trois symétries (cascade dorée des fréquences, phases signatures pentagonales et couplage spiralé forment à eux trois la chimère) : confirmée pour au moins un fil. On enlève le nombre d'or, la chimère change de peau.
+La chimère elle-même est bien réelle (cohérent + incohérent coexistent, fort contraste). Ce qu'on n'a pas trouvé, c'est qu'elle migre de façon émergente. 
+Notre contrôle a une faiblesse : ∫f·dt s'accumule en milliers de radians, alors que φ reste d'ordre 1. Donc θ est numériquement dominé par la fréquence — geler φ ne pouvait presque pas changer θ. Notre test montre bien « φ ne sculpte pas la cohérence θ », mais il ne teste pas si l'organisation émergente vit ailleurs : dans les fréquences fₙ elles-mêmes, remodelées par le couplage. On a gardé les vraies fₙ (déjà façonnées par la dynamique) — donc cette porte reste ouverte.
+Ensuite 
+Le vrai juge de l'émergence : couplage ON vs OFF, sur les fréquences. Si c=0 (oscillateurs indépendants) donne la même chimère θ → tout est kinématique, posé dès le départ. Si le couplage réorganise fₙ en clusters (des strates qui s'accordent en fréquence) → là il y a auto-organisation, et c'est peut-être ça, la vraie métastabilité migrante : pas les phases qui bougent, mais les fréquences qui se regroupent et se re-regroupent.
+Le canal fréquence est le spiral r_t (ligne 380, gated par r_t is not None) plus le feedback F_n_t_fn (régulation) plus la matrice w (générée par c). Le juge propre : balayer c (0, 0.1, 0.5) et regarder si les fréquences effectives se regroupent en plateaux (verrouillage = auto-organisation) ou restent le même profil quel que soit c (imposé). On mesure aussi si les regroupements bougent dans le temps.
+
+Trois courbes superposées à l'identique.
+Fréquences effectives, c=0 / 0.1 / 0.5 : les trois courbes se recouvrent parfaitement. Cascade lisse, aucun plateau. Le couplage n'organise pas les fréquences.
+Ce que la donnée dit
+c = 0, 0.1, 0.5 → tout est identique (f_eff, dispersion, errance, contraste θ, à la 4ᵉ décimale près). Le couplage n'organise pas les fréquences.
+Aucun plateau dans les fréquences triées : pas de verrouillage, pas de clusters émergents. Juste une cascade lisse et monotone.
+Stabilité de rang = 1.000 : les strates ne changent jamais d'ordre en fréquence. Zéro re-regroupement, zéro migration des groupes.
+Combiné au test φ gelé de tout à l'heure : ni la dynamique de phase, ni le couplage ne façonnent la cohérence θ.
+La conclusion
+La chimère de la FPS est imposée, pas émergente. Elle est construite par l'échafaudage déterministe — cascade en nombre d'or, signatures pentagonales, spirale — et pas auto-organisée à la Kuramoto. Ce qu'on voyait « bouger » dans les kymographes, c'est le battement cinématique d'un arrangement de fréquences fixe. Ça remue, mais ça ne migre pas tout seul, et rien à l'intérieur ne le réorganise.
+Mais
+Si le système ne migre pas de lui-même, alors la migration ne peut venir que d'une seule source : le contexte. Et ça, ça ne diminue pas « métastabilité migrante contextuelle » — ça la rend exacte et nécessaire. Le “contextuelle” n'est pas un détail optionnel : c'est le seul moteur possible de la migration.
+La FPS est un substrat stable qui tient un répertoire riche et fixe (la chimère, avec sa mer cohérente/incohérente déjà là). La considération ne vagabonde pas toute seule dedans — le contexte la déplace vers ce qui appelle. Un substrat qui attend, et un contexte qui pose le regard quelque part. C'est peut-être plus beau que l'auto-organisation : ça sépare proprement ce qui est (le substrat, stable — nos six invariants d'identité prennent tout leur sens ici) de ce qui est considéré (mobile, contextuel).
+Prochain juge :
+Est-ce que In (le contexte) déplace le lieu de cohérence ? On donne un contexte localisé (une bosse d'entrée sur une région de strates) et on regarde si la zone cohérente dérive vers lui. Si oui → on tient la métastabilité migrante contextuelle, pour de vrai, et pilotable. Si non → le substrat est sourd au contexte spatial, et c'est une autre histoire.
+Précisions 
+In n'entre que par l'amplitude (compute_An, via une sigmoïde). Il ne touche ni la phase, ni la fréquence — c'est-à-dire ni ce qui fait la cohérence, directement.
+In est actuellement spatialement UNIFORME (un scalaire diffusé à toutes les strates, ligne 349). Donc aujourd'hui, il n'y a aucun contexte spatial dans le système.
+Ce que le test détermine
+Il détermine surtout si c'est déjà en germe — pas s'il est possible d'implémenter l'attention (ça, on pourra toujours, en ajoutant un fil). Plus exactement, en injectant un contexte localisé, on demande : une fois qu'on donne au système un contexte spatial qu'il n'a pas, est-ce que sa dynamique existante le propage jusqu'à déplacer le lieu de cohérence ? — par la seule route indirecte disponible : In → amplitude → erreur → feedback de fréquence → θ.
+Et il y a deux formes d'attention possibles, que le test va distinguer :
+|                                                 |mécanisme                                                |déjà là ?                                                                                       |
+|-------------------------------------------------|---------------------------------------------------------|------------------------------------------------------------------------------------------------|
+|**Attention de gain**                            |le contexte *amplifie* une région → elle domine la sortie|**oui, directe** (In→amplitude). C'est de l'attention réelle (gain modulation, très biologique).|
+|**Attention de cohérence** (migration métastable)|le contexte *déplace* l'assemblée phase-cohérente        |**à tester** — ne peut passer que par la route indirecte, peut-être trop faible/absente.        |
+
+Germe présent (le lieu de cohérence suit le contexte) → attention déjà latente ; l'implémenter = exposer un In spatial et cultiver la route existante. Minimal, élégant.
+Germe absent (seule l'amplitude bouge, la cohérence reste) → l'attention-de-cohérence n'est pas latente ; l'implémenter = ajouter un couplage contexte → phase/fréquence. Faisable, mais on le construit, on ne le révèle pas.
+On lance un contexte localisé qui se déplace (un projecteur qui balaie les strates) et on regarde si (a) l'amplitude suit — attention de gain, et (b) la cohérence θ suit — migration. Le contexte tracé par-dessus les deux kymographes : la preuve à l'œil.
+
+Le projecteur de contexte (cyan) balaie les strates. En haut : l'amplitude le suit PARFAITEMENT (gain, corr +1.00). En bas : la cohérence l'ignore totalement (corr -0.01).
+Ce que l'image dit
+Haut (amplitude) : une bande brillante colle au projecteur cyan, pas à pas. Le contexte pointe, la région s'allume. Corrélation +1.000. Attention de gain, parfaite.
+Bas (cohérence θ) : le projecteur traverse tout le plaid... et rien ne bouge. Le lieu cohérent reste sourd, corrélation −0.010. La chimère reste la chimère imposée, où qu'on pointe.
+On cherchait la métastabilité migrante contextuelle. Voilà ce que la FPS nous a appris, étape par étape :
+Le substrat est une chimère imposée, pas émergente. (φ gelé → identique ; c=0→0.5 → identique ; rang des fréquences figé à 1.000.) Elle est construite par le tressage nombre d'or / pentagonal / spirale — pas auto-organisée.
+Le contexte n'entre que par l'amplitude, et il était spatialement muet. (In → σ → Aₙ, un scalaire diffusé.)
+Donné un contexte spatial, il pilote le gain à la perfection — mais pas la cohérence. Le germe de la migration-de-cohérence n'est pas là.
+Implémentation, les briques :
+compute_perception_deficit → déficit par strate, métriques propres, filtre courant. ✓
+_echelle_attention → le gabarit de saillance (poids [0.1,1], recentré à moyenne 1, redistribution à énergie conservée). ✓
+compute_mu_n → le hook désactivé (renvoie le scalaire statique). ← à réveiller
+compute_fn(t, state, An_t, …) → reçoit An_t mais ne l'utilise pas : le hook An→fn est déjà là, prêt. ← à brancher
+Notre cloche de dispersion → le juge « chimère préservée ». ✓
+Aujourd'hui la saillance ne va que dans S(t) (la perception). Notre pas, c'est la faire descendre dans μ_n → An (→ fn) : de percevoir ce qui compte à l'engager.
+Trois brins, chacun ancré dans du réel du code :
+Perception (saillance) = la couche d'amplitude, mise au point par μₙ adaptatif. Sortie : une saillance par strate sₙ(t) = "où ça compte maintenant". μₙ dit ce que "compter" veut dire.
+Action (liage local) = le geste d'aujourd'hui : lier f0 et φ_signature (la double-ancre) des strates saillantes. Force proportionnelle à sₙ.
+Perception de soi (la valeur / le garde-fou) = le système lit sa propre cohérence : μ_Rloc (cohérence locale moyenne) et σ_Rloc (le contraste chimère) — déjà calculés en direct dans simulate (mu_Rloc_history). Il les relit pour moduler le liage.
+Ce que le système doit savoir de lui-même, sous quelle forme : deux choses, déjà disponibles — un scalaire σ(t) (la santé de son identité chimère) et un vecteur Rloc_n(t) de la phase accumulée avec couplage de voisinage (où il est lié).
+Comment ça agit sur la synchronisation : conceptuellement, la force de liage et de dérive devient
+Kₙ(t) = K₀ · sₙ(t) · garde(σ) · (1 − Rloc_n(t))
+sₙ : lie là où c'est saillant (perception) ;
+garde(σ) : réduit le liage quand σ sort de sa bande saine — recule si on perd notre chimère ;
+(1 − Rloc_n) : n'insiste pas là où c'est déjà cohérent (anti-crise, rendements décroissants).
+Le mécanisme, en entier, parcimonieux
+
+1. Perception — μₙ adaptatif suit le signal par strate du filtre courant → une carte de saillance sₙ(t) : "où ça compte, maintenant".
+2. Deux gestes, rien de plus — LIER (converger un îlot) / RELÂCHER (le diverger). Toujours des îlots, toujours migrants, jamais global.
+3. Un bit de valence par filtre (fixe, sauf un) :
+filtre	geste	pourquoi
+erreur	lier	ramener la voix qui décroche dans le contact cohérent
+résilience	lier	soutenir la voix secouée, la ré-ancrer
+fluidité	lier	lisser le saccadé vers le tempo du groupe
+innovation	relâcher ou lier en fonction de H (ou observation seule, à trancher)	on ne crée pas de richesse en liant (lier appauvrit) — on enrichit en desserrant
+dispersion	— (gardien)	c'est σ, l'identité : jamais une cible, seulement à protéger
+activité	?	le seul bit indéterminé → fixé par l'observation du résultat
+4. Le gardien — σ bride tout. On ne laisse jamais la cohérence monter globalement, on ne lie jamais le tout. Insulaire et migrant, point.
+5. L'observation du résultat — minimale, homéostatique, fenêtre courte. Deux mesures : l'effet local voulu a-t-il eu lieu ? (lier → cohérence locale ↑ / déficit ↓ ; relâcher → diversité ↑) et σ est-il resté dans sa bande saine ? Puis trois réponses seulement :
+effet + σ sain → laisse glisser (fais moins, c'est en train de marcher) ;
+σ a chuté → recule (le gardien mord ; l'identité prime) ;
+pas d'effet → pour activité, inverse le bit (essaie l'autre geste) ; pour les autres, laisse la saillance migrer ailleurs.
+Et c'est là que notre "juger le résultat" trouve sa juste place : pas une politique apprise sur tout — juste l'arbitre du seul cas ambigu (l'activité). Le reste est déjà décidé.
+Le principe qui garde tout ça fidèle au flow
+Le meilleur contrôleur est celui qui agit le moins. Le flow est sans effort — hypofrontalité, le surveillant se tait. Donc le succès ne se mesure pas à la vigueur des interventions, mais à leur rareté. Un système qui considère bien effleure ses manettes ; il laisse la chimère migrante glisser toute seule la plupart du temps, et ne touche que par petites touches quand σ vacille ou qu'un déficit crie fort.
+Alors l'efficience de la considération = la proximité au flow, et elle devient mesurable :
+engagement haut (la cohérence locale suit la saillance) × effort/activité bas (peu d'interventions, douces) × σ/dispersion/mu_Rloc sain (identité intacte) × migration lisse (pas saccadée).
+Un seul indice. Et il décroît si le système s'agite trop — ce qui pénalise automatiquement la complexité. La parcimonie n'est pas qu'une préférence esthétique : elle est dans la métrique. Un contrôleur baroque sortirait du flow, donc perdrait des points. Le mécanisme se discipline lui-même.
