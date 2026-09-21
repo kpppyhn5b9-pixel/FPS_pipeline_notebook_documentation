@@ -64,7 +64,7 @@ def patched(t, state, An_t, F, cfg, _o=_orig):
     rloc = np.array([abs(np.sum(pw * z[idx])) if idx.size else 1.0 for idx, pw in st['neigh']]); sigma = float(np.std(rloc))
     if t < t_mem: st['sigma_ref'].append(sigma)
     ref = float(np.median(st['sigma_ref'])) if st['sigma_ref'] else sigma
-    garde = float(np.clip((sigma / ref - 0.5) / 0.3, 0.0, 1.0))
+    garde = float(np.clip((sigma / ref - 0.5) / 0.3, 0.0, 1.0)) if ref > 1e-9 else 1.0   # t=0 : phases nulles, σ = 0
     # ---- attention : appuyer la strate surprise sur ses voisines calmes ----
     d = np.zeros(n)
     if K > 0 and t >= t_mem:
