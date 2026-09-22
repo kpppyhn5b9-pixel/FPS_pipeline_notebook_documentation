@@ -13,6 +13,8 @@ quand un réglage change (`resilience` dans `config.json`, détrend, barème).
 | `run_fn_noise.py` | vérité-terrain in-situ : fluctuation AR(1) de τ connu injectée sur fₙ ; attendu au lag L : exp(−L/τ) ; option de démarrage à t_on | `python run_fn_noise.py <nom> <tau_pas> <rel_amp> <T> [t_on] [seeds]` |
 | `explore_gain.py` | le couplage αₙ a-t-il une prise sur fₙ ? (non : ×30 ne change rien) | `python explore_gain.py <nom> <gain> <T>` |
 | `run_context_binding.py` | métastabilité migrante contextuelle : projecteur de contexte + liage local (compression de fréquences κ, accrochage de phase K₀ premier-voisin ou champ moyen d'îlot) appliqué après `compute_fn` ; mesure R îlot / dehors, corr(s, R), σ_Rloc, garde, dispersion, scores, réversibilité | `python run_context_binding.py <nom> <K0> <T> <t_on> <largeur> [seed] [kappa] [gate] [coupling]` |
+| `considerance_bench.py` | banc « considérance » (22/09) : un contexte se pose, tient, migre, disparaît ; geste d'îlot, gardien σ ; saillance au choix (projecteur, entrée Iₙ, amplitude, surprise, les deux) ; événement f₀ optionnel ; lectures engagement / sélectivité / réversibilité / coût / audibilité dans S(t) | module, `run_bench(...)` |
+| `run_attention_sources.py` | qui désigne l'îlot ? neuf modes (projecteur, entrée, amplitude ±, surprise ±, témoins K₀ = 0) ; résumés `attention_sources/`, note `docs/ATTENTION_sources_saillance.md` | `python run_attention_sources.py <mode|all> [seed] [N] [T] [K0]` |
 | `run_ramp_gamma.py` | rampe interne : le taux de rappel λ de la latence γ dérive de l0 à l1 (perturbation fixe σ sur l'état) ; le radar doit sonner pendant la montée, pas sur un contrôle l0 = l1 | `python run_ramp_gamma.py <nom> <l0> <l1> <t0> <t1> <sigma> <T> <seeds>` |
 
 Repères (W_res_t = 200, lag 10) :
