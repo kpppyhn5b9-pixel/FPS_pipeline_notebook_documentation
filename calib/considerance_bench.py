@@ -45,9 +45,17 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
               cascade='doree', scale=1.0, breath=True, phi_static=False,
               saliency='projector', posts=True, ctx_gain=0.5, ctx_scale=0.3,
               surp_floor=3.0, surp_full=6.0, sal_tau=3.0,
+              schedule=None, novelty=False, novelty_scale=2.0, island='global',
               event=None, config_mutator=None, label=None, verbose=True):
     """Lance un run, écrit `summary.json` + `kymo.npz` dans le dossier `name`, renvoie le résumé.
-    event : None ou dict(t=90.0, strates=range(40, 45), factor=1.3) — f₀ × facteur, durable."""
+    event : None ou dict(t=90.0, strates=range(40, 45), factor=1.3) — f₀ × facteur, durable.
+    schedule : None (postes 20 → 80 → 50, 20 u.t. chacun) ou liste de (t0, t1, [centres]) : plusieurs
+               foyers à la fois, tenue libre. Avec un horaire libre, l'analyse par postes est sautée
+               (posts=False), le runner lit kymo.npz (R, s, U, O, theta).
+    novelty : saillance × nouveauté pour soi, ν = clip((uₙ / médiane(u) − 1) / novelty_scale, 0, 1) :
+              ce qui est déjà assimilé par la mémoire longue cesse d'être saillant (habituation).
+    island : 'global' (un seul champ moyen sur toutes les strates saillantes) ou 'local' (un champ
+             moyen par îlot = composante connexe de s > 0.05 : jamais de cohérence non locale)."""
     assert cascade in CASCADES, cascade; assert saliency in SALIENCIES, saliency
     label = label or name
     cwd0 = os.getcwd(); os.makedirs(name, exist_ok=True); os.chdir(name)
@@ -76,12 +84,20 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         if cascade == 'hasard':  return R_HASARD + b
         return None
 
+    if schedule is not None:
+        posts = False
+
     def center_at(t):
+        if schedule is not None:
+            for (t0, t1, ctrs_) in schedule:
+                if t0 <= t < t1: return list(ctrs_)
+            return None
         if not posts or t < T_ON or t >= T_OFF: return None
         return POSTS[int((t - T_ON) // DWELL)]
 
     def bump(ctr):
-        return np.exp(-0.5 * ((np.arange(N) - ctr) / width) ** 2)
+        cs = ctr if isinstance(ctr, (list, tuple)) else [ctr]
+        return np.max([np.exp(-0.5 * ((np.arange(N) - c_) / width) ** 2) for c_ in cs], axis=0)
 
     st = {'phase': None, 'sigma_ref': [], 'log': [], 'u_prev': np.zeros(N), 's_surp': np.zeros(N), 'in_last': np.zeros(N)}
     bm = dynamics.init_self_memory(N)          # mémoire de soi côté banc (mêmes entrées que le pipeline → même état)
@@ -136,6 +152,10 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
             u = st['u_prev']; raw = np.clip((u / max(float(np.median(u)), 1e-9) - surp_floor) / max(surp_full - surp_floor, 1e-9), 0.0, 1.0)
             st['s_surp'] = st['s_surp'] + k_sal * (raw - st['s_surp'])
         s = np.maximum(s_ctx, st['s_surp']) if saliency == 'both' else (st['s_surp'] if saliency == 'surprise' else s_ctx)
+        nu = np.ones(N)
+        if novelty and bm.get('born'):
+            u = st['u_prev']; nu = np.clip((u / max(float(np.median(u)), 1e-9) - 1.0) / max(novelty_scale, 1e-9), 0.0, 1.0)
+            s = s * nu
         ref = float(np.median(st['sigma_ref'][-200:])) if st['sigma_ref'] else sigma
         garde = float(np.clip((sigma / ref - 0.5) / 0.3, 0.0, 1.0)) if (ref > 1e-6 and len(st['sigma_ref']) >= 100) else 1.0   # gardien : nul tant que le contraste de référence n'est pas établi
         # ---- le geste ----
@@ -143,14 +163,26 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
             if kappa > 0:
                 f_bar = float(np.sum(s * fn) / np.sum(s)); fn = fn + kappa * garde * s * (f_bar - fn)
             if K0 > 0:
-                Z = np.sum(s * np.exp(1j * theta)) / max(np.sum(s), 1e-12)
-                fn = fn + K0 * s * garde * np.abs(Z) * np.sin(np.angle(Z) - theta) / (2 * np.pi)
+                if island == 'local':
+                    on = s > 0.05; comps = []; i = 0
+                    while i < N:
+                        if on[i]:
+                            j = i
+                            while j + 1 < N and on[j + 1]: j += 1
+                            comps.append(np.arange(i, j + 1)); i = j + 1
+                        else: i += 1
+                    for comp in comps:
+                        sc_ = s[comp]; Zk = np.sum(sc_ * np.exp(1j * theta[comp])) / max(np.sum(sc_), 1e-12)
+                        fn[comp] = fn[comp] + K0 * sc_ * garde * np.abs(Zk) * np.sin(np.angle(Zk) - theta[comp]) / (2 * np.pi)
+                else:
+                    Z = np.sum(s * np.exp(1j * theta)) / max(np.sum(s), 1e-12)
+                    fn = fn + K0 * s * garde * np.abs(Z) * np.sin(np.angle(Z) - theta) / (2 * np.pi)
         st['phase'] = st['phase'] + 2 * np.pi * fn * dt
         # ---- la mémoire côté banc (mêmes entrées que le pipeline : An_t, fn rendu) ----
         u_now = np.full(N, np.nan)
         if t >= birth_t:
             u_now = dynamics.update_self_memory(bm, An_t, fn, dt, tau_s, tau_l)['u']; st['u_prev'] = u_now
-        st['log'].append((t, ctr, sigma, garde, rloc.copy(), s.copy(), np.abs(fn - f_before) / np.maximum(f_before, 1e-9), fn.copy(), u_now.copy()))
+        st['log'].append((t, (ctr[0] if isinstance(ctr, list) else ctr), sigma, garde, rloc.copy(), s.copy(), np.abs(fn - f_before) / np.maximum(f_before, 1e-9), fn.copy(), u_now.copy(), theta.copy(), nu.copy()))
         return fn
 
     def phi_static_fn(t, state, cfg):
@@ -198,6 +230,7 @@ def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency):
     O = np.array([np.asarray(x['O'], dtype=float) for x in h])
     tl = np.array([l[0] for l in log]); sig = np.array([l[2] for l in log]); gar = np.array([l[3] for l in log])
     R = np.array([l[4] for l in log]); S = np.array([l[5] for l in log]); COST = np.array([l[6] for l in log]); FN = np.array([l[7] for l in log]); U = np.array([l[8] for l in log])
+    TH = np.array([l[9] for l in log]); NU = np.array([l[10] for l in log])
     ctrs = np.array([np.nan if l[1] is None else l[1] for l in log])
     n_h = min(len(t), len(tl)); t = t[:n_h]; O = O[:n_h]; eff = eff[:n_h]; dn = dn[:n_h]; cjs = cjs[:n_h]
     def win(a, b): return (tl >= a) & (tl < b)
@@ -286,5 +319,5 @@ def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency):
     elif verbose:
         print(f"[{label}] scores {metrics.labelled_scores(sc)}")
     json.dump(out, open('summary.json', 'w'), indent=1)
-    np.savez_compressed('kymo.npz', t=tl, R=R, s=S, sigma=sig, garde=gar, cost=COST, fn=FN, U=U, t_hist=t, disp=dn, effort=eff, ctr=ctrs, O=O)
+    np.savez_compressed('kymo.npz', t=tl, R=R, s=S, sigma=sig, garde=gar, cost=COST, fn=FN, U=U, t_hist=t, disp=dn, effort=eff, ctr=ctrs, O=O, theta=TH, nu=NU)
     return out
