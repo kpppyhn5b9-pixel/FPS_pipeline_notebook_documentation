@@ -203,5 +203,6 @@ def _analyse(res, c, log, N, dt, width, label, verbose):
         r = out['resume']
         print(f"[{label}] résumé : engagement +{r['engagement']:.3f} contagion {r['contagion']:+.3f} coût {r['cost']:.4f} efficience {r['efficience']:.1f} montée {r['rise']:.1f} | σ/σref {r['sigma_ratio']:.2f} | réversibilité {r['rev5']:+.3f}/{r['rev15']:+.3f} extinction {r['ext15']:+.3f}/{r['ext45']:+.3f} | scores {metrics.labelled_scores(sc)}")
     json.dump(out, open('summary.json', 'w'), indent=1)
-    np.savez_compressed('kymo.npz', t=tl, R=R, s=S, sigma=sig, garde=gar, cost=COST, fn=FN, t_hist=t, U=U, disp=dn, effort=eff, ctr=ctrs)
+    O = np.array([np.asarray(x['O'], dtype=float) for x in h])   # sorties par strate : pour l'audibilité d'un îlot dans S(t)
+    np.savez_compressed('kymo.npz', t=tl, R=R, s=S, sigma=sig, garde=gar, cost=COST, fn=FN, t_hist=t, U=U, disp=dn, effort=eff, ctr=ctrs, O=O)
     return out

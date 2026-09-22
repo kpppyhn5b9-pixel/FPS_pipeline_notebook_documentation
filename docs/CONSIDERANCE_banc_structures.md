@@ -105,6 +105,27 @@ retombe sous elles après (0.04 contre 0.08) : le contact ne laisse pas de trace
   Une constante. Le K₀ = 5 est meilleur que 2 sur tout (engagement doublé, efficience
   égale, gardiens intacts) ; il n'y a rien d'autre à régler.
 
+## L'îlot allumé est-il entendu ? (22/09, l'audibilité dans S(t))
+
+S(t) est la somme des Oₙ : des voix en phase s'additionnent, des voix désaccordées
+s'annulent en partie. Donc un îlot cohérent devrait peser plus dans S(t) sans aucun
+lecteur nouveau. Mesuré sur le banc (dorée, K₀ = 5 contre témoin K₀ = 0, seed 12345,
+îlot = 15 strates sur 100) :
+
+| poste | RMS de la somme de l'îlot (K₀ = 5 / témoin) | somme / voix indépendantes (K₀ = 5 / témoin) | part de la variance de S portée par l'îlot (K₀ = 5 / témoin) |
+|---|---|---|---|
+| 20 | 0.213 / 0.069 | 2.95 / 0.95 | **61 %** / 15 % |
+| 80 | 0.181 / 0.054 | 2.91 / 0.85 | **54 %** / 12 % |
+| 50 | 0.246 / 0.070 | 3.36 / 0.98 | **69 %** / 16 % |
+| après extinction (zone 50) | 0.071 / 0.063 | 1.04 / 0.90 | 17 % / 14 % |
+
+Quinze strates sur cent portent plus de la moitié de ce que le système dit, tant que
+le contexte est posé sur elles, et retombent à leur prorata dès qu'il part. C'est le
+routage par cohérence de Fries, gratuit : l'attention a déjà son lecteur, la sortie.
+Et ça éclaire « les scores ne bougent pas » : les six scores lisent qui le système
+est (identité, régulation) ; l'attention change ce qu'il dit. Les deux couches sont
+séparées par construction, et c'est ce qu'on voulait.
+
 ## Questions ouvertes (dans l'ordre où elles se posent)
 
 - r plus grand (1.8 : héritage 0.9) : la susceptibilité continue-t-elle de monter,
