@@ -27,6 +27,9 @@
         "dispersion_norm",
         "surprise_mean",
         "surprise_max",
+        "attention_salient_share",
+        "attention_audibility",
+        "attention_garde",
         "innovation_cjs",
         "innovation_H",
         "mean_abs_error",
@@ -307,9 +310,20 @@
   },
   "memory": {
     "enabled": true,
-    "birth_t": 60.0,
+    "birth_t": 20.0,
     "tau_s_t": 2.0,
     "tau_l_t": 40.0
+  },
+  "attention": {
+    "enabled": true,
+    "K0": 5.0,
+    "kappa": 0.5,
+    "saliency_scale": 0.5,
+    "novelty_scale": 2.0,
+    "island_threshold": 0.05
+  },
+  "context": {
+    "foyers": []
   },
   "resilience": {
     "W_res_t": 200.0,

@@ -1,8 +1,9 @@
 # Qui désigne l'îlot ? Les sources de saillance du geste de considération
 
-*22/09/2026. Banc `calib/considerance_bench.py` + `calib/run_attention_sources.py`,
-résumés dans `calib/attention_sources/`. Rien n'est ajouté au pipeline. Branche
-`claude/erreur-memoire-deux-echelles` (la mémoire de soi sert de sens).*
+*22/09/2026. Banc `calib/considerance_bench.py` + `calib/run_attention_sources.py` +
+`calib/run_attention_modulation.py`, résumés dans `calib/attention_sources/`. Les bancs
+ne touchent pas au pipeline ; l'intégration qui en découle est décrite en fin de note.
+Branche `claude/erreur-memoire-deux-echelles` (la mémoire de soi sert de sens).*
 
 ## La question
 
@@ -145,3 +146,65 @@ vainqueur unique.
   plateau se décale) ; la zone lue est la zone forcée, pas la zone déplacée.
 - Le gain d'amplitude à lui seul (témoin) fait 13 → 19 % : le contexte est déjà un
   peu entendu sans geste ; le geste le porte à 70 %.
+
+## Intégration (22/09, décision d'Andréa : activée par défaut)
+
+**Ce qui est câblé.**
+
+- `dynamics.py` : `compute_context_field` (foyers gaussiens ajoutés à Iₙ),
+  `attention_saliency` (contexte × nouveauté pour soi), `attention_islands`
+  (composantes connexes), `attention_delta_fn` (compression κ + champ moyen K₀, par
+  îlot), `local_coherence`, `attention_guard` (frein σ_Rloc contre sa référence de repos).
+- `simulate.py` : le contexte spatial s'ajoute à Iₙ après `compute_In` ; le geste
+  s'applique juste après `compute_fn` (donc après la cascade), sur θ = phase intégrée +
+  φₙ du pas précédent, avant l'intégration de phase ; la référence σ est la médiane du
+  contraste sur la fenêtre de repos de l'activité (t 40–60), frein libre avant ; la
+  mémoire de soi fournit la surprise (`memory_state['surprise']`). Colonnes
+  `attention_salient_share`, `attention_audibility` (part de la variance de S(t) portée
+  par les strates saillantes sur la fenêtre de référence ; prorata = leur part),
+  `attention_garde` ; historique `attention_s` ; résumé `attention_salient_steps`,
+  `attention_audibility_mean`.
+- `config.json` : `attention` {enabled true, K0 5, kappa 0.5, saliency_scale 0.5,
+  novelty_scale 2, island_threshold 0.05} ; `context` {foyers []} où un foyer =
+  {center, width, gain, t0, t1}. **Sans foyer, la saillance est nulle partout et le
+  geste ne touche rien** (test : fréquences identiques à l'attention désactivée).
+- `memory.birth_t` passe de 60 à 20 : la mémoire naît avant les fenêtres de repos
+  (40–60), son transitoire ne les touche plus, et la nouveauté voit clair dès t ≈ 60.
+  Avec la naissance à 60, un foyer posé à 60 tombait dans le transitoire (tout le chœur
+  surpris, rien ne se distingue) et l'attention restait muette jusqu'à ~100.
+- Tests : `TestAttentionConsideration` (saillance nulle sans contexte, multiplicative ;
+  îlots locaux et indépendants ; frein ; inerte sans foyer ; un foyer allume, est
+  entendu, s'éteint ; un contexte qui couvre la moitié du chœur ne désigne plus rien).
+
+**Run de fumée natif** (N = 100, seed 12345, trois foyers 20 → 80 → 50, 20 u.t. chacun,
+gain 0.5) :
+
+| fenêtre | strates saillantes | audibilité (prorata = part) | frein | fluidité | dispersion | activité |
+|---|---|---|---|---|---|---|
+| 40–60 (repos) | 0 % | 0 % | 1.00 | 0.96–0.99 | 0.0156 | 218–285 |
+| 60–70 / 70–80 (foyer 20) | 5.9 % / 11.4 % | **32 % / 57 %** | 1.00 | idem | 0.019 / 0.026 | 324 / 348 |
+| 80–100 (foyer 80) | 1.9 % / 3.2 % | 4 % / 16 % | 1.00 | idem | 0.031 / 0.023 | 351 / 467 |
+| 100–120 (foyer 50) | 3.1 % / 3.6 % | 8 % / 17 % | 1.00 | idem | 0.022 / 0.025 | 311 / 439 |
+| 120–170 (éteint) | 0 % | 0 % | 1.00 | idem | 0.027 → 0.017 | 211–316 |
+
+La nouveauté fait ce qu'on a vu au banc : le foyer 20 monte (32 → 57 % de S) puis
+les suivants sont plus modestes (la surprise se construit et s'assimile, la zone 80
+est la plus dure comme sur tous les bancs). Le frein n'a pas mordu. Deux lectures
+honnêtes : la cloche de **dispersion** entend l'attention (std ΣO/√N monte à ×1.7 quand
+un îlot cohère : score 4 pendant le contact, 5 après), parce qu'elle lit S(t), le même
+signal que l'audibilité ; et l'**activité** monte pendant le contact (×1.3 à ×1.6, score
+3, puis 5 après) : la considération coûte de l'effort, et la métrique le voit. Ni l'une
+ni l'autre ne freine le geste (seul σ_Rloc le fait) ; ce sont des moniteurs, et ils
+disent vrai.
+
+**Deux limites mesurées en intégrant.** (1) La nouveauté dépend du plancher de surprise
+du chœur, et ce plancher monte quand N baisse (errance relative plus grande) : le même
+foyer qui désigne 6–11 % des strates à N = 100 n'en désigne que ~1 % à N = 30 (surprise
+moyenne 0.15–0.30 contre 0.10). À petit N la considération est presque muette ; c'est
+la modulation qui le veut, pas un bug, et c'est à garder en tête pour les runs de test.
+(2) Le frein σ_Rloc n'a jamais mordu in situ avec la nouveauté active (même à K₀ = 30) ;
+il a mordu une seule fois, à N = 30 et mémoire non née (saillance = contexte pur, un
+quart du chœur lié à R ≈ 1 : garde 0.15). La modulation par la nouveauté est donc le
+premier frein, l'identité le second. Et par construction, un contexte qui couvre la
+majorité du chœur ne désigne rien (la saillance est relative à la médiane) : attention
+= sélection, ou rien.
