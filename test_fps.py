@@ -1113,6 +1113,92 @@ class TestSelfMemory(unittest.TestCase):
         self.assertLess(abs(ratio - attendu) / attendu, 0.12)
 
 
+class TestAttentionConsideration(unittest.TestCase):
+    """Le geste de considération (22/09/2026) : contexte × nouveauté, îlots locaux, frein, audibilité."""
+
+    def test_saliency_needs_context(self):
+        I = np.full(20, 0.1)
+        self.assertTrue(np.all(dynamics.attention_saliency(I, None) == 0.0))         # entrée uniforme : rien
+        I2 = I + 0.5 * np.exp(-0.5 * ((np.arange(20) - 10) / 2.0) ** 2)
+        s = dynamics.attention_saliency(I2, None, saliency_scale=0.5)
+        self.assertGreater(s[10], 0.9); self.assertLess(s[0], 1e-6)                    # une bosse : ~1 au centre, 0 loin
+        u = np.full(20, 0.1); s_nu = dynamics.attention_saliency(I2, u, saliency_scale=0.5)
+        self.assertTrue(np.all(s_nu == 0.0))                                           # surprise uniforme : rien de neuf → rien
+        u[10] = 0.5; s_nu = dynamics.attention_saliency(I2, u, saliency_scale=0.5, novelty_scale=2.0)
+        self.assertGreater(s_nu[10], 0.9); self.assertLess(s_nu[0], 1e-6)              # neuf ET contextuel : allumé
+        u2 = np.full(20, 0.1); u2[0] = 0.5
+        self.assertTrue(np.all(dynamics.attention_saliency(I2, u2) [[0]] == 0.0))       # neuf sans contexte : rien (multiplicatif)
+
+    def test_islands_are_local(self):
+        s = np.zeros(30); s[3:8] = 0.8; s[20:26] = 0.6
+        comps = dynamics.attention_islands(s)
+        self.assertEqual([list(c) for c in comps], [list(range(3, 8)), list(range(20, 26))])
+        rng = np.random.default_rng(0)
+        th = rng.uniform(0, 2 * np.pi, 30); f = np.full(30, 3.0)
+        d1 = dynamics.attention_delta_fn(f, th, s, K0=5.0, kappa=0.0, garde=1.0)
+        th2 = th.copy(); th2[20:26] += np.pi                                            # on tourne l'autre îlot
+        d2 = dynamics.attention_delta_fn(f, th2, s, K0=5.0, kappa=0.0, garde=1.0)
+        self.assertTrue(np.allclose(d1[3:8], d2[3:8]))                                  # l'îlot 3–7 ne le sait pas
+        self.assertTrue(np.all(d1[8:20] == 0.0) and np.all(d1[26:] == 0.0))            # rien hors des îlots
+        self.assertTrue(np.all(dynamics.attention_delta_fn(f, th, s, 5.0, 0.5, garde=0.0) == 0.0))   # frein à 0 : rien
+        # l'accrochage rapproche les phases de l'îlot : après un pas, |Z| de l'îlot monte
+        Z0 = abs(np.mean(np.exp(1j * th[3:8]))); th1 = th + 2 * np.pi * d1 * 0.1
+        self.assertGreater(abs(np.mean(np.exp(1j * th1[3:8]))), Z0)
+
+    def test_guard(self):
+        self.assertEqual(dynamics.attention_guard(0.2, None), 1.0)
+        self.assertEqual(dynamics.attention_guard(0.30, 0.30), 1.0)
+        self.assertEqual(dynamics.attention_guard(0.24, 0.30), 1.0)                     # 0.8 × ref : encore libre
+        self.assertAlmostEqual(dynamics.attention_guard(0.195, 0.30), 0.5, places=6)    # 0.65 × ref : à moitié
+        self.assertEqual(dynamics.attention_guard(0.10, 0.30), 0.0)                     # 0.33 × ref : bloqué
+
+    def _run(self, foyers, T=100, enabled=True, N=30):
+        import simulate
+        with open('config.json') as f:
+            config = json.load(f)
+        config['system']['N'] = N; config['system']['T'] = T; config['system']['seed'] = 12345
+        config['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
+        config['analysis'] = {**config.get('analysis', {}), 'compare_kuramoto': False}
+        config['attention'] = {**config.get('attention', {}), 'enabled': enabled}; config['context'] = {'foyers': foyers}
+        tmp = tempfile.mkdtemp(); cwd = os.getcwd()
+        try:
+            os.chdir(tmp)
+            with open('cfg.json', 'w') as f:
+                json.dump(config, f)
+            import io, contextlib
+            with contextlib.redirect_stdout(io.StringIO()):
+                res = simulate.run_simulation('cfg.json', 'FPS')
+        finally:
+            os.chdir(cwd); shutil.rmtree(tmp, ignore_errors=True)
+        return res['history']
+
+    def test_inert_without_context(self):
+        # activée mais sans foyer : saillance nulle partout, fréquences IDENTIQUES à l'attention désactivée
+        h_on = self._run([], T=60, enabled=True); h_off = self._run([], T=60, enabled=False)
+        self.assertTrue(all(x['attention_salient_share'] == 0.0 for x in h_on if x.get('attention_salient_share') is not None))
+        self.assertEqual(max(abs(float(a['f_mean(t)']) - float(b['f_mean(t)'])) for a, b in zip(h_on, h_off)), 0.0)
+
+    def test_context_lights_and_is_heard(self):
+        # N = 60, un foyer sur la strate 30 (t 50–80, ~7 strates = 12 % du chœur) : des strates
+        # saillantes pendant, aucune après ; elles portent PLUS de S(t) que leur prorata ; le frein reste libre
+        h = self._run([{'center': 30, 'width': 3.0, 'gain': 0.5, 't0': 50.0, 't1': 80.0}], T=100, N=60)
+        during = [x for x in h if 60 <= x['t'] < 80]; after = [x for x in h if x['t'] >= 85]
+        share = np.mean([x['attention_salient_share'] for x in during]); aud = np.mean([x['attention_audibility'] for x in during])
+        self.assertGreater(share, 0.03); self.assertLess(share, 0.3)
+        self.assertGreater(aud, 1.5 * share, (aud, share))
+        self.assertTrue(all(x['attention_salient_share'] == 0.0 for x in after))
+        self.assertGreater(min(x['attention_garde'] for x in during), 0.5)
+
+    def test_a_context_on_half_the_chorus_is_not_a_context(self):
+        # N = 30, un foyer large et fort (~la moitié du chœur) : la saillance est relative à la médiane
+        # (du contexte ET de la surprise), donc ce qui couvre la majorité ne désigne plus rien ;
+        # sélectivité par construction, et le frein n'a pas à mordre
+        h = self._run([{'center': 15, 'width': 5.0, 'gain': 1.5, 't0': 50.0, 't1': 80.0}], T=90, N=30)
+        during = [x for x in h if 55 <= x['t'] < 80]
+        self.assertLess(np.mean([x['attention_salient_share'] for x in during]), 0.05)
+        self.assertGreater(min(x['attention_garde'] for x in during), 0.5)
+
+
 class TestDispersionGuard(unittest.TestCase):
     """
     Garde-fou du centre de la cloche (21/09) : le centre DISPERSION_NORM_CENTER

@@ -261,15 +261,30 @@ def run_fps_simulation(config, state, loggers, strict=False):
     self_memory = dynamics.init_self_memory(N)
     memory_state = {
         'enabled': bool(_mcfg.get('enabled', True)),
-        'birth_t': float(_mcfg.get('birth_t', 60.0)),
+        'birth_t': float(_mcfg.get('birth_t', 20.0)),   # naissance AVANT les fenêtres de repos (40–60) : son transitoire ne les touche pas, et l'attention (nouveauté) voit clair dès t ≈ 60
         'tau_s': float(_mcfg.get('tau_s_t', 2.0)), 'tau_l': float(_mcfg.get('tau_l_t', 40.0)),
         'E_last': None,            # dernier Eₙ remémoré (pour l'enveloppe, en tête de pas)
+        'surprise': None,          # dernier vecteur de surprise (lu par l'attention : nouveauté pour soi)
     }
     activite_state = {
         'ref': None,
         't_start': float(_acfg.get('calib_start_t', 20.0)),
         't_end': float(_acfg.get('calib_start_t', 20.0)) + float(_acfg.get('calib_window_t', 20.0)),
         'window_steps': max(1, int(round(float(_acfg.get('calib_window_t', 20.0)) / dt))),  # une respiration
+    }
+    # ATTENTION : la considération (22/09/2026, décision d'Andréa). Contexte spatial
+    # (config 'context.foyers') × nouveauté pour soi → îlots liés par champ moyen local,
+    # freinés par σ_Rloc (référence = le repos du run, même fenêtre que l'activité),
+    # entendus dans S(t). Sans foyer, la saillance est nulle : le geste ne touche rien.
+    _atcfg = config.get('attention', {}); _ctxcfg = config.get('context', {})
+    attention_state = {
+        'enabled': bool(_atcfg.get('enabled', True)),
+        'K0': float(_atcfg.get('K0', 5.0)), 'kappa': float(_atcfg.get('kappa', 0.5)),
+        'saliency_scale': float(_atcfg.get('saliency_scale', 0.5)), 'novelty_scale': float(_atcfg.get('novelty_scale', 2.0)),
+        'island_threshold': float(_atcfg.get('island_threshold', 0.05)),
+        'foyers': list(_ctxcfg.get('foyers', [])),
+        'ref_t0': activite_state['t_start'], 'ref_t1': activite_state['t_end'], 'sigma_ref': [], 'sigma_ref_value': None,
+        's': np.zeros(N), 'garde': 1.0, 'cost': 0.0,
     }
     # Filtres de perception (spec 15/07/2026) — état du switch
     _pcfg = config.get('perception', {})
@@ -371,6 +386,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 traceback.print_exc()
                 # Fallback : utiliser un offset minimal
                 In_t = np.full(N, 0.1)
+            if attention_state['foyers']:
+                In_t = np.asarray(In_t, dtype=float) + dynamics.compute_context_field(t, N, attention_state['foyers'])   # contexte spatial
             
             # ----------- 2. CALCULS DYNAMIQUE FPS --------------
             # ================= RÉORDONNANCEMENT DU PAS (15/07/2026) =============
@@ -436,6 +453,24 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 config_with_history = config.copy()
                 config_with_history['history'] = history
                 fn_t = dynamics.compute_fn(t, state, An_t, F_n_t_fn, config_with_history)
+                # ATTENTION (22/09) : le geste de considération, après la cascade, avant l'intégration.
+                if attention_state['enabled']:
+                    _phi_prev = (np.asarray(history[-1]['phi_n_t'], dtype=float)
+                                 if history and history[-1].get('phi_n_t') is not None else np.zeros(N))
+                    _theta_att = phase_acc + _phi_prev
+                    _sig_att = float(np.std(dynamics.local_coherence(_theta_att, _rloc_neigh)))
+                    if attention_state['ref_t0'] <= t < attention_state['ref_t1']:
+                        attention_state['sigma_ref'].append(_sig_att)
+                    elif t >= attention_state['ref_t1'] and attention_state['sigma_ref_value'] is None and attention_state['sigma_ref']:
+                        attention_state['sigma_ref_value'] = float(np.median(attention_state['sigma_ref']))
+                    attention_state['garde'] = dynamics.attention_guard(_sig_att, attention_state['sigma_ref_value'])
+                    attention_state['s'] = dynamics.attention_saliency(In_t, memory_state.get('surprise'),
+                                                                       attention_state['saliency_scale'], attention_state['novelty_scale'])
+                    _dfn = dynamics.attention_delta_fn(fn_t, _theta_att, attention_state['s'], attention_state['K0'], attention_state['kappa'],
+                                                       attention_state['garde'], attention_state['island_threshold'])
+                    _sal = attention_state['s'] > 0.5
+                    attention_state['cost'] = float(np.mean(np.abs(_dfn[_sal]) / np.maximum(fn_t[_sal], 1e-9))) if _sal.any() else 0.0
+                    fn_t = np.maximum(fn_t + _dfn, 1e-6)
                 fn_history.append(fn_t.copy())
                 # Calculer et stocker delta_fn pour l'historique
                 delta_fn_t = np.zeros(N)
@@ -519,7 +554,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             surprise_mean = None; surprise_max = None
             if memory_state['enabled'] and t >= memory_state['birth_t']:
                 _u = dynamics.update_self_memory(self_memory, An_t, fn_t, dt, memory_state['tau_s'], memory_state['tau_l'])
-                surprise_mean = float(np.mean(_u['u'])); surprise_max = float(np.max(_u['u']))
+                surprise_mean = float(np.mean(_u['u'])); surprise_max = float(np.max(_u['u'])); memory_state['surprise'] = _u['u']
                 _E_mem = dynamics.compute_En_memory(On_t, self_memory)
                 if _E_mem is not None:
                     En_t = _E_mem; memory_state['E_last'] = _E_mem
@@ -961,6 +996,16 @@ def run_fps_simulation(config, state, loggers, strict=False):
             In_mean_t = np.mean(In_t) if isinstance(In_t, np.ndarray) else In_t
             
             # CRÉER all_metrics ICI
+            # ATTENTION : lecteurs (part de strates saillantes ; audibilité = part de la variance
+            # de S(t) portée par elles sur la fenêtre de référence ; gardien).
+            attention_salient_share = None; attention_audibility = None; attention_garde = None
+            if attention_state['enabled']:
+                _sal = attention_state['s'] > 0.5
+                attention_salient_share = float(np.mean(_sal)); attention_garde = float(attention_state['garde']); attention_audibility = 0.0
+                if _sal.any() and len(history) >= 10:
+                    _Ow = np.array([_h['O'] for _h in history[-perception_state['W_f']:]], dtype=float)
+                    _Sw = _Ow.sum(1)
+                    attention_audibility = float(np.mean(_Ow[:, _sal].sum(1) * _Sw) / max(np.mean(_Sw ** 2), 1e-12))
             all_metrics = {
                 't': t,
                 'S(t)': S_t,
@@ -978,6 +1023,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'dispersion_norm': dispersion_norm,  # std(ΣO)/√N lissé, sur O brut (identité) ; None en warmup
                 'surprise_mean': surprise_mean,      # mémoire de soi : surprise moyenne du chœur (None avant la naissance)
                 'surprise_max': surprise_max,
+                'attention_salient_share': attention_salient_share,   # part de strates désignées par la considération
+                'attention_audibility': attention_audibility,         # part de S(t) portée par elles (prorata = leur part)
+                'attention_garde': attention_garde,                   # frein σ_Rloc (1 = libre, 0 = bloqué)
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'innovation_H': innovation_H,  # entropie de permutation : H bas = ordre, H haut = bruit
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
@@ -1024,7 +1072,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max'):
+            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -1033,7 +1081,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                                  'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max'}
+                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -1043,7 +1091,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                              'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max'}
+                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -1151,6 +1199,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'fluidity': fluidity,
                 'dispersion_norm': dispersion_norm,
                 'surprise_mean': surprise_mean, 'surprise_max': surprise_max,
+                'attention_salient_share': attention_salient_share, 'attention_audibility': attention_audibility, 'attention_garde': attention_garde,
+                'attention_s': (attention_state['s'].copy() if attention_state['enabled'] else None),
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
                 'En_mean(t)': En_mean_t,
@@ -1274,6 +1324,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'surprise_mean': (float(np.nanmean([h['surprise_mean'] for h in history if h.get('surprise_mean') is not None]))
                               if any(h.get('surprise_mean') is not None for h in history) else None),
             'surprise_final': (float(surprise_mean) if 'surprise_mean' in locals() and surprise_mean is not None else None),
+            'attention_salient_steps': int(sum(1 for h in history if (h.get('attention_salient_share') or 0.0) > 0)),
+            'attention_audibility_mean': (float(np.mean([h['attention_audibility'] for h in history if (h.get('attention_salient_share') or 0.0) > 0]))
+                                          if any((h.get('attention_salient_share') or 0.0) > 0 for h in history) else None),
             'activite_ref': (float(activite_state['ref']) if activite_state['ref'] is not None else None),
             'activite_rel': (float(activite_rel) if 'activite_rel' in locals() and activite_rel is not None else None),
             'mean_effort': np.mean(effort_history) if effort_history else 0.0,

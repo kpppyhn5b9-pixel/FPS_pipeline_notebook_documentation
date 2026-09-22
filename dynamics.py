@@ -1543,6 +1543,107 @@ def compute_En_memory(On_t: np.ndarray, mem: Dict[str, Any]) -> Optional[np.ndar
     return O * (mem['A_l'] / np.maximum(mem['a_p'], 1e-9))
 
 
+# ============== ATTENTION : LA CONSIDÉRATION (22/09/2026) ==============
+# Le geste de considération (Attention.md, bancs calib/considerance_bench.py,
+# run_attention_sources.py, run_attention_modulation.py, notes docs/CONSIDERANCE_*
+# et docs/ATTENTION_sources_saillance.md) :
+#   qui désigne l'îlot : le CONTEXTE spatial Iₙ, tel qu'il arrive (excédent normalisé
+#     sur la médiane), MULTIPLIÉ par la NOUVEAUTÉ POUR SOI (surprise de la mémoire de
+#     soi, relative à la médiane du chœur) : rien ne s'allume sans contexte, et ce qui
+#     est assimilé cesse d'être saillant (habituation, réorientation) ;
+#   le geste : un champ moyen PAR ÎLOT (composante connexe de la saillance), jamais un
+#     seul Z : deux foyers coexistent sans fusionner ;
+#       Δfₙ = K₀ · sₙ · garde(σ) · |Z_k| · sin(arg Z_k − θₙ) / 2π  (+ κ·sₙ·garde·(f̄_k − fₙ))
+#   le frein : garde(σ) lit le contraste σ_Rloc (l'identité chimère) contre sa
+#     référence de repos : 1 au-dessus de 0.8 × ref, 0 sous 0.5 × ;
+#   le lecteur : la sortie S(t) elle-même (un îlot cohérent s'additionne, les voix
+#     désaccordées s'annulent) : colonne attention_audibility.
+# Mesuré : engagement +0.30 en ~1 u.t., contagion nulle, réversible en 5 u.t., σ intact,
+# 15 strates sur 100 portent 60–70 % de S(t) tant que le contexte est posé, prorata après.
+
+def compute_context_field(t: float, N: int, foyers: List[Dict]) -> np.ndarray:
+    """
+    Contexte spatial : somme des foyers actifs, chacun une bosse gaussienne sur l'axe des
+    strates, ajoutée à Iₙ. Foyer = {'center', 'width', 'gain', 't0', 't1'} (t1 absent = sans fin).
+    """
+    field = np.zeros(int(N))
+    if not foyers:
+        return field
+    n = np.arange(int(N))
+    for f in foyers:
+        t0 = float(f.get('t0', 0.0)); t1 = f.get('t1', None)
+        if t < t0 or (t1 is not None and t >= float(t1)):
+            continue
+        field += float(f.get('gain', 0.5)) * np.exp(-0.5 * ((n - float(f.get('center', 0.0))) / max(float(f.get('width', 6.0)), 1e-9)) ** 2)
+    return field
+
+
+def attention_saliency(In_t: np.ndarray, u_prev: Optional[np.ndarray], saliency_scale: float = 0.5,
+                       novelty_scale: float = 2.0) -> np.ndarray:
+    """
+    Saillance sₙ ∈ [0, 1] = contexte × nouveauté pour soi.
+      contexte  : clip((Iₙ − médiane(I)) / saliency_scale, 0, 1)  (l'entrée telle qu'elle arrive)
+      nouveauté : clip((uₙ / médiane(u) − 1) / novelty_scale, 0, 1) si la mémoire de soi est née, 1 sinon
+    Multiplicatif : là où le contexte est nul, rien ne peut s'allumer.
+    """
+    I = np.asarray(In_t, dtype=float)
+    s = np.clip((I - float(np.median(I))) / max(saliency_scale, 1e-9), 0.0, 1.0)
+    if u_prev is not None:
+        u = np.asarray(u_prev, dtype=float)
+        if np.all(np.isfinite(u)):
+            s = s * np.clip((u / max(float(np.median(u)), 1e-9) - 1.0) / max(novelty_scale, 1e-9), 0.0, 1.0)
+    return s
+
+
+def attention_islands(s: np.ndarray, threshold: float = 0.05) -> List[np.ndarray]:
+    """Les îlots : composantes connexes (le long de la chaîne) de la saillance > threshold."""
+    on = np.asarray(s, dtype=float) > threshold
+    comps = []; i = 0; N = len(on)
+    while i < N:
+        if on[i]:
+            j = i
+            while j + 1 < N and on[j + 1]:
+                j += 1
+            comps.append(np.arange(i, j + 1)); i = j + 1
+        else:
+            i += 1
+    return comps
+
+
+def attention_delta_fn(fn_t: np.ndarray, theta: np.ndarray, s: np.ndarray, K0: float, kappa: float,
+                       garde: float, threshold: float = 0.05) -> np.ndarray:
+    """
+    Le geste, par îlot : compression des fréquences vers la moyenne de l'îlot (κ) puis
+    accrochage de phase vers le champ moyen de l'îlot (K₀). Renvoie Δfₙ (cycles / u.t.).
+    """
+    F = np.asarray(fn_t, dtype=float); th = np.asarray(theta, dtype=float); s = np.asarray(s, dtype=float)
+    d = np.zeros_like(F)
+    if garde <= 0 or (K0 <= 0 and kappa <= 0):
+        return d
+    for comp in attention_islands(s, threshold):
+        sc = s[comp]; w = max(float(np.sum(sc)), 1e-12)
+        if kappa > 0:
+            f_bar = float(np.sum(sc * F[comp]) / w)
+            d[comp] += kappa * garde * sc * (f_bar - F[comp])
+        if K0 > 0:
+            Zk = np.sum(sc * np.exp(1j * th[comp])) / w
+            d[comp] += K0 * sc * garde * np.abs(Zk) * np.sin(np.angle(Zk) - th[comp]) / (2 * np.pi)
+    return d
+
+
+def local_coherence(theta: np.ndarray, neigh: List) -> np.ndarray:
+    """Rloc_n = |Σ_j pw_j e^{iθ_j}| sur le voisinage de couplage (strate sans voisin : 1.0)."""
+    z = np.exp(1j * np.asarray(theta, dtype=float))
+    return np.array([np.abs(np.sum(pw * z[idx])) if len(idx) else 1.0 for idx, pw in neigh])
+
+
+def attention_guard(sigma: float, sigma_ref: Optional[float]) -> float:
+    """Le frein : 1 tant que σ_Rloc ≥ 0.8 × sa référence de repos, 0 à 0.5 × ; 1 sans référence."""
+    if sigma_ref is None or sigma_ref <= 1e-6:
+        return 1.0
+    return float(np.clip((float(sigma) / float(sigma_ref) - 0.5) / 0.3, 0.0, 1.0))
+
+
 # ============== SPIRALISATION ==============
 
 def compute_r(t: float, phi: float, epsilon: float, omega: float, theta: float) -> float:
