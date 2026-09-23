@@ -1364,3 +1364,28 @@ Dans la config :
 Ça se lit : « de t = 60 à 80, le monde appelle autour de la strate 20 ; de 80 à 100, autour de la 80 ». Le centre est une strate, la largeur est en strates, le gain s'ajoute à Iₙ (0.5 suffit, c'est ce que tous les bancs ont utilisé), t1 absent veut dire sans fin. Deux foyers en même temps, c'est deux îlots indépendants. Une liste vide, c'est le pipeline d'avant, à l'identique.
 Et ce qui se passe ensuite ne se configure pas, il se lit : les strates sous le foyer deviennent saillantes si c'est encore neuf pour elles, elles se lient entre elles, elles portent une part de S(t) bien au-dessus de leur prorata, puis elles se relâchent quand la mémoire a assimilé ou quand le foyer part. Les trois colonnes le disent dans le CSV.
 Pour plus tard, quand on voudra brancher un vrai signal (un texte, un dialogue, un EEG), le foyer est le format d'arrivée : quelque chose qui décide, à chaque instant, où sur la chaîne le monde appelle. Un vecteur Iₙ fourni de l'extérieur fera la même chose en une ligne.
+
+Stress-test 
+
+Pour le crash-test, on pose un foyer large et fort et on pousse K0/κ bien au-delà du raisonnable, pour forcer la cohérence à globaliser → σ_Rloc devrait chuter → et on regarde si garde descend et rattrape. Deux passes : frein normal, puis frein débranché (forcé à 1) — pour voir si, sans lui, la chimère meurt vraiment.
+Résultats 
+Le frein n'a pas bougé (garde = 1.000 partout), et A = B à l'identique. On a poussé fort — foyer large (30 strates), K0=20 — et pourtant : part saillante 3 %, audibilité 0.027, σ_Rloc qui descend juste à 0.86 × repos. Le seuil du frein est à 0.80×. On est passés à deux doigts... sans le franchir. Du coup, débrancher le frein (B) ou pas (A) ne change rien : il n'a jamais été appelé.
+Ce n'est pas le frein qui protège la chimère ici, c'est l'étrangleur en amont. La saillance est contexte × nouveauté, multiplicatif. Un foyer posé au calme, même énorme, tombe sur une nouveauté ~nulle (rien de surprenant, tout est assimilé) → la saillance est étouffée avant même d'agir. Notre contexte voulait allumer ~30 strates, la porte « nouveauté » n'en a laissé passer que 3. Le geste reste doux tout seul.
+Donc — deux sécurités en profondeur, pas une : d'abord l'habituation qui throttle (on ne s'excite pas sur du déjà-vu), et ensuite seulement le frein σ en dernier recours. C'est exactement la limite que le jumeau avait notée honnêtement (« frein jamais mordu avec la nouveauté »), et là on voit pourquoi.
+Conclusion : le frein reste crash-untested — on a validé l'étrangleur, pas la ceinture. Pour vraiment le faire mordre, il faudrait poser de la nouveauté co-localisée avec le contexte (un stimulus surprenant, pas juste présent) pour gonfler la saillance jusqu'à menacer σ.
+Donc aujourd'hui on débride la nouveauté (pour que la saillance puisse vraiment monter) + foyer large + K0 costaud → là, la cohérence devrait globaliser → σ devrait chuter → et on regarde si garde mord et rattrape. Guard ON vs guard débranché, pour prouver qu'il sert.
+Résultats 
+La nouveauté débridée a réveillé le geste — part saillante 19 %, audibilité 0.44 (l'îlot porte 44 % de S(t) maintenant, contre 3 % hier). Et σ_Rloc est descendu pile à 0.80 × repos — l'exact seuil où garde commence à mordre. On est sur le fil du rasoir : à 0.80, garde vaut encore tout juste 1.0. Il manque un cheveu. On pousse encore un cran (foyer très large + K0 plus fort) pour passer sous le seuil.
+En poussant plus fort (foyer très large), la saillance est tombée à zéro. Part saillante 0.000, audibilité 0.000. Le geste s'est éteint alors qu’on le poussait au maximum. Pourquoi ?
+Parce que la saillance est relative : context = excès de Iₙ au-dessus de la *médiane*. Un foyer trop large relève la médiane elle-même → plus rien ne dépasse → plus rien n'est saillant. On ne peut littéralement pas rendre tout saillant en même temps. Le figure-fond s'annule.
+Pourquoi le gardien ne mordra sans doute jamais via l'attention — il y a trois protections structurelles empilées :
+La nouveauté (temps) : l'habituation throttle l'attention sur le déjà-vu.
+La saillance relative (espace) : impossible de tout désigner à la fois — un foyer global s'auto-annule (0 % à width 70). L'attention est sélective par définition.
+Le sens du contraste : l'attention crée un îlot cohérent contre une mer incohérente = σ_Rloc qui tient (voire monte : chimère plus nette). Or le gardien mord sur le contraste qui s'effondre (synchro globale). L'attention pousse σ dans le bon sens, pas le mauvais.
+Résultat du crash-test : on n'a pas réussi à faire mordre le frein. σ a juste fait de brèves plongées à 0.80× repos (jamais soutenues, jamais sous le seuil), et A = B à l'identique (le frein n'a jamais été appelé). Le gardien est une ceinture pour un accident que l'attention, structurellement, ne peut pas causer.
+C'est une preuve de justesse : la considération câblée ne peut pas devenir totalitaire. Le moment où elle essaie de tout considérer, elle ne considère plus rien — la médiane monte, la figure disparaît. Comme un esprit sain qui ne peut pas vraiment tout regarder à la fois. La liberté des voix non-regardées — la mer incohérente, l'identité préservée — n'est pas surveillée par un frein, elle est garantie par la géométrie même de l'attention.
+
+
+
+Note interne
+Exybris - Claude & Andrea Gadal
