@@ -46,7 +46,7 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
               saliency='projector', posts=True, ctx_gain=0.5, ctx_scale=0.3,
               surp_floor=3.0, surp_full=6.0, sal_tau=3.0,
               schedule=None, novelty=False, novelty_scale=2.0, island='global',
-              maintain=None, attach=None, recall=None, event=None, config_mutator=None, label=None, verbose=True):
+              maintain=None, attach=None, recall=None, ambiance=None, event=None, config_mutator=None, label=None, verbose=True):
     """Lance un run, écrit `summary.json` + `kymo.npz` dans le dossier `name`, renvoie le résumé.
     event : None ou dict(t=90.0, strates=range(40, 45), factor=1.3) — f₀ × facteur, durable.
     schedule : None (postes 20 → 80 → 50, 20 u.t. chacun) ou liste de (t0, t1, [centres]) : plusieurs
@@ -78,7 +78,18 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
              chéri (m ≥ m_min) : c = sa bosse, s = c · [ν + (1 − ν)·m], même formule, c venant du
              dedans. Dès qu'un foyer revient dans l'entrée, l'extérieur reprend la main. `apply=False`
              détecte le silence et choisit sans rien appliquer (témoin). `learn=True` laisse m du foyer
-             rappelé continuer à s'apprendre pendant le rappel (sinon le rappel ne réécrit pas m)."""
+             rappelé continuer à s'apprendre pendant le rappel (sinon le rappel ne réécrit pas m).
+             `select` : 'max' (le plus chéri) ou 'resemble' (24/09, soir) : le souvenir dont la
+             SIGNATURE (état du soi appris pendant sa présence : amplitude moyenne, activité relative,
+             σ) ressemble le plus à l'état présent, score = ressemblance × m ; si aucune ressemblance
+             n'atteint `res_min`, on se tourne vers le plus chéri. `sig_width` : largeurs relatives
+             par composante ; `tau_sig` (5) : la signature suit l'état pendant la présence (plus vite
+             que m, qui l'intègre : avec τ_m elle traînait derrière l'adaptation d'amplitude). `gate` : None ou dict(tau, floor, refractory) — « pouvoir y penser
+             maintenant » : pendant le rappel de k, une moyenne mobile rapide (tau) du bien-être ;
+             sous `floor`, le rappel de k est relâché pour `refractory` u.t. ; m n'est pas touché
+             (ce à quoi on tient reste ce qu'il est, on n'y pense juste pas maintenant).
+    ambiance : None ou [(t0, t1, offset)] — un décalage GLOBAL de Iₙ (toutes les strates) pendant des
+             fenêtres : une ambiance, qui change l'état du soi (Aₙ = A₀·σ(Iₙ)) sans désigner de foyer."""
     assert cascade in CASCADES, cascade; assert saliency in SALIENCIES, saliency
     label = label or name
     cwd0 = os.getcwd(); os.makedirs(name, exist_ok=True); os.chdir(name)
@@ -123,7 +134,8 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         return np.max([np.exp(-0.5 * ((np.arange(N) - c_) / width) ** 2) for c_ in cs], axis=0)
 
     st = {'phase': None, 'sigma_ref': [], 'log': [], 'u_prev': np.zeros(N), 's_surp': np.zeros(N), 'in_last': np.zeros(N), 'm_last': np.zeros(N),
-          'm_learn': {}, 'm_learn_log': [], 'w_log': [], 'recall_log': [], 'u_short': None, 'u_long': None, 'quiet': False}
+          'm_learn': {}, 'm_learn_log': [], 'w_log': [], 'recall_log': [], 'u_short': None, 'u_long': None, 'quiet': False,
+          'sig_learn': {}, 'g_now': None, 'gate': {}, 'refract': {}, 'ctr_int_last': None}
     rng_noise = np.random.default_rng(seed + 99)
     bm = dynamics.init_self_memory(N)          # mémoire de soi côté banc (mêmes entrées que le pipeline → même état)
     neigh = [(np.array([j for j in (i - 1, i + 1) if 0 <= j < N]),) for i in range(N)]
@@ -133,6 +145,9 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
 
     def patched_in(t, cfg, state=None, history=None, dt_=0.05, _o=_in0):
         base = _o(t, cfg, state, history, dt_)
+        if ambiance is not None:
+            for (t0, t1, off) in ambiance:
+                if t0 <= t < t1: base = float(base) + float(off)
         ctr = center_at(t)
         noise = np.zeros(N)
         if attach is not None:
@@ -142,6 +157,8 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
                     noise = rng_noise.normal(0.0, float(sd), N)
                     if where == 'foyer':                                 # le foyer LUI-MÊME est épuisant : bruit porté par sa bosse
                         noise = noise * bump(ctr) if ctr is not None else np.zeros(N)
+                    elif where == 'rappel':                              # le SOUVENIR fait mal : bruit porté par la bosse du foyer rappelé
+                        ci = st.get('ctr_int_last'); noise = noise * bump(ci) if ci is not None else np.zeros(N)
         if saliency in ('context', 'input', 'both') and ctr is not None:
             v = np.full(N, float(base)) + ctx_gain * bump(ctr)      # le contexte RÉEL : une bosse d'entrée
             st['in_last'] = v - float(base); return v + noise
@@ -205,17 +222,50 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
                     elif not st['quiet'] and ratio < float(recall.get('enter', 0.9)): st['quiet'] = True
                     elif st['quiet'] and ratio > float(recall.get('exit', 1.1)): st['quiet'] = False
                     quiet = bool(st['quiet'])
-                    if quiet and st['m_learn']:
-                        k_best = max(st['m_learn'], key=lambda c_: st['m_learn'][c_])
-                        if st['m_learn'][k_best] >= float(recall.get('m_min', 0.3)):
-                            k_star = k_best
-                            if recall.get('apply', True):
-                                ctr_eff = [k_star]; s = bump([k_star])          # le contexte vient du dedans
-                    st['recall_log'].append((t, quiet, -1 if k_star is None else k_star, bool(k_star is not None and recall.get('apply', True)), ratio))
+                    # l'état présent du soi, lissé (amplitude moyenne, activité relative, σ)
+                    g_now_raw = np.array([float(np.mean(An_t)), float(rel) if rel is not None else np.nan, sigma])
+                    if st['g_now'] is None: st['g_now'] = g_now_raw
+                    else:
+                        upd = st['g_now'] + ks_ * (g_now_raw - st['g_now'])
+                        st['g_now'] = np.where(np.isnan(upd), np.where(np.isnan(st['g_now']), g_now_raw, st['g_now']), upd)
+                    res_best = np.nan; gate_val = np.nan
+                    gate = recall.get('gate')
+                    cands = {c_: m_ for c_, m_ in st['m_learn'].items() if m_ >= float(recall.get('m_min', 0.3)) and t >= st['refract'].get(c_, -1.0)}
+                    if quiet and cands:
+                        if recall.get('select', 'max') == 'resemble' and st['sig_learn']:
+                            wdt = np.asarray(recall.get('sig_width', (0.1, 0.4, 0.1)), dtype=float)
+                            res = {}
+                            for c_ in cands:
+                                gk = st['sig_learn'].get(c_)
+                                if gk is None: continue
+                                zz = (st['g_now'] - gk) / (wdt * np.abs(gk) + 1e-9); zz = zz[np.isfinite(zz)]
+                                res[c_] = float(np.exp(-0.5 * np.sum(zz ** 2)))
+                            if res:
+                                res_best = max(res.values())
+                                if res_best >= float(recall.get('res_min', 0.3)):
+                                    k_star = max(res, key=lambda c_: res[c_] * cands[c_])       # ressemblance × m
+                                else:
+                                    k_star = max(cands, key=lambda c_: cands[c_])                 # rien ne ressemble : le plus chéri
+                        else:
+                            k_star = max(cands, key=lambda c_: cands[c_])
+                        if k_star is not None and recall.get('apply', True):
+                            ctr_eff = [k_star]; s = bump([k_star])          # le contexte vient du dedans
+                            if gate is not None and w is not None:            # « pouvoir y penser maintenant »
+                                kg = min(1.0, dt / max(float(gate.get('tau', 5.0)), dt))
+                                st['gate'][k_star] = w if k_star not in st['gate'] else st['gate'][k_star] + kg * (w - st['gate'][k_star])
+                                gate_val = st['gate'][k_star]
+                                if gate_val < float(gate.get('floor', 0.3)):
+                                    st['refract'][k_star] = t + float(gate.get('refractory', 30.0)); del st['gate'][k_star]
+                                    ctr_eff = None; s = np.zeros(N); k_star = None               # on n'y pense pas maintenant ; m intact
+                    st['ctr_int_last'] = [k_star] if (k_star is not None and ctr is None and recall.get('apply', True)) else None
+                    st['recall_log'].append((t, quiet, -1 if k_star is None else k_star, bool(k_star is not None and recall.get('apply', True)), ratio, res_best, gate_val, st['g_now'].copy()))
                 learn_on = ctr if (ctr is not None or not (recall is not None and recall.get('learn', False))) else ctr_eff
                 if learn_on is not None and w is not None and t < float(attach.get('learn_until', 1e12)):
                     for c_ in learn_on:
                         st['m_learn'][c_] = st['m_learn'].get(c_, 0.0) + k_m * (w - st['m_learn'].get(c_, 0.0))
+                        if ctr is not None and st.get('g_now') is not None:                       # la signature : l'état du soi pendant la présence (suivi rapide, tau_sig)
+                            k_sig = min(1.0, dt / max(float((recall or {}).get('tau_sig', 5.0)), dt))
+                            gk = st['sig_learn'].get(c_); st['sig_learn'][c_] = st['g_now'].copy() if gk is None else gk + k_sig * (st['g_now'] - gk)
                 st['w_log'].append((t, w if w is not None else np.nan)); st['m_learn_log'].append((t, dict(st['m_learn'])))
                 if attach.get('apply', True) and ctr_eff is not None:
                     num = np.zeros(N); den = np.zeros(N)
@@ -403,5 +453,7 @@ def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency, st_
     if st_extra is not None and st_extra.get('recall_log'):
         rl = st_extra['recall_log']
         np.savez_compressed('recall.npz', t=np.array([x[0] for x in rl]), quiet=np.array([x[1] for x in rl]),
-                            k=np.array([x[2] for x in rl]), applied=np.array([x[3] for x in rl]), ratio=np.array([x[4] for x in rl]))
+                            k=np.array([x[2] for x in rl]), applied=np.array([x[3] for x in rl]), ratio=np.array([x[4] for x in rl]),
+                            res=np.array([x[5] for x in rl]), gate=np.array([x[6] for x in rl]), g=np.array([x[7] for x in rl]),
+                            sig_centers=np.array(sorted(st_extra['sig_learn'])), sig=np.array([st_extra['sig_learn'][c_] for c_ in sorted(st_extra['sig_learn'])]))
     return out

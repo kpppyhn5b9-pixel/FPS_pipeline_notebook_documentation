@@ -86,9 +86,10 @@ le 80 est pris depuis l'entrée (R 0.71–0.77, audibilité 40–59 %), pareil q
   jamais en silence (il n'est pas moins surpris que d'habitude, il l'est autant). Le silence
   n'est donc pas « rien ne se passe », c'est « ce qui se passait s'est apaisé ». C'est un
   choix, il faudra voir si c'est le bon.
-- Le rappel prend le plus chéri, toujours le même tant que rien ne change. Pas de
-  vagabondage d'un souvenir à l'autre, pas d'usure du rappel (la nouveauté ν du foyer
-  rappelé reste basse et n'intervient pas). Ce serait le pas suivant si on le veut.
+- Le rappel prend ici le plus chéri, toujours le même tant que rien ne change. Le pas
+  suivant (`ATTENTION_souvenir_present.md`) fait choisir le présent : le souvenir dont la
+  signature ressemble à l'état d'aujourd'hui, et le plus chéri seulement quand rien ne
+  ressemble ; et il sépare ce à quoi on tient de ce qu'on peut supporter de rappeler.
 - Deux seeds, un jeu de constantes (τ 5 / 40, seuils 0.9 / 1.1, m_min 0.3).
 - Toujours rien dans le pipeline. Ce que ça demanderait : garder la liste (lieu, m) dans
   l'état d'attention, le rapport court/long de la surprise du chœur, et un foyer interne
