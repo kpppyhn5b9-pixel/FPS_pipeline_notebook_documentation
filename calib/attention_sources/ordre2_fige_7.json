@@ -1,0 +1,29 @@
+{
+ "label": "ordre2_fige s7",
+ "N": 100,
+ "saliency": "input",
+ "substrat": {
+  "R_mean": 0.6507765502843972,
+  "sigma_ref": 0.3104997659340063,
+  "fluidity": 0.9806993622999195,
+  "fluidity_during": 0.9801804265562316,
+  "disp": 0.01785180828726253,
+  "effort": 250.4414996946971,
+  "cjs": 0.3003444636009067,
+  "f_mean": 3.6139784045321557,
+  "f_spread_log": 0.5627269157631122,
+  "f_neigh_gap": 0.01790462846612617,
+  "calm_salient_share": 0.0,
+  "calm_cost": 0.0
+ },
+ "posts": [],
+ "event": null,
+ "scores": {
+  "dispersion": 3,
+  "regulation": 5,
+  "fluidity": 5,
+  "resilience": 5,
+  "innovation": 5,
+  "activite": 3
+ }
+}

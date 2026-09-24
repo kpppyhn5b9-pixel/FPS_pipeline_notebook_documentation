@@ -46,7 +46,7 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
               saliency='projector', posts=True, ctx_gain=0.5, ctx_scale=0.3,
               surp_floor=3.0, surp_full=6.0, sal_tau=3.0,
               schedule=None, novelty=False, novelty_scale=2.0, island='global',
-              maintain=None, event=None, config_mutator=None, label=None, verbose=True):
+              maintain=None, attach=None, event=None, config_mutator=None, label=None, verbose=True):
     """Lance un run, écrit `summary.json` + `kymo.npz` dans le dossier `name`, renvoie le résumé.
     event : None ou dict(t=90.0, strates=range(40, 45), factor=1.3) — f₀ × facteur, durable.
     schedule : None (postes 20 → 80 → 50, 20 u.t. chacun) ou liste de (t0, t1, [centres]) : plusieurs
@@ -58,7 +58,16 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
              moyen par îlot = composante connexe de s > 0.05 : jamais de cohérence non locale).
     maintain : None ou liste de (t0, t1, {centre: m}) — la PRIORITÉ DE MAINTIEN de Gepetto (24/09),
                fournie de l'extérieur, par foyer : s = c · [ν + (1 − ν)·m]. m = 0 partout redonne
-               s = c·ν ; ν = 0 laisse s = c·m : le familier peut rester considéré sans surprendre."""
+               s = c·ν ; ν = 0 laisse s = c·m : le familier peut rester considéré sans surprendre.
+    attach : None ou dict(tau_m=20.0, apply=True, noise=[(t0, t1, std)]) — l'ATTACHEMENT PAR ASSOCIATION
+             (24/09) : m_k s'apprend DEDANS pour chaque foyer k présent, comme une moyenne mobile
+             (τ_m) du bien-être du soi pendant sa présence, w = clip(2 − activité/repos, 0, 1) :
+             1 quand le système est à son repos ou en dessous, 0 quand il fait le double. Jamais
+             l'effet du foyer, seulement l'état du soi quand il était là. `noise` ajoute un bruit
+             blanc à Iₙ (par strate) pendant des fenêtres : une période d'effort ; un 4e élément
+             'foyer' porte ce bruit par la bosse du foyer présent (le foyer lui-même épuisant). `apply=False`
+             apprend m sans l'appliquer (témoin). `learn_until` fige l'apprentissage après cet instant
+             (pour lire un retour sans que la présence au calme ne réécrive m)."""
     assert cascade in CASCADES, cascade; assert saliency in SALIENCIES, saliency
     label = label or name
     cwd0 = os.getcwd(); os.makedirs(name, exist_ok=True); os.chdir(name)
@@ -102,7 +111,9 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         cs = ctr if isinstance(ctr, (list, tuple)) else [ctr]
         return np.max([np.exp(-0.5 * ((np.arange(N) - c_) / width) ** 2) for c_ in cs], axis=0)
 
-    st = {'phase': None, 'sigma_ref': [], 'log': [], 'u_prev': np.zeros(N), 's_surp': np.zeros(N), 'in_last': np.zeros(N), 'm_last': np.zeros(N)}
+    st = {'phase': None, 'sigma_ref': [], 'log': [], 'u_prev': np.zeros(N), 's_surp': np.zeros(N), 'in_last': np.zeros(N), 'm_last': np.zeros(N),
+          'm_learn': {}, 'm_learn_log': [], 'w_log': []}
+    rng_noise = np.random.default_rng(seed + 99)
     bm = dynamics.init_self_memory(N)          # mémoire de soi côté banc (mêmes entrées que le pipeline → même état)
     neigh = [(np.array([j for j in (i - 1, i + 1) if 0 <= j < N]),) for i in range(N)]
     neigh = [(idx, np.full(len(idx), 1.0 / len(idx))) for (idx,) in neigh]
@@ -112,10 +123,18 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
     def patched_in(t, cfg, state=None, history=None, dt_=0.05, _o=_in0):
         base = _o(t, cfg, state, history, dt_)
         ctr = center_at(t)
+        noise = np.zeros(N)
+        if attach is not None:
+            for spec in attach.get('noise', []):
+                t0, t1, sd = spec[:3]; where = spec[3] if len(spec) > 3 else 'global'
+                if t0 <= t < t1:
+                    noise = rng_noise.normal(0.0, float(sd), N)
+                    if where == 'foyer':                                 # le foyer LUI-MÊME est épuisant : bruit porté par sa bosse
+                        noise = noise * bump(ctr) if ctr is not None else np.zeros(N)
         if saliency in ('context', 'input', 'both') and ctr is not None:
             v = np.full(N, float(base)) + ctx_gain * bump(ctr)      # le contexte RÉEL : une bosse d'entrée
-            st['in_last'] = v - float(base); return v
-        st['in_last'] = np.zeros(N); return base
+            st['in_last'] = v - float(base); return v + noise
+        st['in_last'] = np.zeros(N); return (np.full(N, float(base)) + noise) if np.any(noise) else base
 
     def patched_fn(t, state, An_t, F, cfg, _o=_fn0):
         if ev is not None and not ev['done'] and t >= ev['t']:
@@ -159,7 +178,20 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         if novelty and bm.get('born'):
             u = st['u_prev']; nu = np.clip((u / max(float(np.median(u)), 1e-9) - 1.0) / max(novelty_scale, 1e-9), 0.0, 1.0)
             m_vec = np.zeros(N)
-            if maintain is not None and ctr is not None:
+            if attach is not None:
+                rel = hist[-1].get('activite_rel') if hist else None
+                w = float(np.clip(2.0 - float(rel), 0.0, 1.0)) if rel is not None else None
+                k_m = min(1.0, dt / max(float(attach.get('tau_m', 20.0)), dt))
+                if ctr is not None and w is not None and t < float(attach.get('learn_until', 1e12)):
+                    for c_ in ctr:
+                        st['m_learn'][c_] = st['m_learn'].get(c_, 0.0) + k_m * (w - st['m_learn'].get(c_, 0.0))
+                st['w_log'].append((t, w if w is not None else np.nan)); st['m_learn_log'].append((t, dict(st['m_learn'])))
+                if attach.get('apply', True) and ctr is not None:
+                    num = np.zeros(N); den = np.zeros(N)
+                    for c_ in ctr:
+                        b_ = np.exp(-0.5 * ((np.arange(N) - float(c_)) / width) ** 2); num += b_ * st['m_learn'].get(c_, 0.0); den += b_
+                    m_vec = np.where(den > 1e-9, num / np.maximum(den, 1e-9), 0.0)
+            elif maintain is not None and ctr is not None:
                 num = np.zeros(N); den = np.zeros(N)
                 for (t0, t1, m_by_ctr) in maintain:
                     if t0 <= t < t1:
@@ -221,7 +253,7 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         os.chdir(cwd0)
     os.chdir(name)
     try:
-        out = _analyse(res, c, st['log'], N, dt, width, label, verbose, posts, ev, saliency)
+        out = _analyse(res, c, st['log'], N, dt, width, label, verbose, posts, ev, saliency, st)
     finally:
         os.chdir(cwd0)
     return out
@@ -235,7 +267,7 @@ def _audib(O, zin):
     return somme, somme / max(indep, 1e-12), part
 
 
-def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency):
+def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency, st_extra=None):
     h = res['history']
     def col(k): return np.array([np.nan if (x.get(k) is None or isinstance(x.get(k), str)) else x[k] for x in h], dtype=float)
     t = col('t'); eff = col('effort(t)'); dn = col('dispersion_norm'); cjs = col('innovation_cjs')
@@ -332,4 +364,9 @@ def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency):
         print(f"[{label}] scores {metrics.labelled_scores(sc)}")
     json.dump(out, open('summary.json', 'w'), indent=1)
     np.savez_compressed('kymo.npz', t=tl, R=R, s=S, sigma=sig, garde=gar, cost=COST, fn=FN, U=U, t_hist=t, disp=dn, effort=eff, ctr=ctrs, O=O, theta=TH, nu=NU, m=MM)
+    if st_extra is not None and st_extra.get('m_learn_log'):
+        cs = sorted({c_ for (_, d_) in st_extra['m_learn_log'] for c_ in d_})
+        np.savez_compressed('attach.npz', t=np.array([x[0] for x in st_extra['m_learn_log']]), centers=np.array(cs),
+                            m=np.array([[d_.get(c_, 0.0) for c_ in cs] for (_, d_) in st_extra['m_learn_log']]),
+                            w=np.array([x[1] for x in st_extra['w_log']]))
     return out
