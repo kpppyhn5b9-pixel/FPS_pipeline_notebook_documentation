@@ -46,7 +46,7 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
               saliency='projector', posts=True, ctx_gain=0.5, ctx_scale=0.3,
               surp_floor=3.0, surp_full=6.0, sal_tau=3.0,
               schedule=None, novelty=False, novelty_scale=2.0, island='global',
-              event=None, config_mutator=None, label=None, verbose=True):
+              maintain=None, event=None, config_mutator=None, label=None, verbose=True):
     """Lance un run, écrit `summary.json` + `kymo.npz` dans le dossier `name`, renvoie le résumé.
     event : None ou dict(t=90.0, strates=range(40, 45), factor=1.3) — f₀ × facteur, durable.
     schedule : None (postes 20 → 80 → 50, 20 u.t. chacun) ou liste de (t0, t1, [centres]) : plusieurs
@@ -55,7 +55,10 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
     novelty : saillance × nouveauté pour soi, ν = clip((uₙ / médiane(u) − 1) / novelty_scale, 0, 1) :
               ce qui est déjà assimilé par la mémoire longue cesse d'être saillant (habituation).
     island : 'global' (un seul champ moyen sur toutes les strates saillantes) ou 'local' (un champ
-             moyen par îlot = composante connexe de s > 0.05 : jamais de cohérence non locale)."""
+             moyen par îlot = composante connexe de s > 0.05 : jamais de cohérence non locale).
+    maintain : None ou liste de (t0, t1, {centre: m}) — la PRIORITÉ DE MAINTIEN de Gepetto (24/09),
+               fournie de l'extérieur, par foyer : s = c · [ν + (1 − ν)·m]. m = 0 partout redonne
+               s = c·ν ; ν = 0 laisse s = c·m : le familier peut rester considéré sans surprendre."""
     assert cascade in CASCADES, cascade; assert saliency in SALIENCIES, saliency
     label = label or name
     cwd0 = os.getcwd(); os.makedirs(name, exist_ok=True); os.chdir(name)
@@ -99,7 +102,7 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         cs = ctr if isinstance(ctr, (list, tuple)) else [ctr]
         return np.max([np.exp(-0.5 * ((np.arange(N) - c_) / width) ** 2) for c_ in cs], axis=0)
 
-    st = {'phase': None, 'sigma_ref': [], 'log': [], 'u_prev': np.zeros(N), 's_surp': np.zeros(N), 'in_last': np.zeros(N)}
+    st = {'phase': None, 'sigma_ref': [], 'log': [], 'u_prev': np.zeros(N), 's_surp': np.zeros(N), 'in_last': np.zeros(N), 'm_last': np.zeros(N)}
     bm = dynamics.init_self_memory(N)          # mémoire de soi côté banc (mêmes entrées que le pipeline → même état)
     neigh = [(np.array([j for j in (i - 1, i + 1) if 0 <= j < N]),) for i in range(N)]
     neigh = [(idx, np.full(len(idx), 1.0 / len(idx))) for (idx,) in neigh]
@@ -155,7 +158,16 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         nu = np.ones(N)
         if novelty and bm.get('born'):
             u = st['u_prev']; nu = np.clip((u / max(float(np.median(u)), 1e-9) - 1.0) / max(novelty_scale, 1e-9), 0.0, 1.0)
-            s = s * nu
+            m_vec = np.zeros(N)
+            if maintain is not None and ctr is not None:
+                num = np.zeros(N); den = np.zeros(N)
+                for (t0, t1, m_by_ctr) in maintain:
+                    if t0 <= t < t1:
+                        for c_, m_ in m_by_ctr.items():
+                            b_ = np.exp(-0.5 * ((np.arange(N) - float(c_)) / width) ** 2); num += b_ * float(m_); den += b_
+                m_vec = np.where(den > 1e-9, num / np.maximum(den, 1e-9), 0.0)
+            s = s * (nu + (1.0 - nu) * m_vec)
+        st['m_last'] = m_vec if (novelty and bm.get('born')) else np.zeros(N)
         ref = float(np.median(st['sigma_ref'][-200:])) if st['sigma_ref'] else sigma
         garde = float(np.clip((sigma / ref - 0.5) / 0.3, 0.0, 1.0)) if (ref > 1e-6 and len(st['sigma_ref']) >= 100) else 1.0   # gardien : nul tant que le contraste de référence n'est pas établi
         # ---- le geste ----
@@ -182,7 +194,7 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         u_now = np.full(N, np.nan)
         if t >= birth_t:
             u_now = dynamics.update_self_memory(bm, An_t, fn, dt, tau_s, tau_l)['u']; st['u_prev'] = u_now
-        st['log'].append((t, (ctr[0] if isinstance(ctr, list) else ctr), sigma, garde, rloc.copy(), s.copy(), np.abs(fn - f_before) / np.maximum(f_before, 1e-9), fn.copy(), u_now.copy(), theta.copy(), nu.copy()))
+        st['log'].append((t, (ctr[0] if isinstance(ctr, list) else ctr), sigma, garde, rloc.copy(), s.copy(), np.abs(fn - f_before) / np.maximum(f_before, 1e-9), fn.copy(), u_now.copy(), theta.copy(), nu.copy(), st['m_last'].copy()))
         return fn
 
     def phi_static_fn(t, state, cfg):
@@ -230,7 +242,7 @@ def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency):
     O = np.array([np.asarray(x['O'], dtype=float) for x in h])
     tl = np.array([l[0] for l in log]); sig = np.array([l[2] for l in log]); gar = np.array([l[3] for l in log])
     R = np.array([l[4] for l in log]); S = np.array([l[5] for l in log]); COST = np.array([l[6] for l in log]); FN = np.array([l[7] for l in log]); U = np.array([l[8] for l in log])
-    TH = np.array([l[9] for l in log]); NU = np.array([l[10] for l in log])
+    TH = np.array([l[9] for l in log]); NU = np.array([l[10] for l in log]); MM = np.array([l[11] for l in log])
     ctrs = np.array([np.nan if l[1] is None else l[1] for l in log])
     n_h = min(len(t), len(tl)); t = t[:n_h]; O = O[:n_h]; eff = eff[:n_h]; dn = dn[:n_h]; cjs = cjs[:n_h]
     def win(a, b): return (tl >= a) & (tl < b)
@@ -319,5 +331,5 @@ def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency):
     elif verbose:
         print(f"[{label}] scores {metrics.labelled_scores(sc)}")
     json.dump(out, open('summary.json', 'w'), indent=1)
-    np.savez_compressed('kymo.npz', t=tl, R=R, s=S, sigma=sig, garde=gar, cost=COST, fn=FN, U=U, t_hist=t, disp=dn, effort=eff, ctr=ctrs, O=O, theta=TH, nu=NU)
+    np.savez_compressed('kymo.npz', t=tl, R=R, s=S, sigma=sig, garde=gar, cost=COST, fn=FN, U=U, t_hist=t, disp=dn, effort=eff, ctr=ctrs, O=O, theta=TH, nu=NU, m=MM)
     return out
