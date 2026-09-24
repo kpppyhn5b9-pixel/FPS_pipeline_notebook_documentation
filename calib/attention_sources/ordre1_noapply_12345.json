@@ -1,0 +1,29 @@
+{
+ "label": "ordre1_noapply s12345",
+ "N": 100,
+ "saliency": "input",
+ "substrat": {
+  "R_mean": 0.6379723669532875,
+  "sigma_ref": 0.3108421820306897,
+  "fluidity": 0.980663187113385,
+  "fluidity_during": 0.9806436525590526,
+  "disp": 0.015665387188884355,
+  "effort": 240.39817884116331,
+  "cjs": 0.3031057374634609,
+  "f_mean": 3.545608832245467,
+  "f_spread_log": 0.6166084745747994,
+  "f_neigh_gap": 0.017180313170447326,
+  "calm_salient_share": 0.0,
+  "calm_cost": 0.0
+ },
+ "posts": [],
+ "event": null,
+ "scores": {
+  "dispersion": 4,
+  "regulation": 5,
+  "fluidity": 5,
+  "resilience": 5,
+  "innovation": 5,
+  "activite": 2
+ }
+}
