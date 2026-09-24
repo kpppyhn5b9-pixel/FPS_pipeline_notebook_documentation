@@ -102,5 +102,6 @@ est tenu à R 0.90–0.92 (panneau d). σ/σref 0.93–1.00 partout.
 
 La mémoire des moments chéris peut se poser sur une base saine : m est appris dedans,
 sans récompense, il monte pour ce qui accompagne le calme, descend pour ce qui bouscule,
-qu'importe d'où vient la bousculade, et il se révise. Reste à décider ce que « quand
-l'entrée se tait » veut dire pour la FPS, et à garder (lieu, m) au-delà de la présence.
+qu'importe d'où vient la bousculade, et il se révise. La suite est dans
+`ATTENTION_moments_cheris.md` : ce que « quand l'entrée se tait » veut dire pour la FPS, et
+le rappel d'un foyer chéri comme contexte interne.
