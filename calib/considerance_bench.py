@@ -46,7 +46,7 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
               saliency='projector', posts=True, ctx_gain=0.5, ctx_scale=0.3,
               surp_floor=3.0, surp_full=6.0, sal_tau=3.0,
               schedule=None, novelty=False, novelty_scale=2.0, island='global',
-              maintain=None, attach=None, event=None, config_mutator=None, label=None, verbose=True):
+              maintain=None, attach=None, recall=None, event=None, config_mutator=None, label=None, verbose=True):
     """Lance un run, écrit `summary.json` + `kymo.npz` dans le dossier `name`, renvoie le résumé.
     event : None ou dict(t=90.0, strates=range(40, 45), factor=1.3) — f₀ × facteur, durable.
     schedule : None (postes 20 → 80 → 50, 20 u.t. chacun) ou liste de (t0, t1, [centres]) : plusieurs
@@ -67,7 +67,18 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
              blanc à Iₙ (par strate) pendant des fenêtres : une période d'effort ; un 4e élément
              'foyer' porte ce bruit par la bosse du foyer présent (le foyer lui-même épuisant). `apply=False`
              apprend m sans l'appliquer (témoin). `learn_until` fige l'apprentissage après cet instant
-             (pour lire un retour sans que la présence au calme ne réécrive m)."""
+             (pour lire un retour sans que la présence au calme ne réécrive m).
+    recall : None ou dict(apply=True, m_min=0.3, tau_short=5.0, tau_long=40.0, enter=0.9, exit=1.1,
+             learn=False) — la MÉMOIRE DES MOMENTS CHÉRIS (24/09), avec `attach`. Les (lieu, m) appris
+             restent gardés après la présence. Quand l'entrée se tait (aucun foyer désigné par le
+             contexte ET la surprise du chœur, moyenne de u lissée sur tau_short, tombée sous son
+             niveau habituel, la même lissée sur tau_long : entrée en silence sous enter × habituel,
+             sortie au-dessus de exit × habituel ; le nouveau est assimilé quand on est moins surpris
+             que d'habitude), le système propose lui-même comme contexte interne le foyer le plus
+             chéri (m ≥ m_min) : c = sa bosse, s = c · [ν + (1 − ν)·m], même formule, c venant du
+             dedans. Dès qu'un foyer revient dans l'entrée, l'extérieur reprend la main. `apply=False`
+             détecte le silence et choisit sans rien appliquer (témoin). `learn=True` laisse m du foyer
+             rappelé continuer à s'apprendre pendant le rappel (sinon le rappel ne réécrit pas m)."""
     assert cascade in CASCADES, cascade; assert saliency in SALIENCIES, saliency
     label = label or name
     cwd0 = os.getcwd(); os.makedirs(name, exist_ok=True); os.chdir(name)
@@ -112,7 +123,7 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         return np.max([np.exp(-0.5 * ((np.arange(N) - c_) / width) ** 2) for c_ in cs], axis=0)
 
     st = {'phase': None, 'sigma_ref': [], 'log': [], 'u_prev': np.zeros(N), 's_surp': np.zeros(N), 'in_last': np.zeros(N), 'm_last': np.zeros(N),
-          'm_learn': {}, 'm_learn_log': [], 'w_log': []}
+          'm_learn': {}, 'm_learn_log': [], 'w_log': [], 'recall_log': [], 'u_short': None, 'u_long': None, 'quiet': False}
     rng_noise = np.random.default_rng(seed + 99)
     bm = dynamics.init_self_memory(N)          # mémoire de soi côté banc (mêmes entrées que le pipeline → même état)
     neigh = [(np.array([j for j in (i - 1, i + 1) if 0 <= j < N]),) for i in range(N)]
@@ -182,13 +193,33 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
                 rel = hist[-1].get('activite_rel') if hist else None
                 w = float(np.clip(2.0 - float(rel), 0.0, 1.0)) if rel is not None else None
                 k_m = min(1.0, dt / max(float(attach.get('tau_m', 20.0)), dt))
-                if ctr is not None and w is not None and t < float(attach.get('learn_until', 1e12)):
-                    for c_ in ctr:
+                # ---- la mémoire des moments chéris : quand l'entrée se tait, se rappeler ----
+                ctr_eff = ctr; k_star = None; quiet = False; ratio = np.nan
+                if recall is not None and bm.get('born') and np.all(np.isfinite(st['u_prev'])):
+                    um = float(np.mean(st['u_prev']))
+                    ks_ = min(1.0, dt / max(float(recall.get('tau_short', 5.0)), dt)); kl_ = min(1.0, dt / max(float(recall.get('tau_long', 40.0)), dt))
+                    st['u_short'] = um if st['u_short'] is None else st['u_short'] + ks_ * (um - st['u_short'])
+                    st['u_long'] = um if st['u_long'] is None else st['u_long'] + kl_ * (um - st['u_long'])
+                    ratio = st['u_short'] / max(st['u_long'], 1e-12)
+                    if ctr is not None: st['quiet'] = False                                  # l'extérieur parle : pas de silence
+                    elif not st['quiet'] and ratio < float(recall.get('enter', 0.9)): st['quiet'] = True
+                    elif st['quiet'] and ratio > float(recall.get('exit', 1.1)): st['quiet'] = False
+                    quiet = bool(st['quiet'])
+                    if quiet and st['m_learn']:
+                        k_best = max(st['m_learn'], key=lambda c_: st['m_learn'][c_])
+                        if st['m_learn'][k_best] >= float(recall.get('m_min', 0.3)):
+                            k_star = k_best
+                            if recall.get('apply', True):
+                                ctr_eff = [k_star]; s = bump([k_star])          # le contexte vient du dedans
+                    st['recall_log'].append((t, quiet, -1 if k_star is None else k_star, bool(k_star is not None and recall.get('apply', True)), ratio))
+                learn_on = ctr if (ctr is not None or not (recall is not None and recall.get('learn', False))) else ctr_eff
+                if learn_on is not None and w is not None and t < float(attach.get('learn_until', 1e12)):
+                    for c_ in learn_on:
                         st['m_learn'][c_] = st['m_learn'].get(c_, 0.0) + k_m * (w - st['m_learn'].get(c_, 0.0))
                 st['w_log'].append((t, w if w is not None else np.nan)); st['m_learn_log'].append((t, dict(st['m_learn'])))
-                if attach.get('apply', True) and ctr is not None:
+                if attach.get('apply', True) and ctr_eff is not None:
                     num = np.zeros(N); den = np.zeros(N)
-                    for c_ in ctr:
+                    for c_ in ctr_eff:
                         b_ = np.exp(-0.5 * ((np.arange(N) - float(c_)) / width) ** 2); num += b_ * st['m_learn'].get(c_, 0.0); den += b_
                     m_vec = np.where(den > 1e-9, num / np.maximum(den, 1e-9), 0.0)
             elif maintain is not None and ctr is not None:
@@ -369,4 +400,8 @@ def _analyse(res, c, log, N, dt, width, label, verbose, posts, ev, saliency, st_
         np.savez_compressed('attach.npz', t=np.array([x[0] for x in st_extra['m_learn_log']]), centers=np.array(cs),
                             m=np.array([[d_.get(c_, 0.0) for c_ in cs] for (_, d_) in st_extra['m_learn_log']]),
                             w=np.array([x[1] for x in st_extra['w_log']]))
+    if st_extra is not None and st_extra.get('recall_log'):
+        rl = st_extra['recall_log']
+        np.savez_compressed('recall.npz', t=np.array([x[0] for x in rl]), quiet=np.array([x[1] for x in rl]),
+                            k=np.array([x[2] for x in rl]), applied=np.array([x[3] for x in rl]), ratio=np.array([x[4] for x in rl]))
     return out
