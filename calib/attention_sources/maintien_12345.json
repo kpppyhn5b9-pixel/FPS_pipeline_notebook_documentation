@@ -1,0 +1,29 @@
+{
+ "label": "maintien s12345",
+ "N": 100,
+ "saliency": "input",
+ "substrat": {
+  "R_mean": 0.6379722378866314,
+  "sigma_ref": 0.31084698721782034,
+  "fluidity": 0.9806605733235665,
+  "fluidity_during": 0.9802631439231498,
+  "disp": 0.015794877953087576,
+  "effort": 251.19329127824824,
+  "cjs": 0.30435032618254504,
+  "f_mean": 3.545609048830259,
+  "f_spread_log": 0.6166084589534693,
+  "f_neigh_gap": 0.017180239794185148,
+  "calm_salient_share": 0.0,
+  "calm_cost": 0.0
+ },
+ "posts": [],
+ "event": null,
+ "scores": {
+  "dispersion": 5,
+  "regulation": 5,
+  "fluidity": 5,
+  "resilience": 5,
+  "innovation": 5,
+  "activite": 4
+ }
+}
