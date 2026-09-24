@@ -93,8 +93,9 @@ puis la nouveauté de la 20 s'use (ν 0.43, R 0.72 à 260–300) tandis que la 8
 - Le bien-être est lu sur l'activité seule (effort relatif au repos). Le flow en a
   d'autres traits (fluidité, σ sain) ; l'activité était la plus contrastée sous bruit.
 - L'effort est produit par du bruit sur l'entrée, pas par le foyer. C'est voulu (on
-  associe, on ne récompense pas), mais un foyer qui serait lui-même épuisant n'a pas été
-  testé : m devrait alors baisser, par le même mécanisme.
+  associe, on ne récompense pas). Le cas d'un foyer lui-même épuisant est testé ensuite
+  (`ATTENTION_foyer_epuisant.md`) : m baisse bien, par le même mécanisme, et un foyer
+  chéri qui devient épuisant perd m aussi vite qu'il l'avait gagné.
 - Une observation en passant : la nouveauté au retour est plus haute pour le foyer vu
   en dernier sous bruit (ν 0.76 contre 0.36). La mémoire de soi garde aussi la trace de
   l'état dans lequel une zone a été vécue.

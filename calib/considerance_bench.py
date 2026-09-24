@@ -64,7 +64,8 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
              (τ_m) du bien-être du soi pendant sa présence, w = clip(2 − activité/repos, 0, 1) :
              1 quand le système est à son repos ou en dessous, 0 quand il fait le double. Jamais
              l'effet du foyer, seulement l'état du soi quand il était là. `noise` ajoute un bruit
-             blanc à Iₙ (par strate) pendant des fenêtres : une période d'effort. `apply=False`
+             blanc à Iₙ (par strate) pendant des fenêtres : une période d'effort ; un 4e élément
+             'foyer' porte ce bruit par la bosse du foyer présent (le foyer lui-même épuisant). `apply=False`
              apprend m sans l'appliquer (témoin). `learn_until` fige l'apprentissage après cet instant
              (pour lire un retour sans que la présence au calme ne réécrive m)."""
     assert cascade in CASCADES, cascade; assert saliency in SALIENCIES, saliency
@@ -124,8 +125,12 @@ def run_bench(name, seed=12345, N=100, T=170, K0=2.0, kappa=0.5, width=6.0,
         ctr = center_at(t)
         noise = np.zeros(N)
         if attach is not None:
-            for (t0, t1, sd) in attach.get('noise', []):
-                if t0 <= t < t1: noise = rng_noise.normal(0.0, float(sd), N)
+            for spec in attach.get('noise', []):
+                t0, t1, sd = spec[:3]; where = spec[3] if len(spec) > 3 else 'global'
+                if t0 <= t < t1:
+                    noise = rng_noise.normal(0.0, float(sd), N)
+                    if where == 'foyer':                                 # le foyer LUI-MÊME est épuisant : bruit porté par sa bosse
+                        noise = noise * bump(ctr) if ctr is not None else np.zeros(N)
         if saliency in ('context', 'input', 'both') and ctr is not None:
             v = np.full(N, float(base)) + ctx_gain * bump(ctr)      # le contexte RÉEL : une bosse d'entrée
             st['in_last'] = v - float(base); return v + noise
