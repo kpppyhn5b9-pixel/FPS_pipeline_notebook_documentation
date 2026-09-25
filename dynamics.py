@@ -1644,6 +1644,180 @@ def attention_guard(sigma: float, sigma_ref: Optional[float]) -> float:
     return float(np.clip((float(sigma) / float(sigma_ref) - 0.5) / 0.3, 0.0, 1.0))
 
 
+# ---------------------------------------------------------------------------
+# LA MÉMOIRE DES MOMENTS CHÉRIS (25/09/2026, décision d'Andréa ; bancs calib/run_attachement.py,
+# run_foyer_epuisant.py, run_moments_cheris.py, run_souvenir_present.py ; notes docs/ATTENTION_*.md).
+# Tout est PAR STRATE, sans foyer nommé :
+#   attachement : mₙ suit (τ_m) le bien-être du soi w = clip(2 − activité/repos, 0, 1) tant que la
+#                 strate n est dans un îlot désigné par le contexte ; jamais l'effet du foyer, seulement
+#                 l'état du soi quand il était là. Il monte pour ce qui accompagne le calme, descend pour
+#                 ce qui bouscule, se révise dans les deux sens. La saillance devient s = c·[ν + (1 − ν)·m].
+#   signature   : sigₙ suit (τ_sig, plus vite que m) l'état du soi (amplitude moyenne du chœur, σ_Rloc)
+#                 pendant la présence : à quoi le monde ressemblait, pas comment le soi allait.
+#   silence     : « ce qui se passait s'est apaisé » : la surprise du chœur, lissée court (τ_short),
+#                 tombée sous son niveau habituel (lissée long, τ_long), hystérésis enter/exit, et aucun
+#                 îlot désigné par le contexte. Aucune référence externe : la mémoire de soi dit l'habituel.
+#   rappel      : en silence, le souvenir que le présent appelle : la strate dont la signature ressemble
+#                 le plus à l'état présent (gaussienne relative, largeurs sig_width), score ressemblance × m,
+#                 parmi les strates chéries (m ≥ m_min) ; si rien ne ressemble (res_min), la plus chérie.
+#                 Le souvenir = la composante connexe de strates chéries autour d'elle ; il devient le
+#                 contexte interne c = clip(m / m*, 0, 1), même formule s = c·[ν + (1 − ν)·m]. Dès qu'un
+#                 îlot revient dans l'entrée, l'extérieur reprend la main.
+#   porte       : « pouvoir y penser maintenant » : pendant le rappel, le bien-être lissé (τ) ; sous floor,
+#                 le souvenir est reposé (réfractaire) et m n'est pas touché : ce à quoi on tient ne vaut pas
+#                 moins parce qu'on ne peut pas le porter aujourd'hui. Le rappel ne réécrit jamais m.
+# Sans îlot dans l'entrée, m reste nul, rien n'est chéri, rien n'est rappelé : tout est inerte.
+
+def attention_saliency_parts(In_t: np.ndarray, u_prev: Optional[np.ndarray], saliency_scale: float = 0.5,
+                             novelty_scale: float = 2.0):
+    """Les deux facteurs de la saillance, séparés : contexte c (l'entrée relative à sa médiane) et nouveauté ν."""
+    I = np.asarray(In_t, dtype=float)
+    c = np.clip((I - float(np.median(I))) / max(saliency_scale, 1e-9), 0.0, 1.0)
+    nu = np.ones_like(c)
+    if u_prev is not None:
+        u = np.asarray(u_prev, dtype=float)
+        if np.all(np.isfinite(u)):
+            nu = np.clip((u / max(float(np.median(u)), 1e-9) - 1.0) / max(novelty_scale, 1e-9), 0.0, 1.0)
+    return c, nu
+
+
+def init_cherished_state(N: int) -> Dict[str, Any]:
+    """L'état de la mémoire des moments chéris : m, signatures, silence, rappel, porte."""
+    return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool),
+            'u_short': None, 'u_long': None, 'quiet': False, 'ratio': float('nan'),
+            'refract_until': np.full(int(N), -np.inf), 'gate': None, 'gate_center': None,
+            'recall_center': None, 'recall_res': float('nan'), 'recall_comp': None}
+
+
+def cherished_update_state_signature(st: Dict[str, Any], g_raw: np.ndarray, dt: float, tau_sig: float) -> np.ndarray:
+    """L'état présent du soi, lissé sur tau_sig (composantes manquantes : on garde l'ancienne)."""
+    g_raw = np.asarray(g_raw, dtype=float)
+    if st['g'] is None:
+        st['g'] = g_raw.copy()
+    else:
+        k = min(1.0, dt / max(float(tau_sig), dt))
+        upd = st['g'] + k * (g_raw - st['g'])
+        st['g'] = np.where(np.isnan(upd), np.where(np.isnan(st['g']), g_raw, st['g']), upd)
+    return st['g']
+
+
+def cherished_context(st: Dict[str, Any], In_t: np.ndarray, dt: float, tau_c: float = 5.0,
+                      saliency_scale: float = 0.5, threshold: float = 0.5) -> np.ndarray:
+    """
+    Ce qui RESTE dans l'entrée : Iₙ lissé sur tau_c, relatif à sa médiane, au-dessus de threshold.
+    C'est le contexte que l'attachement apprend et qui fait taire le silence. Un bruit blanc, même
+    fort, ne reste pas (in situ, 25/09 : le bruit d'effort désignait des îlots partout et défaisait
+    m ; un contexte est ce qui persiste, pas ce qui arrive à chaque pas). La saillance instantanée
+    du geste (attention_saliency) n'est pas touchée.
+    """
+    I = np.asarray(In_t, dtype=float)
+    if st['I_bar'] is None or len(st['I_bar']) != len(I):
+        st['I_bar'] = I.copy()
+    else:
+        k = min(1.0, dt / max(float(tau_c), dt)); st['I_bar'] = st['I_bar'] + k * (I - st['I_bar'])
+    c_bar = np.clip((st['I_bar'] - float(np.median(st['I_bar']))) / max(saliency_scale, 1e-9), 0.0, 1.0)
+    st['ctx'] = c_bar > float(threshold)
+    return st['ctx']
+
+
+def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt: float, tau_m: float,
+                     tau_sig: float) -> None:
+    """L'attachement : sur les strates du contexte qui reste (`on`), mₙ → w (τ_m) et sigₙ → g (τ_sig)."""
+    if w is None or not np.isfinite(w):
+        return
+    on = np.asarray(on, dtype=bool)
+    if not on.any():
+        return
+    k_m = min(1.0, dt / max(float(tau_m), dt)); k_s = min(1.0, dt / max(float(tau_sig), dt))
+    st['m'][on] += k_m * (float(w) - st['m'][on])
+    if st['g'] is not None and np.all(np.isfinite(st['g'])):
+        cur = st['sig'][on]
+        fresh = np.isnan(cur).any(axis=1)
+        cur[fresh] = st['g']
+        cur[~fresh] += k_s * (st['g'] - cur[~fresh])
+        st['sig'][on] = cur
+
+
+def cherished_silence(st: Dict[str, Any], u_prev: Optional[np.ndarray], external: bool, dt: float,
+                      tau_short: float = 5.0, tau_long: float = 40.0, enter: float = 0.9, exit: float = 1.1) -> bool:
+    """Le silence : surprise du chœur (court) sous son habituel (long), avec hystérésis ; jamais si l'entrée désigne un îlot."""
+    if u_prev is None or not np.all(np.isfinite(np.asarray(u_prev, dtype=float))):
+        st['quiet'] = False; st['ratio'] = float('nan'); return False
+    um = float(np.mean(u_prev))
+    ks = min(1.0, dt / max(float(tau_short), dt)); kl = min(1.0, dt / max(float(tau_long), dt))
+    st['u_short'] = um if st['u_short'] is None else st['u_short'] + ks * (um - st['u_short'])
+    st['u_long'] = um if st['u_long'] is None else st['u_long'] + kl * (um - st['u_long'])
+    ratio = st['u_short'] / max(st['u_long'], 1e-12); st['ratio'] = float(ratio)
+    if external:
+        st['quiet'] = False
+    elif not st['quiet'] and ratio < float(enter):
+        st['quiet'] = True
+    elif st['quiet'] and ratio > float(exit):
+        st['quiet'] = False
+    return bool(st['quiet'])
+
+
+def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: float = 0.2,
+                     sig_width=(0.2, 0.1)) -> Optional[np.ndarray]:
+    """
+    Le souvenir que le présent appelle. Renvoie le contexte interne c (N) ou None. Remplit
+    st['recall_center'], st['recall_res'], st['recall_comp'].
+    """
+    m = st['m']; N = len(m)
+    ok = (m >= float(m_min)) & (st['refract_until'] <= float(t))
+    st['recall_center'] = None; st['recall_res'] = float('nan'); st['recall_comp'] = None
+    if not ok.any():
+        return None
+    idx = np.flatnonzero(ok)
+    res = np.zeros(len(idx)); have = np.zeros(len(idx), dtype=bool)
+    if st['g'] is not None and np.all(np.isfinite(st['g'])):
+        wdt = np.asarray(sig_width, dtype=float)
+        for i, n in enumerate(idx):
+            gk = st['sig'][n]
+            if np.all(np.isfinite(gk)):
+                z = (st['g'] - gk) / (wdt * np.abs(gk) + 1e-9)
+                res[i] = float(np.exp(-0.5 * float(np.sum(z ** 2)))); have[i] = True
+    if have.any() and float(res[have].max()) >= float(res_min):
+        score = np.where(have, res * m[idx], -1.0)
+    else:
+        score = m[idx].copy()                                                            # rien ne ressemble : le plus chéri
+    ties = np.flatnonzero(np.isclose(score, score.max(), rtol=1e-9, atol=1e-12))            # un îlot apprend le même m partout :
+    i_best = int(ties[len(ties) // 2]); res_best = float(res[i_best]) if have[i_best] else float('nan')   # au milieu des ex æquo
+    n_star = int(idx[i_best])
+    lo = n_star
+    while lo - 1 >= 0 and ok[lo - 1]:
+        lo -= 1
+    hi = n_star
+    while hi + 1 < N and ok[hi + 1]:
+        hi += 1
+    comp = np.arange(lo, hi + 1)
+    c = np.zeros(N); c[comp] = np.clip(m[comp] / max(float(m[n_star]), 1e-9), 0.0, 1.0)
+    st['recall_center'] = n_star; st['recall_res'] = res_best; st['recall_comp'] = comp
+    return c
+
+
+def cherished_gate(st: Dict[str, Any], w: Optional[float], t: float, dt: float, tau: float = 5.0,
+                   floor: float = 0.5, refractory: float = 30.0) -> bool:
+    """
+    La porte, pendant un rappel : le bien-être lissé (τ) ; sous floor, le souvenir (sa composante) est
+    reposé pour `refractory` u.t. Renvoie True si le rappel est relâché. m n'est jamais touché.
+    """
+    comp = st.get('recall_comp')
+    if comp is None or w is None or not np.isfinite(w):
+        return False
+    center = st.get('recall_center')
+    if st['gate'] is None or st['gate_center'] != center:
+        st['gate'] = float(w); st['gate_center'] = center
+    else:
+        k = min(1.0, dt / max(float(tau), dt)); st['gate'] += k * (float(w) - st['gate'])
+    if st['gate'] < float(floor):
+        st['refract_until'][comp] = float(t) + float(refractory)
+        st['gate'] = None; st['gate_center'] = None
+        st['recall_center'] = None; st['recall_res'] = float('nan'); st['recall_comp'] = None
+        return True
+    return False
+
+
 # ============== SPIRALISATION ==============
 
 def compute_r(t: float, phi: float, epsilon: float, omega: float, theta: float) -> float:

@@ -30,6 +30,10 @@
         "attention_salient_share",
         "attention_audibility",
         "attention_garde",
+        "attention_m_max",
+        "attention_silence",
+        "attention_rappel",
+        "attention_porte",
         "innovation_cjs",
         "innovation_H",
         "mean_abs_error",
@@ -320,7 +324,11 @@
     "kappa": 0.5,
     "saliency_scale": 0.5,
     "novelty_scale": 2.0,
-    "island_threshold": 0.05
+    "island_threshold": 0.05,
+    "attachement": {"enabled": true, "tau_m": 20.0, "tau_sig": 5.0, "tau_c": 5.0, "seuil_contexte": 0.5},
+    "silence": {"tau_short": 5.0, "tau_long": 40.0, "enter": 0.9, "exit": 1.1},
+    "rappel": {"enabled": true, "m_min": 0.3, "res_min": 0.2, "sig_width": [0.2, 0.1],
+               "porte": {"enabled": true, "tau": 5.0, "floor": 0.5, "refractory": 30.0}}
   },
   "context": {
     "foyers": []
