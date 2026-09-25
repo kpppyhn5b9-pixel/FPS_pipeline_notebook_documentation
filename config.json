@@ -34,6 +34,7 @@
         "attention_silence",
         "attention_rappel",
         "attention_porte",
+        "attention_rappel_etat",
         "innovation_cjs",
         "innovation_H",
         "mean_abs_error",

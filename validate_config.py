@@ -6,7 +6,7 @@ from datetime import datetime
 # 1. — METRIQUES VALIDES —
 METRIQUES_VALIDES = {
     "t", "S(t)", "A_mean(t)", "f_mean(t)", "effort(t)", "activite_ref", "activite_rel", "cpu_step(t)",
-    "C(t)", "E(t)", "L(t)", "fluidity", "dispersion_norm", "surprise_mean", "surprise_max", "attention_salient_share", "attention_audibility", "attention_garde", "attention_m_max", "attention_silence", "attention_rappel", "attention_porte", "innovation_cjs", "innovation_H", "effort_status",
+    "C(t)", "E(t)", "L(t)", "fluidity", "dispersion_norm", "surprise_mean", "surprise_max", "attention_salient_share", "attention_audibility", "attention_garde", "attention_m_max", "attention_silence", "attention_rappel", "attention_porte", "attention_rappel_etat", "innovation_cjs", "innovation_H", "effort_status",
     "mean_abs_error", "mean_high_effort", "d_effort_dt",
     "A_spiral(t)", "mu_Rloc(t)", "resilience_ac", "resilience_ac_smooth", "resilience_var", "resilience_lag", "resilience_alert", "resilience_quiet", "resilience_score", "perception_filter",
     "En_mean(t)", "On_mean(t)", "gamma", "gamma_mean(t)", "In_mean(t)",

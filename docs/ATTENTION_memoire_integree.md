@@ -3,7 +3,9 @@
 *25/09/2026, décision d'Andréa. Câblage dans `dynamics.py` (bloc `cherished_*`), `simulate.py`
 (état `cherished_state`, geste, colonnes, résumé), `config.json` (`attention.attachement`,
 `attention.silence`, `attention.rappel`, `attention.rappel.porte`), `validate_config.py`,
-`test_fps.py` (`TestCherishedMemory`, 5 tests). Bancs in situ `calib/run_insitu_memoire.py`,
+`test_fps.py` (`TestCherishedMemory`, 5 tests). Colonne `attention_rappel_etat` (pourquoi : 0
+désactivé · 1 l'extérieur parle · 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte ·
+6 rappel) ajoutée l'après-midi. Bancs in situ `calib/run_insitu_memoire.py`,
 figure `docs/figures/attention_memoire_insitu.png`, sorties `calib/attention_sources/insitu_*`.
 Activé par défaut ; sans structure dans l'entrée, tout est inerte.*
 
@@ -41,7 +43,9 @@ de bruit désignait des îlots sur tout le chœur et **défaisait m(20)** (0.64 
 que le foyer 20 n'était plus là. Ce qu'on a compris : un contexte est ce qui *reste*, pas ce
 qui arrive à chaque pas. L'attachement apprend donc, et le silence se tait, sur Iₙ lissé
 (τ_c 5) relatif à sa médiane, au-dessus de 0.5 (`attachement.tau_c`, `seuil_contexte`). Le
-geste, lui, garde sa saillance instantanée (rien de PR #29 ne change). Un bruit blanc, même
+geste, lui, garde sa saillance instantanée, y compris pendant un rappel : il voit le maximum
+du contexte instantané et du contexte interne (corrigé le 25/09 après-midi sur une remarque
+de Gepetto ; voir `ATTENTION_enquetes_gepetto.md`). Un bruit blanc, même
 fort, ne reste pas ; une bosse, si. C'est la première chose que le pipeline a dite que le banc
 ne pouvait pas dire, et c'est la remarque d'Andréa sur la découpe de l'entrée qui la contient.
 
@@ -97,8 +101,8 @@ l'endroit fait mal, on n'y pense pas, et il ne vaut pas moins.
 ## Réserves
 
 - Le contexte interne rappelé est un plateau (m uniforme sur l'îlot) : le rappel lie plus
-  fort que la présence. On pourrait garder la forme de la bosse dans m ; on a choisi de ne
-  pas ajouter ça avant de l'avoir vu utile.
+  fort que la présence en bosse. Vérifié ensuite (`ATTENTION_enquetes_gepetto.md`) : une
+  présence en plateau lie exactement autant ; c'est la forme, pas le rappel.
 - Le bien-être reste lu sur l'activité. Un run très effortful pour d'autres raisons (un
   choc) déferait un attachement en cours : c'est le mécanisme, pas un bug.
 - Le silence est « moins surpris que d'habitude » : un système longtemps au repos ne se

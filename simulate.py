@@ -301,7 +301,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'sig_width': tuple(float(x) for x in _rap_cfg.get('sig_width', [0.2, 0.1])),
         'porte': bool(_porte_cfg.get('enabled', True)), 'porte_tau': float(_porte_cfg.get('tau', 5.0)),
         'porte_floor': float(_porte_cfg.get('floor', 0.5)), 'porte_refractory': float(_porte_cfg.get('refractory', 30.0)),
-        'w': None, 'external': False, 'recalling': False,
+        'w': None, 'external': False, 'recalling': False, 'etat': 0,
     }
     # Filtres de perception (spec 15/07/2026) — état du switch
     _pcfg = config.get('perception', {})
@@ -494,13 +494,25 @@ def run_fps_simulation(config, state, loggers, strict=False):
                         dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'])
                     _quiet = dynamics.cherished_silence(cherished_state, memory_state.get('surprise'), cherished_cfg['external'], dt,
                                                         cherished_cfg['tau_short'], cherished_cfg['tau_long'], cherished_cfg['enter'], cherished_cfg['exit'])
+                    # l'état du rappel, journalisé (colonne attention_rappel_etat) : 0 désactivé · 1 l'extérieur parle ·
+                    # 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte fermée à l'instant · 6 rappel en cours
+                    if not (cherished_cfg['attach'] and cherished_cfg['rappel']):
+                        cherished_cfg['etat'] = 0
+                    elif cherished_cfg['external']:
+                        cherished_cfg['etat'] = 1
+                    elif not _quiet:
+                        cherished_cfg['etat'] = 2
                     if cherished_cfg['attach'] and cherished_cfg['rappel'] and _quiet and not cherished_cfg['external']:
                         _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
-                        if _c_int is not None and cherished_cfg['porte']:
-                            if dynamics.cherished_gate(cherished_state, cherished_cfg['w'], t, dt, cherished_cfg['porte_tau'], cherished_cfg['porte_floor'], cherished_cfg['porte_refractory']):
-                                _c_int = None                                   # on n'y pense pas maintenant ; m intact
+                        if _c_int is None:
+                            cherished_cfg['etat'] = 4 if bool(np.any(cherished_state['m'] >= cherished_cfg['m_min'])) else 3
+                        elif cherished_cfg['porte'] and dynamics.cherished_gate(cherished_state, cherished_cfg['w'], t, dt, cherished_cfg['porte_tau'], cherished_cfg['porte_floor'], cherished_cfg['porte_refractory']):
+                            _c_int = None; cherished_cfg['etat'] = 5                # on n'y pense pas maintenant ; m intact
                         if _c_int is not None:
-                            _c_att = _c_int; cherished_cfg['recalling'] = True   # le contexte vient du dedans
+                            # le contexte vient du dedans, mais le monde n'est jamais caché par le souvenir (Gepetto, 25/09) :
+                            # le geste voit le maximum des deux ; un événement bref est vu à l'instant, et le contexte
+                            # qui reste (lissé) décide seul de la fin du rappel
+                            _c_att = np.maximum(_c_att, _c_int); cherished_cfg['recalling'] = True; cherished_cfg['etat'] = 6
                     else:
                         cherished_state['recall_center'] = None; cherished_state['recall_res'] = float('nan'); cherished_state['recall_comp'] = None
                         cherished_state['gate'] = None; cherished_state['gate_center'] = None
@@ -1046,8 +1058,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     _Sw = _Ow.sum(1)
                     attention_audibility = float(np.mean(_Ow[:, _sal].sum(1) * _Sw) / max(np.mean(_Sw ** 2), 1e-12))
             # LA MÉMOIRE DES MOMENTS CHÉRIS : lecteurs (m max du chœur ; silence 0/1 ; strate rappelée ; porte)
-            attention_m_max = None; attention_silence = None; attention_rappel = None; attention_porte = None
+            attention_m_max = None; attention_silence = None; attention_rappel = None; attention_porte = None; attention_rappel_etat = None
             if attention_state['enabled']:
+                attention_rappel_etat = float(cherished_cfg['etat'])
                 attention_m_max = float(np.max(cherished_state['m'])); attention_silence = float(bool(cherished_state['quiet']))
                 attention_rappel = (float(cherished_state['recall_center']) if cherished_cfg['recalling'] and cherished_state['recall_center'] is not None else float('nan'))
                 attention_porte = (float(cherished_state['gate']) if cherished_state['gate'] is not None else float('nan'))
@@ -1075,6 +1088,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'attention_silence': attention_silence,               # l'entrée se tait (1) : moins surpris que d'habitude, aucun îlot
                 'attention_rappel': attention_rappel,                 # strate au cœur du souvenir rappelé (NaN = pas de rappel)
                 'attention_porte': attention_porte,                   # bien-être pendant le rappel (NaN hors rappel)
+                'attention_rappel_etat': attention_rappel_etat,       # pourquoi : 0 désactivé · 1 l'extérieur parle · 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte · 6 rappel
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'innovation_H': innovation_H,  # entropie de permutation : H bas = ordre, H haut = bruit
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
@@ -1121,7 +1135,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte'):
+            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte', 'attention_rappel_etat'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -1130,7 +1144,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                                  'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte'}
+                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte', 'attention_rappel_etat'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -1140,7 +1154,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                              'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte'}
+                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte', 'attention_rappel_etat'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -1250,7 +1264,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'surprise_mean': surprise_mean, 'surprise_max': surprise_max,
                 'attention_salient_share': attention_salient_share, 'attention_audibility': attention_audibility, 'attention_garde': attention_garde,
                 'attention_s': (attention_state['s'].copy() if attention_state['enabled'] else None),
-                'attention_m_max': attention_m_max, 'attention_silence': attention_silence, 'attention_rappel': attention_rappel, 'attention_porte': attention_porte,
+                'attention_m_max': attention_m_max, 'attention_silence': attention_silence, 'attention_rappel': attention_rappel, 'attention_porte': attention_porte, 'attention_rappel_etat': attention_rappel_etat,
                 'attention_m': (cherished_state['m'].copy() if attention_state['enabled'] else None),
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
