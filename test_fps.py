@@ -1296,6 +1296,9 @@ class TestCherishedMemory(unittest.TestCase):
         self.assertGreater(len(rec), 0.1 * len(after))                                    # une fois l'entrée tue : le souvenir revient
         self.assertTrue(all(5 <= x['attention_rappel'] <= 11 for x in rec))               # au bon endroit
         self.assertTrue(all(x['attention_silence'] == 1.0 for x in rec))                  # et seulement en silence
+        self.assertTrue(all(x['attention_rappel_etat'] == 6.0 for x in rec))              # l'état dit « rappel en cours »
+        self.assertTrue(all(x['attention_rappel_etat'] == 1.0 for x in during))           # pendant la présence : « l'extérieur parle »
+        self.assertTrue(all(x['attention_rappel_etat'] in (2.0, 3.0) for x in h0 if x.get('attention_rappel_etat') is not None and x['t'] > 25))   # sans contexte : jamais 6
 
 
 class TestDispersionGuard(unittest.TestCase):
