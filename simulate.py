@@ -286,6 +286,23 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'ref_t0': activite_state['t_start'], 'ref_t1': activite_state['t_end'], 'sigma_ref': [], 'sigma_ref_value': None,
         's': np.zeros(N), 'garde': 1.0, 'cost': 0.0,
     }
+    # LA MÉMOIRE DES MOMENTS CHÉRIS (25/09/2026, décision d'Andréa) : attachement par strate
+    # (m suit le bien-être du soi pendant la présence d'un îlot), silence (« ce qui se passait
+    # s'est apaisé »), rappel du souvenir que le présent appelle, porte « pouvoir y penser
+    # maintenant ». Voir dynamics.cherished_*. Sans îlot dans l'entrée : inerte.
+    _attach_cfg = _atcfg.get('attachement', {}); _sil_cfg = _atcfg.get('silence', {}); _rap_cfg = _atcfg.get('rappel', {}); _porte_cfg = _rap_cfg.get('porte', {})
+    cherished_state = dynamics.init_cherished_state(N)
+    cherished_cfg = {
+        'attach': bool(_attach_cfg.get('enabled', True)), 'tau_m': float(_attach_cfg.get('tau_m', 20.0)), 'tau_sig': float(_attach_cfg.get('tau_sig', 5.0)),
+        'tau_c': float(_attach_cfg.get('tau_c', 5.0)), 'seuil_contexte': float(_attach_cfg.get('seuil_contexte', 0.5)),
+        'tau_short': float(_sil_cfg.get('tau_short', 5.0)), 'tau_long': float(_sil_cfg.get('tau_long', 40.0)),
+        'enter': float(_sil_cfg.get('enter', 0.9)), 'exit': float(_sil_cfg.get('exit', 1.1)),
+        'rappel': bool(_rap_cfg.get('enabled', True)), 'm_min': float(_rap_cfg.get('m_min', 0.3)), 'res_min': float(_rap_cfg.get('res_min', 0.2)),
+        'sig_width': tuple(float(x) for x in _rap_cfg.get('sig_width', [0.2, 0.1])),
+        'porte': bool(_porte_cfg.get('enabled', True)), 'porte_tau': float(_porte_cfg.get('tau', 5.0)),
+        'porte_floor': float(_porte_cfg.get('floor', 0.5)), 'porte_refractory': float(_porte_cfg.get('refractory', 30.0)),
+        'w': None, 'external': False, 'recalling': False,
+    }
     # Filtres de perception (spec 15/07/2026) — état du switch
     _pcfg = config.get('perception', {})
     perception_mode = _pcfg.get('filter_mode', 'static')
@@ -464,8 +481,30 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     elif t >= attention_state['ref_t1'] and attention_state['sigma_ref_value'] is None and attention_state['sigma_ref']:
                         attention_state['sigma_ref_value'] = float(np.median(attention_state['sigma_ref']))
                     attention_state['garde'] = dynamics.attention_guard(_sig_att, attention_state['sigma_ref_value'])
-                    attention_state['s'] = dynamics.attention_saliency(In_t, memory_state.get('surprise'),
-                                                                       attention_state['saliency_scale'], attention_state['novelty_scale'])
+                    # contexte c et nouveauté ν séparés ; puis la mémoire des moments chéris
+                    _c_att, _nu_att = dynamics.attention_saliency_parts(In_t, memory_state.get('surprise'),
+                                                                        attention_state['saliency_scale'], attention_state['novelty_scale'])
+                    _rel_prev = history[-1].get('activite_rel') if history else None
+                    cherished_cfg['w'] = (float(np.clip(2.0 - float(_rel_prev), 0.0, 1.0)) if _rel_prev is not None and np.isfinite(_rel_prev) else None)
+                    _ctx_on = dynamics.cherished_context(cherished_state, In_t, dt, cherished_cfg['tau_c'], attention_state['saliency_scale'], cherished_cfg['seuil_contexte'])
+                    cherished_cfg['external'] = bool(_ctx_on.any())                 # l'entrée désigne quelque chose qui reste
+                    cherished_cfg['recalling'] = False
+                    dynamics.cherished_update_state_signature(cherished_state, np.array([float(np.mean(An_t)), _sig_att]), dt, cherished_cfg['tau_sig'])
+                    if cherished_cfg['attach']:
+                        dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'])
+                    _quiet = dynamics.cherished_silence(cherished_state, memory_state.get('surprise'), cherished_cfg['external'], dt,
+                                                        cherished_cfg['tau_short'], cherished_cfg['tau_long'], cherished_cfg['enter'], cherished_cfg['exit'])
+                    if cherished_cfg['attach'] and cherished_cfg['rappel'] and _quiet and not cherished_cfg['external']:
+                        _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
+                        if _c_int is not None and cherished_cfg['porte']:
+                            if dynamics.cherished_gate(cherished_state, cherished_cfg['w'], t, dt, cherished_cfg['porte_tau'], cherished_cfg['porte_floor'], cherished_cfg['porte_refractory']):
+                                _c_int = None                                   # on n'y pense pas maintenant ; m intact
+                        if _c_int is not None:
+                            _c_att = _c_int; cherished_cfg['recalling'] = True   # le contexte vient du dedans
+                    else:
+                        cherished_state['recall_center'] = None; cherished_state['recall_res'] = float('nan'); cherished_state['recall_comp'] = None
+                        cherished_state['gate'] = None; cherished_state['gate_center'] = None
+                    attention_state['s'] = _c_att * (_nu_att + (1.0 - _nu_att) * cherished_state['m']) if cherished_cfg['attach'] else _c_att * _nu_att
                     _dfn = dynamics.attention_delta_fn(fn_t, _theta_att, attention_state['s'], attention_state['K0'], attention_state['kappa'],
                                                        attention_state['garde'], attention_state['island_threshold'])
                     _sal = attention_state['s'] > 0.5
@@ -1006,6 +1045,12 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     _Ow = np.array([_h['O'] for _h in history[-perception_state['W_f']:]], dtype=float)
                     _Sw = _Ow.sum(1)
                     attention_audibility = float(np.mean(_Ow[:, _sal].sum(1) * _Sw) / max(np.mean(_Sw ** 2), 1e-12))
+            # LA MÉMOIRE DES MOMENTS CHÉRIS : lecteurs (m max du chœur ; silence 0/1 ; strate rappelée ; porte)
+            attention_m_max = None; attention_silence = None; attention_rappel = None; attention_porte = None
+            if attention_state['enabled']:
+                attention_m_max = float(np.max(cherished_state['m'])); attention_silence = float(bool(cherished_state['quiet']))
+                attention_rappel = (float(cherished_state['recall_center']) if cherished_cfg['recalling'] and cherished_state['recall_center'] is not None else float('nan'))
+                attention_porte = (float(cherished_state['gate']) if cherished_state['gate'] is not None else float('nan'))
             all_metrics = {
                 't': t,
                 'S(t)': S_t,
@@ -1026,6 +1071,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'attention_salient_share': attention_salient_share,   # part de strates désignées par la considération
                 'attention_audibility': attention_audibility,         # part de S(t) portée par elles (prorata = leur part)
                 'attention_garde': attention_garde,                   # frein σ_Rloc (1 = libre, 0 = bloqué)
+                'attention_m_max': attention_m_max,                   # le plus chéri du chœur (0 = rien n'est chéri)
+                'attention_silence': attention_silence,               # l'entrée se tait (1) : moins surpris que d'habitude, aucun îlot
+                'attention_rappel': attention_rappel,                 # strate au cœur du souvenir rappelé (NaN = pas de rappel)
+                'attention_porte': attention_porte,                   # bien-être pendant le rappel (NaN hors rappel)
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'innovation_H': innovation_H,  # entropie de permutation : H bas = ordre, H haut = bruit
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle
@@ -1072,7 +1121,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Résilience : None = verdict suspendu (humilité, sous perturbation
             # mais pas assez vécu). On le garde comme "donnée absente" (cellule
             # vide via NaN), jamais un 0 trompeur qui ressemblerait à un effondrement.
-            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde'):
+            for _rk in ('resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag', 'innovation_cjs', 'innovation_H', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte'):
                 if all_metrics.get(_rk) is None:
                     all_metrics[_rk] = float('nan')
 
@@ -1081,7 +1130,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             skip_safe_convert = {'effort_status', 'G_arch_used', 'best_pair_G',
                                  'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                                  'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde'}
+                                 'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte'}
             for key in all_metrics:
                 if key in skip_safe_convert:
                     continue
@@ -1091,7 +1140,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # Champs où NaN est intentionnel (= pas de données disponibles)
             nan_ok_fields = {'best_pair_gamma', 'best_pair_score', 'tau_A_mean', 'tau_f_mean',
                              'resilience_ac', 'resilience_ac_smooth', 'resilience_var', 'resilience_lag',
-                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde'}
+                             'innovation_cjs', 'innovation_H', 'perception_filter', 'activite_ref', 'activite_rel', 'dispersion_norm', 'surprise_mean', 'surprise_max', 'attention_salient_share', 'attention_audibility', 'attention_garde', 'attention_m_max', 'attention_silence', 'attention_rappel', 'attention_porte'}
             nan_inf_detected = False
             for metric_name, metric_value in all_metrics.items():
                 if metric_name == 't' or metric_name in nan_ok_fields:
@@ -1201,6 +1250,8 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'surprise_mean': surprise_mean, 'surprise_max': surprise_max,
                 'attention_salient_share': attention_salient_share, 'attention_audibility': attention_audibility, 'attention_garde': attention_garde,
                 'attention_s': (attention_state['s'].copy() if attention_state['enabled'] else None),
+                'attention_m_max': attention_m_max, 'attention_silence': attention_silence, 'attention_rappel': attention_rappel, 'attention_porte': attention_porte,
+                'attention_m': (cherished_state['m'].copy() if attention_state['enabled'] else None),
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
                 'En_mean(t)': En_mean_t,
@@ -1327,6 +1378,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'attention_salient_steps': int(sum(1 for h in history if (h.get('attention_salient_share') or 0.0) > 0)),
             'attention_audibility_mean': (float(np.mean([h['attention_audibility'] for h in history if (h.get('attention_salient_share') or 0.0) > 0]))
                                           if any((h.get('attention_salient_share') or 0.0) > 0 for h in history) else None),
+            'attention_m_max': (float(np.max(cherished_state['m'])) if attention_state['enabled'] else None),
+            'attention_silence_share': (float(np.mean([h['attention_silence'] for h in history if h.get('attention_silence') is not None]))
+                                        if any(h.get('attention_silence') is not None for h in history) else None),
+            'attention_rappel_steps': int(sum(1 for h in history if h.get('attention_rappel') is not None and np.isfinite(h['attention_rappel']))),
             'activite_ref': (float(activite_state['ref']) if activite_state['ref'] is not None else None),
             'activite_rel': (float(activite_rel) if 'activite_rel' in locals() and activite_rel is not None else None),
             'mean_effort': np.mean(effort_history) if effort_history else 0.0,

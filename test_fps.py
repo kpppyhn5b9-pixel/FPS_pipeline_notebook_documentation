@@ -1195,8 +1195,107 @@ class TestAttentionConsideration(unittest.TestCase):
         # sélectivité par construction, et le frein n'a pas à mordre
         h = self._run([{'center': 15, 'width': 5.0, 'gain': 1.5, 't0': 50.0, 't1': 80.0}], T=90, N=30)
         during = [x for x in h if 55 <= x['t'] < 80]
-        self.assertLess(np.mean([x['attention_salient_share'] for x in during]), 0.05)
+        # (0.05 avant la mémoire des moments chéris ; avec m appris sur les quelques strates au-dessus
+        #  de la médiane, s = c·[ν + (1 − ν)·m] y est un peu plus haut : 0.054. Le sens ne change pas.)
+        self.assertLess(np.mean([x['attention_salient_share'] for x in during]), 0.1)
         self.assertGreater(min(x['attention_garde'] for x in during), 0.5)
+
+
+class TestCherishedMemory(unittest.TestCase):
+    """La mémoire des moments chéris (25/09/2026) : attachement par strate, silence, rappel, porte."""
+
+    def test_attachment_learns_where_the_context_is_and_only_there(self):
+        st = dynamics.init_cherished_state(20); I = np.full(20, 0.1); I[5:9] = 0.6
+        rng = np.random.default_rng(0)
+        for _ in range(100):                                                        # 10 u.t. : le contexte qui reste est la bosse, pas le bruit
+            on = dynamics.cherished_context(st, I + rng.normal(0, 0.6, 20), 0.1, 5.0, 0.5, 0.5)
+        self.assertEqual(list(np.flatnonzero(on)), [5, 6, 7, 8])
+        c = on.copy()
+        dynamics.cherished_update_state_signature(st, np.array([0.05, 0.3]), 0.1, 5.0)
+        for _ in range(400):                                                        # 40 u.t. à w = 0.8, τ_m 20
+            dynamics.cherished_attach(st, c, 0.8, 0.1, 20.0, 5.0)
+        self.assertGreater(st['m'][6], 0.8 * (1 - np.exp(-2)) - 0.02); self.assertLess(st['m'][6], 0.8)
+        self.assertEqual(st['m'][0], 0.0); self.assertEqual(st['m'][15], 0.0)          # rien hors de l'îlot
+        self.assertTrue(np.all(np.isfinite(st['sig'][6]))); self.assertTrue(np.all(np.isnan(st['sig'][0])))
+        for _ in range(400):                                                        # le même foyer devient épuisant : m redescend
+            dynamics.cherished_attach(st, c, 0.0, 0.1, 20.0, 5.0)
+        self.assertLess(st['m'][6], 0.15)
+        dynamics.cherished_attach(st, np.zeros(20, dtype=bool), 0.9, 0.1, 20.0, 5.0)  # sans contexte : rien ne bouge
+        self.assertLess(st['m'][6], 0.15)
+
+    def test_silence_is_less_surprised_than_usual_with_hysteresis(self):
+        st = dynamics.init_cherished_state(10); u = np.full(10, 1.0)
+        for _ in range(800): dynamics.cherished_silence(st, u, False, 0.1)             # habitué à 1.0 : pas de silence (autant que d'habitude)
+        self.assertFalse(st['quiet'])
+        for _ in range(100): q = dynamics.cherished_silence(st, u * 0.6, False, 0.1)   # la surprise tombe : silence
+        self.assertTrue(q)
+        for _ in range(30): q = dynamics.cherished_silence(st, u * 0.6, True, 0.1)     # un îlot dans l'entrée : jamais en silence
+        self.assertFalse(q)
+        for _ in range(100): q = dynamics.cherished_silence(st, u * 0.6, False, 0.1)
+        self.assertTrue(q)
+        for _ in range(100): q = dynamics.cherished_silence(st, u * 2.0, False, 0.1)   # ça bouscule de nouveau : fin du silence
+        self.assertFalse(q)
+        self.assertFalse(dynamics.cherished_silence(st, None, False, 0.1))              # mémoire pas née : rien
+
+    def test_recall_is_what_the_present_calls_then_the_most_cherished(self):
+        st = dynamics.init_cherished_state(30)
+        st['m'][3:7] = 0.9; st['sig'][3:7] = [0.05, 0.3]                                # souvenir A : très chéri, monde ample
+        st['m'][20:25] = 0.6; st['sig'][20:25] = [0.02, 0.3]                             # souvenir B : moins chéri, monde faible
+        st['g'] = np.array([0.021, 0.3])                                                 # le présent ressemble à B
+        c = dynamics.cherished_recall(st, 0.0)
+        self.assertEqual(st['recall_center'], 22); self.assertEqual(list(st['recall_comp']), list(range(20, 25)))
+        self.assertGreater(c[22], 0.99); self.assertEqual(c[5], 0.0)
+        st['g'] = np.array([0.049, 0.3]); dynamics.cherished_recall(st, 0.0)              # le présent ressemble à A
+        self.assertEqual(st['recall_center'], 5)
+        st['g'] = np.array([0.2, 0.3]); dynamics.cherished_recall(st, 0.0)                # rien ne ressemble : le plus chéri
+        self.assertEqual(st['recall_center'], 5); self.assertLess(st['recall_res'], 0.2)
+        st['m'][:] = 0.1; self.assertIsNone(dynamics.cherished_recall(st, 0.0))           # rien de chéri : rien
+
+    def test_gate_puts_the_memory_down_and_keeps_m(self):
+        st = dynamics.init_cherished_state(20); st['m'][5:10] = 0.8; st['sig'][5:10] = [0.05, 0.3]; st['g'] = np.array([0.05, 0.3])
+        self.assertIsNotNone(dynamics.cherished_recall(st, 0.0))
+        for i in range(60):
+            released = dynamics.cherished_gate(st, 0.9, i * 0.1, 0.1, tau=5.0, floor=0.5, refractory=30.0)
+        self.assertFalse(released)                                                       # se souvenir fait du bien : on reste
+        t = 6.0; released = False
+        while not released and t < 60:
+            released = dynamics.cherished_gate(st, 0.0, t, 0.1, tau=5.0, floor=0.5, refractory=30.0); t += 0.1
+        self.assertTrue(released); self.assertLess(t, 6.0 + 5.0)                          # ça fait mal : reposé en moins de τ
+        self.assertEqual(st['m'][7], 0.8)                                                # ce à quoi on tient ne vaut pas moins
+        self.assertIsNone(dynamics.cherished_recall(st, t))                              # réfractaire : pas rappelable maintenant
+        self.assertIsNotNone(dynamics.cherished_recall(st, t + 31.0))                    # plus tard, on y revient
+
+    def test_pipeline_inert_without_context_and_remembers_with_it(self):
+        import simulate
+        def run(foyers, N=30, T=150):
+            with open('config.json') as f:
+                config = json.load(f)
+            config['system']['N'] = N; config['system']['T'] = T; config['system']['seed'] = 12345
+            config['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
+            config['analysis'] = {**config.get('analysis', {}), 'compare_kuramoto': False}
+            config['context'] = {'foyers': foyers}
+            tmp = tempfile.mkdtemp(); cwd = os.getcwd()
+            try:
+                os.chdir(tmp)
+                with open('cfg.json', 'w') as f:
+                    json.dump(config, f)
+                import io, contextlib
+                with contextlib.redirect_stdout(io.StringIO()):
+                    res = simulate.run_simulation('cfg.json', 'FPS')
+            finally:
+                os.chdir(cwd); shutil.rmtree(tmp, ignore_errors=True)
+            return res['history']
+        h0 = run([], T=80)
+        self.assertTrue(all(x['attention_m_max'] == 0.0 for x in h0 if x.get('attention_m_max') is not None))
+        self.assertTrue(all(not np.isfinite(x['attention_rappel']) for x in h0 if x.get('attention_rappel') is not None))
+        h = run([{'center': 8, 'width': 3.0, 'gain': 0.5, 't0': 50.0, 't1': 90.0}], N=30, T=150)
+        during = [x for x in h if 70 <= x['t'] < 90]; after = [x for x in h if x['t'] >= 110]
+        self.assertGreater(np.mean([x['attention_m_max'] for x in during]), 0.2)          # chéri pendant la présence au calme
+        self.assertTrue(all(not np.isfinite(x['attention_rappel']) for x in during))     # pas de rappel tant que l'entrée parle
+        rec = [x for x in after if np.isfinite(x['attention_rappel'])]
+        self.assertGreater(len(rec), 0.1 * len(after))                                    # une fois l'entrée tue : le souvenir revient
+        self.assertTrue(all(5 <= x['attention_rappel'] <= 11 for x in rec))               # au bon endroit
+        self.assertTrue(all(x['attention_silence'] == 1.0 for x in rec))                  # et seulement en silence
 
 
 class TestDispersionGuard(unittest.TestCase):
