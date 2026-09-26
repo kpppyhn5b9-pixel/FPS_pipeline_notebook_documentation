@@ -296,6 +296,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'attach': bool(_attach_cfg.get('enabled', True)), 'tau_m': float(_attach_cfg.get('tau_m', 20.0)), 'tau_sig': float(_attach_cfg.get('tau_sig', 5.0)),
         'tau_c': float(_attach_cfg.get('tau_c', 5.0)), 'seuil_contexte': float(_attach_cfg.get('seuil_contexte', 0.5)),
         'mode': str(_attach_cfg.get('mode', 'soulagement')), 'tau_ref': float(_attach_cfg.get('tau_ref', 40.0)),
+        # RÊVER (26/09) : 'off' | 'liaison' (deux souvenirs éloignés tenus comme un seul îlot) | 'substrat' (se poser sur
+        # ce que le substrat produit de lui-même quand rien n'est chéri) | 'les_deux' (liaison si deux lieux, sinon substrat)
+        'reve': str(_atcfg.get('reve', {}).get('mode', 'off')), 'reve_tau': float(_atcfg.get('reve', {}).get('tau_substrat', 5.0)),
+        'reve_min_size': int(_atcfg.get('reve', {}).get('min_size', 3)), 'dreaming': 0,
+        'reve_dwell': float(_atcfg.get('reve', {}).get('dwell', 10.0)), 'reve_liaison_par': str(_atcfg.get('reve', {}).get('liaison_par', 'phase')),
         'tau_short': float(_sil_cfg.get('tau_short', 5.0)), 'tau_long': float(_sil_cfg.get('tau_long', 40.0)),
         'enter': float(_sil_cfg.get('enter', 0.9)), 'exit': float(_sil_cfg.get('exit', 1.1)),
         'rappel': bool(_rap_cfg.get('enabled', True)), 'm_min': float(_rap_cfg.get('m_min', 0.3)), 'res_min': float(_rap_cfg.get('res_min', 0.2)),
@@ -476,7 +481,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     _phi_prev = (np.asarray(history[-1]['phi_n_t'], dtype=float)
                                  if history and history[-1].get('phi_n_t') is not None else np.zeros(N))
                     _theta_att = phase_acc + _phi_prev
-                    _sig_att = float(np.std(dynamics.local_coherence(_theta_att, _rloc_neigh)))
+                    _rloc_att = dynamics.local_coherence(_theta_att, _rloc_neigh); _sig_att = float(np.std(_rloc_att))
                     if attention_state['ref_t0'] <= t < attention_state['ref_t1']:
                         attention_state['sigma_ref'].append(_sig_att)
                     elif t >= attention_state['ref_t1'] and attention_state['sigma_ref_value'] is None and attention_state['sigma_ref']:
@@ -504,8 +509,20 @@ def run_fps_simulation(config, state, loggers, strict=False):
                         cherished_cfg['etat'] = 1
                     elif not _quiet:
                         cherished_cfg['etat'] = 2
+                    cherished_cfg['dreaming'] = 0; cherished_state['dream_bridge'] = None
                     if cherished_cfg['attach'] and cherished_cfg['rappel'] and _quiet and not cherished_cfg['external']:
-                        _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
+                        _c_int = None
+                        if cherished_cfg['reve'] in ('liaison', 'les_deux'):
+                            _c_int = dynamics.cherished_dream_link(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
+                            if _c_int is not None: cherished_cfg['dreaming'] = 1                  # deux lieux tenus ensemble
+                        elif cherished_cfg['reve'] == 'alternance':
+                            _c_int = dynamics.cherished_dream_alternate(cherished_state, t, cherished_cfg['reve_dwell'], cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
+                            if _c_int is not None: cherished_cfg['dreaming'] = 1                  # par bribes : un lieu, puis l'autre
+                        if _c_int is None:
+                            _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
+                        if _c_int is None and cherished_cfg['reve'] in ('substrat', 'les_deux'):
+                            _c_int = dynamics.cherished_dream_substrate(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'], cherished_cfg['reve_min_size'], t, cherished_cfg['reve_dwell'])
+                            if _c_int is not None: cherished_cfg['dreaming'] = 2                  # le substrat
                         if _c_int is None:
                             cherished_cfg['etat'] = 4 if bool(np.any(cherished_state['m'] >= cherished_cfg['m_min'])) else 3
                         elif cherished_cfg['porte'] and dynamics.cherished_gate(cherished_state, cherished_cfg['w'], t, dt, cherished_cfg['porte_tau'], cherished_cfg['porte_floor'], cherished_cfg['porte_refractory']):
@@ -514,13 +531,16 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             # le contexte vient du dedans, mais le monde n'est jamais caché par le souvenir (Gepetto, 25/09) :
                             # le geste voit le maximum des deux ; un événement bref est vu à l'instant, et le contexte
                             # qui reste (lissé) décide seul de la fin du rappel
-                            _c_att = np.maximum(_c_att, _c_int); cherished_cfg['recalling'] = True; cherished_cfg['etat'] = 6
+                            _c_att = np.maximum(_c_att, _c_int); cherished_cfg['recalling'] = True; cherished_cfg['etat'] = 6 + cherished_cfg['dreaming']   # 7 : rêve-liaison · 8 : rêve-substrat
                     else:
                         cherished_state['recall_center'] = None; cherished_state['recall_res'] = float('nan'); cherished_state['recall_comp'] = None
                         cherished_state['gate'] = None; cherished_state['gate_center'] = None
+                        cherished_state['alt_t0'] = None; cherished_state['hold_comp'] = None       # le rêve repart de zéro au prochain silence
                     attention_state['s'] = _c_att * (_nu_att + (1.0 - _nu_att) * cherished_state['m']) if cherished_cfg['attach'] else _c_att * _nu_att
                     _dfn = dynamics.attention_delta_fn(fn_t, _theta_att, attention_state['s'], attention_state['K0'], attention_state['kappa'],
-                                                       attention_state['garde'], attention_state['island_threshold'])
+                                                       attention_state['garde'], attention_state['island_threshold'],
+                                                       bridge=(cherished_state['dream_bridge'] if cherished_cfg['recalling'] else None),
+                                                       bridge_mode=cherished_cfg['reve_liaison_par'])
                     _sal = attention_state['s'] > 0.5
                     attention_state['cost'] = float(np.mean(np.abs(_dfn[_sal]) / np.maximum(fn_t[_sal], 1e-9))) if _sal.any() else 0.0
                     fn_t = np.maximum(fn_t + _dfn, 1e-6)
@@ -1090,7 +1110,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'attention_silence': attention_silence,               # l'entrée se tait (1) : moins surpris que d'habitude, aucun îlot
                 'attention_rappel': attention_rappel,                 # strate au cœur du souvenir rappelé (NaN = pas de rappel)
                 'attention_porte': attention_porte,                   # bien-être pendant le rappel (NaN hors rappel)
-                'attention_rappel_etat': attention_rappel_etat,       # pourquoi : 0 désactivé · 1 l'extérieur parle · 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte · 6 rappel
+                'attention_rappel_etat': attention_rappel_etat,       # pourquoi : 0 désactivé · 1 l'extérieur parle · 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte · 6 rappel · 7 rêve (liaison) · 8 rêve (substrat)
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'innovation_H': innovation_H,  # entropie de permutation : H bas = ordre, H haut = bruit
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle

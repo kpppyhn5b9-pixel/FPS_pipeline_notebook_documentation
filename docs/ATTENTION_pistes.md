@@ -14,7 +14,7 @@ neurosciences : l'apprentissage du soulagement, un signal qui accompagne la fin 
 prend une valeur positive. Banc évident : un foyer qui arrive pendant l'effort et reste
 pendant le retour au calme, contre un foyer qui arrive pendant l'effort et part avant.
 
-## 2. Rêver sans se souvenir
+## 2. Rêver sans se souvenir *(essayé le 26/09 : `ATTENTION_rever.md` ; ni le pont ni le substrat ne tiennent tels quels ; éteint, pistes notées)*
 
 Un système au repos depuis toujours n'a rien à se rappeler, mais rêver n'est pas se rappeler
 (les nouveau-nés rêvent énormément avec presque rien à remémorer). La FPS produit d'elle-même

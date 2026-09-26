@@ -1611,16 +1611,34 @@ def attention_islands(s: np.ndarray, threshold: float = 0.05) -> List[np.ndarray
 
 
 def attention_delta_fn(fn_t: np.ndarray, theta: np.ndarray, s: np.ndarray, K0: float, kappa: float,
-                       garde: float, threshold: float = 0.05) -> np.ndarray:
+                       garde: float, threshold: float = 0.05, bridge: Optional[np.ndarray] = None,
+                       bridge_mode: str = 'phase') -> np.ndarray:
     """
     Le geste, par îlot : compression des fréquences vers la moyenne de l'îlot (κ) puis
     accrochage de phase vers le champ moyen de l'îlot (K₀). Renvoie Δfₙ (cycles / u.t.).
+    `bridge` (rêve, 26/09) : masque de strates ; les îlots qu'il touche sont tenus comme UN SEUL
+    îlot, même éloignés le long de la chaîne. `bridge_mode` : 'phase' (un seul champ moyen ET une
+    seule moyenne de fréquence) ou 'rythme' (Andréa, 26/09 : « au même pas sans être au même
+    endroit » : une seule moyenne de fréquence, mais chaque îlot garde son propre champ moyen).
     """
     F = np.asarray(fn_t, dtype=float); th = np.asarray(theta, dtype=float); s = np.asarray(s, dtype=float)
     d = np.zeros_like(F)
     if garde <= 0 or (K0 <= 0 and kappa <= 0):
         return d
-    for comp in attention_islands(s, threshold):
+    comps = attention_islands(s, threshold)
+    if bridge is not None and np.any(bridge):
+        b = np.asarray(bridge, dtype=bool); merged = []; rest = []
+        for comp in comps:
+            (merged if b[comp].any() else rest).append(comp)
+        if merged and bridge_mode == 'rythme' and kappa > 0:
+            union = np.concatenate(merged); sc = s[union]; w = max(float(np.sum(sc)), 1e-12)
+            f_bar = float(np.sum(sc * F[union]) / w)
+            d[union] += kappa * garde * sc * (f_bar - F[union])            # le rythme commun
+            comps = rest + merged                                             # les phases, chacun chez soi (K₀ seul ci-dessous)
+            kappa = 0.0
+        else:
+            comps = rest + ([np.concatenate(merged)] if merged else [])
+    for comp in comps:
         sc = s[comp]; w = max(float(np.sum(sc)), 1e-12)
         if kappa > 0:
             f_bar = float(np.sum(sc * F[comp]) / w)
@@ -1684,6 +1702,8 @@ def attention_saliency_parts(In_t: np.ndarray, u_prev: Optional[np.ndarray], sal
 def init_cherished_state(N: int) -> Dict[str, Any]:
     """L'état de la mémoire des moments chéris : m, signatures, silence, rappel, porte."""
     return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool), 'w_ref': None,
+            'dream_bridge': None, 'dream_second': None, 'dream_center': None, 'rloc_bar': None,
+            'alt_t0': None, 'hold_comp': None, 'hold_until': -np.inf,
             'u_short': None, 'u_long': None, 'quiet': False, 'ratio': float('nan'),
             'refract_until': np.full(int(N), -np.inf), 'gate': None, 'gate_center': None,
             'recall_center': None, 'recall_res': float('nan'), 'recall_comp': None}
@@ -1816,6 +1836,106 @@ def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: 
     comp = np.arange(lo, hi + 1)
     c = np.zeros(N); c[comp] = np.clip(m[comp] / max(float(m[n_star]), 1e-9), 0.0, 1.0)
     st['recall_center'] = n_star; st['recall_res'] = res_best; st['recall_comp'] = comp
+    return c
+
+
+def cherished_dream_link(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: float = 0.2,
+                         sig_width=(0.2, 0.1)) -> Optional[np.ndarray]:
+    """
+    RÊVER, première forme (26/09, Andréa : les ponts qui se tissent d'eux-mêmes entre des choses comprises
+    séparément) : en silence, tenir ensemble DEUX souvenirs chéris éloignés comme un seul îlot. Le premier
+    est celui que le présent appelle (cherished_recall) ; le second est le meilleur souvenir chéri qui ne
+    touche pas le premier. Renvoie le contexte interne c (N) de l'union, et met dans st['dream_bridge'] le
+    masque à tenir comme un seul îlot, st['dream_second'] le cœur du second. None s'il n'y a pas deux lieux.
+    """
+    c1 = cherished_recall(st, t, m_min, res_min, sig_width)
+    st['dream_bridge'] = None; st['dream_second'] = None
+    if c1 is None:
+        return None
+    comp1 = st['recall_comp']; m = st['m']; N = len(m)
+    ok = (m >= float(m_min)) & (st['refract_until'] <= float(t)); ok[comp1] = False
+    lo = max(int(comp1[0]) - 1, 0); hi = min(int(comp1[-1]) + 1, N - 1); ok[lo] = False; ok[hi] = False   # pas voisin
+    if not ok.any():
+        return None
+    idx = np.flatnonzero(ok)
+    ties = np.flatnonzero(np.isclose(m[idx], m[idx].max(), rtol=1e-9, atol=1e-12)); n2 = int(idx[ties[len(ties) // 2]])
+    lo2 = n2
+    while lo2 - 1 >= 0 and ok[lo2 - 1]:
+        lo2 -= 1
+    hi2 = n2
+    while hi2 + 1 < N and ok[hi2 + 1]:
+        hi2 += 1
+    comp2 = np.arange(lo2, hi2 + 1)
+    c = c1.copy(); c[comp2] = np.clip(m[comp2] / max(float(m[n2]), 1e-9), 0.0, 1.0)
+    bridge = np.zeros(N, dtype=bool); bridge[comp1] = True; bridge[comp2] = True
+    st['dream_bridge'] = bridge; st['dream_second'] = n2
+    return c
+
+
+def cherished_dream_alternate(st: Dict[str, Any], t: float, dwell: float = 10.0, m_min: float = 0.3,
+                              res_min: float = 0.2, sig_width=(0.2, 0.1)) -> Optional[np.ndarray]:
+    """
+    RÊVER par bribes (Andréa, 26/09 : « tenter sans figer ») : pas de pont. Le rappel va d'un lieu à
+    l'autre toutes les `dwell` u.t. : le lieu que le présent appelle, puis le meilleur autre lieu chéri qui
+    ne le touche pas, puis le premier... Chacun est rappelé seul, comme un rappel ordinaire. Renvoie c (N)
+    du lieu du moment, None s'il n'y a pas deux lieux. st['dream_bridge'] reste None.
+    """
+    c_link = cherished_dream_link(st, t, m_min, res_min, sig_width)          # calcule les deux lieux
+    st['dream_bridge'] = None
+    if c_link is None:
+        return None
+    comp1 = st['recall_comp']; n2 = st['dream_second']; m = st['m']; N = len(m)
+    if st.get('alt_t0') is None:
+        st['alt_t0'] = float(t)
+    second = (int((float(t) - st['alt_t0']) // max(float(dwell), 1e-9)) % 2) == 1
+    if not second:
+        c = np.zeros(N); c[comp1] = np.clip(m[comp1] / max(float(m[st['recall_center']]), 1e-9), 0.0, 1.0)
+        return c
+    ok = (m >= float(m_min)) & (st['refract_until'] <= float(t))
+    lo = n2
+    while lo - 1 >= 0 and ok[lo - 1] and (lo - 1) not in set(comp1.tolist()):
+        lo -= 1
+    hi = n2
+    while hi + 1 < N and ok[hi + 1] and (hi + 1) not in set(comp1.tolist()):
+        hi += 1
+    comp2 = np.arange(lo, hi + 1)
+    c = np.zeros(N); c[comp2] = np.clip(m[comp2] / max(float(m[n2]), 1e-9), 0.0, 1.0)
+    st['recall_comp'] = comp2; st['recall_center'] = int(n2)
+    return c
+
+
+def cherished_dream_substrate(st: Dict[str, Any], rloc: np.ndarray, dt: float, tau: float = 5.0,
+                              min_size: int = 3, t: float = 0.0, dwell: float = 0.0) -> Optional[np.ndarray]:
+    """
+    RÊVER, seconde forme (26/09, Andréa : les motifs propres à la structure, eux aussi des rêves légitimes) :
+    en silence, se poser sur ce que le substrat produit de lui-même : la plus grande région où la cohérence
+    locale, lissée sur tau, dépasse la médiane du chœur d'au moins la moitié de son écart. Renvoie le contexte
+    interne c (N) sur cette région (Rloc lissé, normalisé), None si rien ne se détache. Met st['dream_center'].
+    """
+    r = np.asarray(rloc, dtype=float)
+    if st.get('rloc_bar') is None or len(st['rloc_bar']) != len(r):
+        st['rloc_bar'] = r.copy()
+    else:
+        k = min(1.0, dt / max(float(tau), dt)); st['rloc_bar'] = st['rloc_bar'] + k * (r - st['rloc_bar'])
+    rb = st['rloc_bar']; med = float(np.median(rb)); spread = float(np.std(rb))
+    # retenir un motif le temps qu'il s'installe (Andréa, 26/09) : la région choisie est tenue `dwell` u.t.
+    if dwell > 0 and st.get('hold_comp') is not None and float(t) < float(st.get('hold_until', -np.inf)):
+        comp = st['hold_comp']; c = np.zeros(len(r))
+        c[comp] = np.clip((rb[comp] - med) / max(float(rb[comp].max() - med), 1e-9), 0.0, 1.0) if rb[comp].max() > med else 0.3
+        st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan')
+        return c
+    st['dream_center'] = None; st['hold_comp'] = None
+    if spread <= 1e-9:
+        return None
+    on = rb > med + 0.5 * spread
+    comps = [c_ for c_ in attention_islands(on.astype(float), 0.5) if len(c_) >= int(min_size)]
+    if not comps:
+        return None
+    comp = max(comps, key=len)
+    c = np.zeros(len(r)); c[comp] = np.clip((rb[comp] - med) / max(float(rb[comp].max() - med), 1e-9), 0.0, 1.0)
+    st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan')
+    if dwell > 0:
+        st['hold_comp'] = comp; st['hold_until'] = float(t) + float(dwell)
     return c
 
 
