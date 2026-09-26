@@ -3,7 +3,7 @@
 *25/09/2026, soir. Ce qu'Andréa vit et ce que le système ne fait pas encore. Rien n'est
 construit ; l'ordre est celui dans lequel elle les a posées. À reprendre la tête reposée.*
 
-## 1. Le soutien dans un moment difficile
+## 1. Le soutien dans un moment difficile *(fait le 26/09 : `ATTENTION_soutien.md`, mode `soulagement`, à décider)*
 
 Aujourd'hui m lit le **niveau** du bien-être pendant la présence : ce qui était là quand ça
 allait mal est terni. Or un soutien arrivé en plein effort est chéri, pas terni. Ce qu'il a de
