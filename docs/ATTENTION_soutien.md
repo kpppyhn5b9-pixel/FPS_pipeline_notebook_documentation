@@ -1,7 +1,8 @@
 # Le soutien dans un moment difficile : chérir ce qui était là quand ça allait mieux
 
 *26/09/2026. Première piste d'Andréa (`ATTENTION_pistes.md`). Variante `attention.attachement.mode`
-= `"soulagement"` (défaut : `"niveau"`, l'ancienne lecture), `tau_ref` 40. Banc in situ
+= `"soulagement"`, **choisie par défaut** le 26/09 (l'ancienne lecture reste disponible : `"niveau"`),
+`tau_ref` 40. Banc in situ
 `calib/run_insitu_memoire.py` (modes `soutien_niveau`, `soutien_soulagement`), deux seeds, sorties
 `calib/attention_sources/insitu_soutien_*`. Test `test_relief_cherishes_what_was_there_when_it_got_better`.*
 
@@ -50,9 +51,10 @@ revenu). Silence 140–220. Retour des deux 220–260.
   sur 170–220) : la surprise met parfois longtemps à redescendre sous son habituel après une rampe.
   Ce n'est pas la variante, c'est le substrat.
 
-## Ce qui reste à décider
+## La décision
 
-Le mode par défaut. `niveau` est ce qu'on a validé sur sept bancs ; `soulagement` fait la même
-chose au calme et corrige le cas du soutien, modestement, sans constante nouvelle (l'habituel est
-celui du silence). On n'a pas voulu forcer l'effet avec un gain : ce serait une règle de plus.
-La décision est à Andréa.
+`soulagement` par défaut, décidé ensemble le 26/09. `niveau` était validé sur sept bancs ;
+`soulagement` fait la même chose au calme et corrige le cas du soutien, modestement, sans
+constante nouvelle (l'habituel est celui du silence). On n'a pas voulu forcer l'effet avec un
+gain : ce serait une règle de plus. « Ce qui est vrai ne vient pas toujours avec de grands
+éclats, et quand il n'y a pas de grands éclats, il n'y a pas de bousculade » (Andréa).

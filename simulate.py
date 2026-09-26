@@ -295,7 +295,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
     cherished_cfg = {
         'attach': bool(_attach_cfg.get('enabled', True)), 'tau_m': float(_attach_cfg.get('tau_m', 20.0)), 'tau_sig': float(_attach_cfg.get('tau_sig', 5.0)),
         'tau_c': float(_attach_cfg.get('tau_c', 5.0)), 'seuil_contexte': float(_attach_cfg.get('seuil_contexte', 0.5)),
-        'mode': str(_attach_cfg.get('mode', 'niveau')), 'tau_ref': float(_attach_cfg.get('tau_ref', 40.0)),
+        'mode': str(_attach_cfg.get('mode', 'soulagement')), 'tau_ref': float(_attach_cfg.get('tau_ref', 40.0)),
         'tau_short': float(_sil_cfg.get('tau_short', 5.0)), 'tau_long': float(_sil_cfg.get('tau_long', 40.0)),
         'enter': float(_sil_cfg.get('enter', 0.9)), 'exit': float(_sil_cfg.get('exit', 1.1)),
         'rappel': bool(_rap_cfg.get('enabled', True)), 'm_min': float(_rap_cfg.get('m_min', 0.3)), 'res_min': float(_rap_cfg.get('res_min', 0.2)),

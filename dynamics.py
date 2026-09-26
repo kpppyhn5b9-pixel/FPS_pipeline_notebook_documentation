@@ -1744,7 +1744,7 @@ def cherished_target(w: float, w_ref: Optional[float], mode: str = 'niveau') -> 
 
 
 def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt: float, tau_m: float,
-                     tau_sig: float, mode: str = 'niveau') -> None:
+                     tau_sig: float, mode: str = 'soulagement') -> None:
     """L'attachement : sur les strates du contexte qui reste (`on`), mₙ → cible(w) (τ_m) et sigₙ → g (τ_sig)."""
     if w is None or not np.isfinite(w):
         return
