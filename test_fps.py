@@ -1223,6 +1223,21 @@ class TestCherishedMemory(unittest.TestCase):
         dynamics.cherished_attach(st, np.zeros(20, dtype=bool), 0.9, 0.1, 20.0, 5.0)  # sans contexte : rien ne bouge
         self.assertLess(st['m'][6], 0.15)
 
+    def test_relief_cherishes_what_was_there_when_it_got_better(self):
+        # niveau : la cible est w ; soulagement : w + (w − habituel), bornée
+        self.assertEqual(dynamics.cherished_target(0.5, 0.1, 'niveau'), 0.5)
+        self.assertAlmostEqual(dynamics.cherished_target(0.5, 0.1, 'soulagement'), 0.9)   # ça allait mal, ça va mieux : chéri
+        self.assertAlmostEqual(dynamics.cherished_target(0.5, 0.9, 'soulagement'), 0.1)   # ça allait bien, ça se dégrade : non
+        self.assertAlmostEqual(dynamics.cherished_target(0.8, 0.8, 'soulagement'), 0.8)   # le calme habituel reste chéri comme avant
+        self.assertEqual(dynamics.cherished_target(0.0, 0.0, 'soulagement'), 0.0)         # l'effort qui dure : rien
+        self.assertEqual(dynamics.cherished_target(0.5, None, 'soulagement'), 0.5)        # pas d'habituel encore : niveau
+        st = dynamics.init_cherished_state(5)
+        for _ in range(400): dynamics.cherished_wellbeing_ref(st, 0.2, 0.1, 40.0)
+        self.assertLess(st['w_ref'], 0.2 + 1e-6)
+        on = np.array([False, True, True, False, False])
+        for _ in range(400): dynamics.cherished_attach(st, on, 0.5, 0.1, 20.0, 5.0, 'soulagement')   # w_ref suit aussi ? non : figé ici, pour lire la cible
+        self.assertGreater(st['m'][1], 0.6); self.assertEqual(st['m'][0], 0.0)
+
     def test_silence_is_less_surprised_than_usual_with_hysteresis(self):
         st = dynamics.init_cherished_state(10); u = np.full(10, 1.0)
         for _ in range(800): dynamics.cherished_silence(st, u, False, 0.1)             # habitué à 1.0 : pas de silence (autant que d'habitude)

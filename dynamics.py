@@ -1683,7 +1683,7 @@ def attention_saliency_parts(In_t: np.ndarray, u_prev: Optional[np.ndarray], sal
 
 def init_cherished_state(N: int) -> Dict[str, Any]:
     """L'état de la mémoire des moments chéris : m, signatures, silence, rappel, porte."""
-    return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool),
+    return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool), 'w_ref': None,
             'u_short': None, 'u_long': None, 'quiet': False, 'ratio': float('nan'),
             'refract_until': np.full(int(N), -np.inf), 'gate': None, 'gate_center': None,
             'recall_center': None, 'recall_res': float('nan'), 'recall_comp': None}
@@ -1720,16 +1720,39 @@ def cherished_context(st: Dict[str, Any], In_t: np.ndarray, dt: float, tau_c: fl
     return st['ctx']
 
 
+def cherished_wellbeing_ref(st: Dict[str, Any], w: Optional[float], dt: float, tau_ref: float = 40.0) -> Optional[float]:
+    """Le bien-être HABITUEL : w lissé sur tau_ref, à chaque pas, contexte ou pas (comme « habituel » pour le silence)."""
+    if w is None or not np.isfinite(w):
+        return st['w_ref']
+    k = min(1.0, dt / max(float(tau_ref), dt))
+    st['w_ref'] = float(w) if st['w_ref'] is None else st['w_ref'] + k * (float(w) - st['w_ref'])
+    return st['w_ref']
+
+
+def cherished_target(w: float, w_ref: Optional[float], mode: str = 'niveau') -> float:
+    """
+    Ce vers quoi m tend pendant la présence.
+      'niveau'      : w. Ce qui était là quand j'allais bien.
+      'soulagement' : clip(w + (w − w_habituel), 0, 1). Ce qui était là quand j'allais bien, ET quand j'allais
+                      mieux que d'habitude, même si ça allait encore mal (Andréa, 25/09 : le soutien dans un moment
+                      difficile n'est pas terni par le moment). Le calme reste chéri comme avant ; ce qui accompagne
+                      une dégradation l'est moins. Toujours une association avec l'état du soi, jamais une causalité.
+    """
+    if mode == 'soulagement' and w_ref is not None:
+        return float(np.clip(float(w) + (float(w) - float(w_ref)), 0.0, 1.0))
+    return float(w)
+
+
 def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt: float, tau_m: float,
-                     tau_sig: float) -> None:
-    """L'attachement : sur les strates du contexte qui reste (`on`), mₙ → w (τ_m) et sigₙ → g (τ_sig)."""
+                     tau_sig: float, mode: str = 'niveau') -> None:
+    """L'attachement : sur les strates du contexte qui reste (`on`), mₙ → cible(w) (τ_m) et sigₙ → g (τ_sig)."""
     if w is None or not np.isfinite(w):
         return
     on = np.asarray(on, dtype=bool)
     if not on.any():
         return
     k_m = min(1.0, dt / max(float(tau_m), dt)); k_s = min(1.0, dt / max(float(tau_sig), dt))
-    st['m'][on] += k_m * (float(w) - st['m'][on])
+    st['m'][on] += k_m * (cherished_target(float(w), st.get('w_ref'), mode) - st['m'][on])
     if st['g'] is not None and np.all(np.isfinite(st['g'])):
         cur = st['sig'][on]
         fresh = np.isnan(cur).any(axis=1)

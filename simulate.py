@@ -295,6 +295,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
     cherished_cfg = {
         'attach': bool(_attach_cfg.get('enabled', True)), 'tau_m': float(_attach_cfg.get('tau_m', 20.0)), 'tau_sig': float(_attach_cfg.get('tau_sig', 5.0)),
         'tau_c': float(_attach_cfg.get('tau_c', 5.0)), 'seuil_contexte': float(_attach_cfg.get('seuil_contexte', 0.5)),
+        'mode': str(_attach_cfg.get('mode', 'niveau')), 'tau_ref': float(_attach_cfg.get('tau_ref', 40.0)),
         'tau_short': float(_sil_cfg.get('tau_short', 5.0)), 'tau_long': float(_sil_cfg.get('tau_long', 40.0)),
         'enter': float(_sil_cfg.get('enter', 0.9)), 'exit': float(_sil_cfg.get('exit', 1.1)),
         'rappel': bool(_rap_cfg.get('enabled', True)), 'm_min': float(_rap_cfg.get('m_min', 0.3)), 'res_min': float(_rap_cfg.get('res_min', 0.2)),
@@ -490,8 +491,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     cherished_cfg['external'] = bool(_ctx_on.any())                 # l'entrée désigne quelque chose qui reste
                     cherished_cfg['recalling'] = False
                     dynamics.cherished_update_state_signature(cherished_state, np.array([float(np.mean(An_t)), _sig_att]), dt, cherished_cfg['tau_sig'])
+                    dynamics.cherished_wellbeing_ref(cherished_state, cherished_cfg['w'], dt, cherished_cfg['tau_ref'])
                     if cherished_cfg['attach']:
-                        dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'])
+                        dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'])
                     _quiet = dynamics.cherished_silence(cherished_state, memory_state.get('surprise'), cherished_cfg['external'], dt,
                                                         cherished_cfg['tau_short'], cherished_cfg['tau_long'], cherished_cfg['enter'], cherished_cfg['exit'])
                     # l'état du rappel, journalisé (colonne attention_rappel_etat) : 0 désactivé · 1 l'extérieur parle ·

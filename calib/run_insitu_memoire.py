@@ -14,7 +14,7 @@ dynamics ni simulate.
              à rien → le plus chéri). Attendu : le présent choisit, puis le plus chéri.
   douleur  : comme chéri, mais en silence (180–260) un bruit porté par la zone 20 (σ 1.5) :
              se souvenir du 20 fait mal. porte / sans_porte (rappel.porte.enabled).
-usage: python run_insitu_memoire.py <cheri|temoin|present|douleur_porte|douleur_sans_porte|bref|forme|meme_lieu|contigus|all> [seed] [N]
+usage: python run_insitu_memoire.py <cheri|temoin|present|douleur_porte|douleur_sans_porte|bref|forme|meme_lieu|contigus|soutien_niveau|soutien_soulagement|all> [seed] [N]
 """
 import sys, os, io, json, contextlib, shutil, tempfile, numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, ROOT)
@@ -38,6 +38,13 @@ MODES = {
     'meme_lieu': dict(T=300, foyers=[foyer(20, 60, 120), foyer(20, 150, 210)], noise=[(150.0, 210.0, 0.6, None)]),
     # contigus : deux lieux chéris voisins, 20 (60–120) puis 32 (120–180), au calme ; silence 180–260 : rappelés ensemble ?
     'contigus': dict(T=300, foyers=[foyer(20, 60, 120), foyer(32, 120, 180)], noise=[]),
+    # ---- la première piste d'Andréa (26/09) : le soutien dans un moment difficile ----
+    # effort global 60–140 (σ 0.6 puis rampe 0.6 → 0 de 100 à 140) ; 80 présent pendant que l'effort s'installe (60–100),
+    # 20 présent pendant qu'il s'apaise (100–140, il part quand le calme est revenu) ; silence 140–220 ; retour des deux 220–260.
+    # niveau : m lit w (le 20 comme le 80 ont vécu l'effort : ni l'un ni l'autre chéri) ;
+    # soulagement : m lit w + (w − habituel) : le 20 a accompagné le mieux, le 80 le pire.
+    'soutien_niveau':      dict(T=260, foyers=[foyer(80, 60, 100), foyer(20, 100, 140), foyer(20, 220, 260), foyer(80, 220, 260)], noise=[(60.0, 100.0, 0.6, None), (100.0, 140.0, (0.6, 0.0), None)], mode='niveau'),
+    'soutien_soulagement': dict(T=260, foyers=[foyer(80, 60, 100), foyer(20, 100, 140), foyer(20, 220, 260), foyer(80, 220, 260)], noise=[(60.0, 100.0, 0.6, None), (100.0, 140.0, (0.6, 0.0), None)], mode='soulagement'),
 }
 ETATS = {0: 'désactivé', 1: 'extérieur', 2: 'pas de silence', 3: 'rien de chéri', 4: 'réfractaire', 5: 'porte', 6: 'rappel'}
 WIN = {
@@ -45,24 +52,27 @@ WIN = {
     'forme':     [(100, 120, '20 présent en PLATEAU'), (200, 230, 'silence'), (230, 260, 'silence'), (260, 300, 'les deux reviennent')],
     'meme_lieu': [(100, 120, '20 présent, calme'), (150, 170, '20 présent, bruit'), (190, 210, ''), (210, 240, 'silence'), (240, 290, 'silence')],
     'contigus':  [(100, 120, '20 présent'), (160, 180, '32 présent'), (180, 220, 'silence'), (220, 260, 'silence')],
+    'soutien':   [(60, 100, '80 présent, l’effort s’installe'), (100, 120, '20 présent, l’effort s’apaise'), (120, 140, ''), (140, 170, 'silence'), (170, 220, 'silence'), (220, 260, 'les deux reviennent')],
     'cheri':   [(100, 120, '20 présent, calme'), (160, 180, '80 présent, bruit'), (180, 200, 'silence'), (200, 230, 'silence'), (230, 260, 'silence'), (260, 280, 'les deux reviennent'), (280, 300, '')],
     'present': [(60, 120, '20 présent, +0.5'), (120, 145, '80 présent, −0.3'), (145, 220, 'silence −0.3 : comme le 80'), (220, 300, 'silence +0.5 : comme le 20'), (300, 380, 'silence −1.0 : comme rien')],
     'douleur': [(100, 120, '20 présent'), (180, 200, 'silence, la zone 20 fait mal'), (200, 220, ''), (220, 240, ''), (240, 260, ''), (260, 300, '80 revient')],
 }
 
 
-def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=()):
+def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), mode=None):
     cfg = json.load(open(os.path.join(ROOT, 'config.json')))
     cfg['system']['N'] = N; cfg['system']['T'] = T; cfg['system']['seed'] = seed
     cfg['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
     cfg['analysis'] = {**cfg.get('analysis', {}), 'compare_kuramoto': False}
     cfg['context'] = {'foyers': foyers}
     cfg['attention']['attachement']['enabled'] = attach; cfg['attention']['rappel']['porte']['enabled'] = porte
+    if mode is not None: cfg['attention']['attachement']['mode'] = mode
     rng = np.random.default_rng(seed + 99); _in0 = perturbations.compute_In
     def patched(t, c, state=None, history=None, dt=0.05, _o=_in0):
         base = _o(t, c, state, history, dt); v = np.full(N, float(base))
         for (t0, t1, sd, zc) in noise:
             if t0 <= t < t1:
+                if isinstance(sd, tuple): sd = sd[0] + (sd[1] - sd[0]) * (t - t0) / max(t1 - t0, 1e-9)   # rampe
                 nz = rng.normal(0.0, sd, N)
                 if zc is not None: nz = nz * np.exp(-0.5 * ((np.arange(N) - zc) / 6.0) ** 2)
                 v = v + nz
@@ -112,7 +122,7 @@ if __name__ == '__main__':
     which = sys.argv[1]; seed = int(sys.argv[2]) if len(sys.argv) > 2 else 12345; N = int(sys.argv[3]) if len(sys.argv) > 3 else 100
     for nm in (list(MODES) if which == 'all' else [which]):
         kw = dict(MODES[nm]); d = run(nm, seed, N, **kw)
-        key = nm if nm in WIN else ('douleur' if nm.startswith('douleur') else 'cheri')
+        key = nm if nm in WIN else ('douleur' if nm.startswith('douleur') else ('soutien' if nm.startswith('soutien') else 'cheri'))
         read(d, f"{nm} s{seed}", WIN[key], zones=((20, 32) if nm == 'contigus' else (20, 80)))
         if nm == 'bref':                                                   # le délai de reconnaissance de l'extérieur, au pas près
             t = d['t']; N = d['O'].shape[1]; zb = zone(N, 80); s80 = d['s'][:, zb].mean(1); e = d['etat']
