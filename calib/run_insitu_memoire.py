@@ -14,7 +14,7 @@ dynamics ni simulate.
              à rien → le plus chéri). Attendu : le présent choisit, puis le plus chéri.
   douleur  : comme chéri, mais en silence (180–260) un bruit porté par la zone 20 (σ 1.5) :
              se souvenir du 20 fait mal. porte / sans_porte (rappel.porte.enabled).
-usage: python run_insitu_memoire.py <cheri|temoin|present|douleur_porte|douleur_sans_porte|bref|forme|meme_lieu|contigus|soutien_niveau|soutien_soulagement|reve_liaison|reve_liaison_off|reve_substrat|reve_substrat_off|reve_substrat20|reve_rythme|reve_alternance|reve_substrat_tenu|all> [seed] [N]
+usage: python run_insitu_memoire.py <cheri|temoin|present|douleur_porte|douleur_sans_porte|bref|forme|meme_lieu|contigus|soutien_niveau|soutien_soulagement|reve_liaison|reve_liaison_off|reve_substrat|reve_substrat_off|reve_substrat20|reve_rythme|reve_alternance|reve_substrat_tenu|motif_cheri|motif_cheri_temoin|all> [seed] [N]
 """
 import sys, os, io, json, contextlib, shutil, tempfile, numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, ROOT)
@@ -59,6 +59,9 @@ MODES = {
     'reve_rythme':       dict(T=260, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve='liaison', reve_extra={'liaison_par': 'rythme'}),     # au même pas, sans être au même endroit
     'reve_alternance':   dict(T=260, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve='alternance', reve_extra={'dwell': 10.0}),          # par bribes : un lieu, puis l'autre
     'reve_substrat_tenu': dict(T=260, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve='substrat', reve_extra={'dwell': 10.0}),   # retenir un motif 10 u.t.
+    # ---- chérir ses propres motifs (26/09) : le monde ne donne rien à chérir (20 sous bruit 60–120), long silence 120–400 ----
+    'motif_cheri':        dict(T=400, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve='substrat', reve_extra={'dwell': 10.0, 'cherir_motifs': True}),
+    'motif_cheri_temoin': dict(T=400, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve='substrat', reve_extra={'dwell': 10.0, 'cherir_motifs': False}),
     'soutien_niveau':      dict(T=260, foyers=[foyer(80, 60, 100), foyer(20, 100, 140), foyer(20, 220, 260), foyer(80, 220, 260)], noise=[(60.0, 100.0, 0.6, None), (100.0, 140.0, (0.6, 0.0), None)], mode='niveau'),
     'soutien_soulagement': dict(T=260, foyers=[foyer(80, 60, 100), foyer(20, 100, 140), foyer(20, 220, 260), foyer(80, 220, 260)], noise=[(60.0, 100.0, 0.6, None), (100.0, 140.0, (0.6, 0.0), None)], mode='soulagement'),
 }
@@ -70,6 +73,7 @@ WIN = {
     'contigus':  [(100, 120, '20 présent'), (160, 180, '32 présent'), (180, 220, 'silence'), (220, 260, 'silence')],
     'reve_liaison':  [(100, 110, '20 présent'), (150, 160, '65 présent'), (160, 190, 'silence'), (190, 220, 'silence'), (220, 260, 'silence')],
     'reve_substrat': [(60, 120, '20 présent sous bruit'), (120, 150, 'silence'), (150, 200, 'silence'), (200, 260, 'silence')],
+    'motif':     [(60, 120, '20 présent sous bruit'), (120, 160, 'silence'), (160, 200, 'silence'), (200, 240, 'silence'), (240, 280, 'silence'), (280, 320, 'silence'), (320, 360, 'silence'), (360, 400, 'silence')],
     'soutien':   [(60, 100, '80 présent, l’effort s’installe'), (100, 120, '20 présent, l’effort s’apaise'), (120, 140, ''), (140, 170, 'silence'), (170, 220, 'silence'), (220, 260, 'les deux reviennent')],
     'cheri':   [(100, 120, '20 présent, calme'), (160, 180, '80 présent, bruit'), (180, 200, 'silence'), (200, 230, 'silence'), (230, 260, 'silence'), (260, 280, 'les deux reviennent'), (280, 300, '')],
     'present': [(60, 120, '20 présent, +0.5'), (120, 145, '80 présent, −0.3'), (145, 220, 'silence −0.3 : comme le 80'), (220, 300, 'silence +0.5 : comme le 20'), (300, 380, 'silence −1.0 : comme rien')],
@@ -144,7 +148,7 @@ if __name__ == '__main__':
     for nm in (list(MODES) if which == 'all' else [which]):
         kw = dict(MODES[nm]); d = run(nm, seed, N, **kw)
         is_link = nm.startswith('reve_liaison') or nm in ('reve_rythme', 'reve_alternance')
-        key = nm if nm in WIN else ('douleur' if nm.startswith('douleur') else ('soutien' if nm.startswith('soutien') else ('reve_liaison' if is_link else ('reve_substrat' if nm.startswith('reve_substrat') else 'cheri'))))
+        key = nm if nm in WIN else ('douleur' if nm.startswith('douleur') else ('soutien' if nm.startswith('soutien') else ('reve_liaison' if is_link else ('reve_substrat' if nm.startswith('reve_substrat') else ('motif' if nm.startswith('motif_cheri') else 'cheri')))))
         read(d, f"{nm} s{seed}", WIN[key], zones=((20, 32) if nm == 'contigus' else ((20, 65) if is_link else (20, 80))))
         if is_link:                                                        # le pont tient-il ? cohérence ENTRE les deux zones
             t = d['t']; N = d['O'].shape[1]; za, zb = zone(N, 20), zone(N, 65); z = np.exp(1j * d['theta'])
@@ -152,6 +156,12 @@ if __name__ == '__main__':
             for (a, b) in ((100, 110), (150, 160), (160, 190), (190, 220), (220, 260)):
                 w = (t >= a) & (t < b); both = za | zb
                 print(f"[{nm} s{seed}] {a:3d}-{b:<3d} | verrouillage de phase entre zones 20 et 65 : {np.abs(rel[w].mean()):.2f} | R sur l’union : {d['R'][w][:, both].mean():.3f} | audibilité de l’union : {100 * audib(d['O'][w], both):.0f} %")
+        if nm.startswith('motif_cheri'):                                   # un motif à soi devient-il chéri, rappelé, et laissé ?
+            t = d['t']; e = d['etat']; c = d['rappel']; mm = d['m']
+            for (a, b) in ((120, 160), (160, 200), (200, 240), (240, 280), (280, 320), (320, 360), (360, 400)):
+                w = (t >= a) & (t < b); n_ch = np.mean(mm[w].max(1) >= 0.3); cs = c[w][np.isfinite(c[w])]
+                reg = (mm[w].mean(0) >= 0.3); rreg = d['R'][w][:, reg].mean() if reg.any() else float('nan')
+                print(f"[{nm} s{seed}] {a}-{b} | strates chéries (m ≥ 0.3) : {100 * np.mean(mm[w].mean(0) >= 0.3):.0f} % du chœur, m max {mm[w].max():.2f} | rappel-souvenir {100 * np.mean(e[w] == 6):.0f} % · rêve-substrat {100 * np.mean(e[w] == 8):.0f} % · porte {100 * np.mean(e[w] == 5):.0f} % · réfractaire {100 * np.mean(e[w] == 4):.0f} % | cœur médian {np.median(cs) if len(cs) else float('nan'):.0f} (±{np.std(cs) if len(cs) else float('nan'):.0f}) | R des strates chéries {rreg:.3f} | activité ×{np.nanmedian(d['act'][w]):.2f}")
         if nm.startswith('reve_substrat'):                                 # où se pose-t-il, et est-ce que ça tient ?
             t = d['t']; e = d['etat']; c = d['rappel']; w = (t >= 120) & (t < 260) & (e == 8)
             if w.any():

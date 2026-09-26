@@ -330,7 +330,7 @@
     "silence": {"tau_short": 5.0, "tau_long": 40.0, "enter": 0.9, "exit": 1.1},
     "rappel": {"enabled": true, "m_min": 0.3, "res_min": 0.2, "sig_width": [0.2, 0.1],
                "porte": {"enabled": true, "tau": 5.0, "floor": 0.5, "refractory": 30.0}},
-    "reve": {"mode": "off", "liaison_par": "phase", "dwell": 10.0, "tau_substrat": 5.0, "min_size": 3}
+    "reve": {"mode": "off", "liaison_par": "phase", "dwell": 10.0, "tau_substrat": 5.0, "min_size": 3, "cherir_motifs": false}
   },
   "context": {
     "foyers": []

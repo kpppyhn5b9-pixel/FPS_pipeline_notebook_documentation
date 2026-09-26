@@ -30,6 +30,8 @@ sur les bords (`ATTENTION_enquetes_gepetto.md`) est déjà un indice de traces m
 Piste : deux vitesses pour m, comme pour la mémoire de soi (courte et longue), la longue
 gardant ce qui a été fort ou premier, la courte ce qui est récent ; le rappel lit les deux.
 
+## 4. Chérir ses propres motifs *(essayé le 26/09, `ATTENTION_rever.md` : bénéfice réel, dérive nette (monopole du premier motif au seuil) ; éteint ; deux pistes à décider)*
+
 ## Notées en passant
 
 - La porte lit la disponibilité générale (w global) et non le coût de ce souvenir-là ; une

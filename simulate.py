@@ -301,6 +301,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
         'reve': str(_atcfg.get('reve', {}).get('mode', 'off')), 'reve_tau': float(_atcfg.get('reve', {}).get('tau_substrat', 5.0)),
         'reve_min_size': int(_atcfg.get('reve', {}).get('min_size', 3)), 'dreaming': 0,
         'reve_dwell': float(_atcfg.get('reve', {}).get('dwell', 10.0)), 'reve_liaison_par': str(_atcfg.get('reve', {}).get('liaison_par', 'phase')),
+        # chérir ses propres motifs (26/09, Andréa : « qu'il se considère même dans ce qui est déconnecté de l'extérieur ») :
+        # pendant qu'un motif du substrat est TENU, m et la signature s'apprennent sur ses strates comme pour une présence
+        # venue du monde (même bien-être, même association) ; jamais pendant un rappel (le rappel ne réécrit pas m).
+        'cherir_motifs': bool(_atcfg.get('reve', {}).get('cherir_motifs', False)),
         'tau_short': float(_sil_cfg.get('tau_short', 5.0)), 'tau_long': float(_sil_cfg.get('tau_long', 40.0)),
         'enter': float(_sil_cfg.get('enter', 0.9)), 'exit': float(_sil_cfg.get('exit', 1.1)),
         'rappel': bool(_rap_cfg.get('enabled', True)), 'm_min': float(_rap_cfg.get('m_min', 0.3)), 'res_min': float(_rap_cfg.get('res_min', 0.2)),
@@ -522,7 +526,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
                         if _c_int is None and cherished_cfg['reve'] in ('substrat', 'les_deux'):
                             _c_int = dynamics.cherished_dream_substrate(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'], cherished_cfg['reve_min_size'], t, cherished_cfg['reve_dwell'])
-                            if _c_int is not None: cherished_cfg['dreaming'] = 2                  # le substrat
+                            if _c_int is not None:
+                                cherished_cfg['dreaming'] = 2                                     # le substrat
+                                if cherished_cfg['cherir_motifs'] and cherished_state.get('recall_comp') is not None:
+                                    _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
+                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'])
                         if _c_int is None:
                             cherished_cfg['etat'] = 4 if bool(np.any(cherished_state['m'] >= cherished_cfg['m_min'])) else 3
                         elif cherished_cfg['porte'] and dynamics.cherished_gate(cherished_state, cherished_cfg['w'], t, dt, cherished_cfg['porte_tau'], cherished_cfg['porte_floor'], cherished_cfg['porte_refractory']):

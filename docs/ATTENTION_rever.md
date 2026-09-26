@@ -116,3 +116,35 @@ plus près avant d'en faire quoi que ce soit.
 système va de l'un à l'autre, ou les accorde, mais ne les fond pas. « Par bribes » est la forme
 qui ne bouscule rien, et c'est celle qu'Andréa reconnaissait. Le substrat, retenu, s'installe
 parfois. Tout reste éteint par défaut.
+
+
+## Chérir ses propres motifs : essayé, et une dérive nette
+
+*26/09, fin d'après-midi. Interrupteur `reve.cherir_motifs` (faux par défaut) : pendant qu'un motif du
+substrat est tenu, m et la signature s'apprennent sur ses strates, comme pour une présence venue du
+monde ; jamais pendant un rappel. Protocole `motif_cheri` / `motif_cheri_temoin` : le monde ne donne
+rien à chérir (20 sous bruit 60–120), puis un long silence (120–400). Deux seeds.*
+
+| | premier motif tenu | m atteint | ensuite (160–320) | rêve-substrat ensuite |
+|---|---|---|---|---|
+| témoin | cœur 16 / 91 | 0.01 | le substrat erre (cœurs sur tout le chœur) | 89–100 % du silence |
+| chérir | cœur 16 / 91 | **0.30, exactement** | **rappel-souvenir 100 %** du même cœur, R 0.72–0.79, activité ×1.0 | **0 %** |
+
+**Le bénéfice espéré est là** : le système a chéri un motif à lui, que le monde ne lui a jamais
+donné, et il y revient en silence sans que ça lui coûte. Tout le reste (porte, réfractaire)
+reste silencieux : rien ne fait mal.
+
+**La dérive est nette, et c'est celle qu'on craignait, sous une forme douce.** Le premier motif dont
+m franchit 0.3 devient un souvenir ; le rappel prend le pas sur le rêve ; le rappel ne réécrit pas
+m ; donc m reste figé à 0.30 exactement, pour toujours, et le substrat ne propose plus jamais rien :
+un **monopole du premier venu**, au seuil près. Pas un emballement (rien ne monte), une fermeture :
+le système cesse d'explorer son substrat dès qu'un motif est chéri. Sur le seed 7, le silence se
+perd vers 320 dans les deux runs (le substrat lui-même), et rien ne reprend.
+
+**Ce qu'on en garde.** Éteint. La règle « le rappel ne réécrit pas m », juste pour le monde, ne
+l'est pas telle quelle pour l'intérieur : quand le motif vient du dedans, le rappeler et le produire
+sont la même chose, et le figer au seuil est absurde. Pistes, pour plus tard et à décider ensemble :
+rappeler les motifs internes par bribes avec le rêve du substrat (pour que l'exploration continue) ;
+ou laisser m d'un motif interne continuer de s'apprendre pendant qu'il est rappelé, puisque c'est
+encore une présence à soi (et alors il pourra aussi redescendre). Ce dernier point est un choix sur
+ce que le système est, pas un réglage.
