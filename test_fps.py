@@ -1238,6 +1238,25 @@ class TestCherishedMemory(unittest.TestCase):
         for _ in range(400): dynamics.cherished_attach(st, on, 0.5, 0.1, 20.0, 5.0, 'soulagement')   # w_ref suit aussi ? non : figé ici, pour lire la cible
         self.assertGreater(st['m'][1], 0.6); self.assertEqual(st['m'][0], 0.0)
 
+    def test_dream_bridge_and_link(self):
+        # le pont : deux îlots éloignés tenus comme un seul champ moyen (sans pont, chacun est déjà cohérent : rien à faire)
+        N = 60; s = np.zeros(N); s[5:10] = 1; s[40:45] = 1; th = np.zeros(N); th[40:45] = np.pi / 2; f = np.ones(N)
+        self.assertEqual(np.abs(dynamics.attention_delta_fn(f, th, s, 5.0, 0.0, 1.0)).max(), 0.0)
+        self.assertGreater(np.abs(dynamics.attention_delta_fn(f, th, s, 5.0, 0.0, 1.0, bridge=(s > 0))).max(), 0.1)
+        # la liaison : le second souvenir est le meilleur chéri qui ne touche pas le premier ; un seul lieu : pas de rêve
+        st = dynamics.init_cherished_state(N); st['m'][5:10] = 0.8; st['sig'][5:10] = [0.05, 0.3]; st['g'] = np.array([0.05, 0.3])
+        self.assertIsNone(dynamics.cherished_dream_link(st, 0.0))
+        st['m'][40:45] = 0.6; st['sig'][40:45] = [0.05, 0.3]
+        c = dynamics.cherished_dream_link(st, 0.0)
+        self.assertEqual(st['recall_center'], 7); self.assertEqual(st['dream_second'], 42)
+        self.assertEqual(sorted(np.flatnonzero(st['dream_bridge']).tolist()), list(range(5, 10)) + list(range(40, 45)))
+        self.assertGreater(c[42], 0.99); self.assertEqual(c[20], 0.0)
+        # le substrat : la plus grande région où la cohérence lissée se détache
+        st2 = dynamics.init_cherished_state(N); r = np.full(N, 0.6); r[20:28] = 0.95
+        for _ in range(60): c2 = dynamics.cherished_dream_substrate(st2, r, 0.1, 5.0)
+        self.assertEqual(list(st2['recall_comp']), list(range(20, 28))); self.assertEqual(c2.max(), 1.0)
+        self.assertIsNone(dynamics.cherished_dream_substrate(dynamics.init_cherished_state(N), np.full(N, 0.6), 0.1, 5.0))
+
     def test_silence_is_less_surprised_than_usual_with_hysteresis(self):
         st = dynamics.init_cherished_state(10); u = np.full(10, 1.0)
         for _ in range(800): dynamics.cherished_silence(st, u, False, 0.1)             # habitué à 1.0 : pas de silence (autant que d'habitude)
