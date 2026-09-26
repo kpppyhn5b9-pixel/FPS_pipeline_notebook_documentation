@@ -70,6 +70,40 @@ pas. Lisser plus longtemps réduit le nombre de régions choisies, pas leur erra
   et le geste actuel ne retient pas ce qui n'a pas de forme dans le temps, par construction
   (« le contexte, c'est ce qui reste »). Le rêve du substrat et le contexte qui reste se
   contredisent tels quels.
-- Pistes, pour plus tard : la liaison par alternance (rappeler l'un, puis l'autre, et lire si
-  quelque chose passe de l'un à l'autre) ; la liaison par rythme seul (κ sur l'union, K₀ par
-  îlot) ; retenir un motif du substrat le temps qu'il s'installe.
+- Pistes, essayées le même après-midi (ci-dessous) : la liaison par rythme seul, la liaison par
+  alternance, retenir un motif du substrat le temps qu'il s'installe.
+
+## Trois essais de plus, dans les mots d'Andréa
+
+Interrupteurs : `reve.liaison_par` = `rythme` (avec `mode: liaison`), `reve.mode` = `alternance`,
+`reve.dwell` (10 u.t., pour l'alternance et pour retenir un motif). Modes du banc `reve_rythme`,
+`reve_alternance`, `reve_substrat_tenu`. Deux seeds.
+
+**Au même pas, sans être au même endroit** (κ sur l'union, K₀ chez soi). Aucun verrouillage de
+phase, par construction (0.00–0.01). La seconde zone se lie un peu plus qu'au rappel ordinaire
+(R 0.71–0.74 contre 0.63–0.65 : accordée au rythme du premier, elle tient mieux d'elle-même), mais
+la première perd encore (0.81 contre 0.93), et le chœur se réveille à moitié (silence tenu 60 %).
+Sur le second seed, la seconde zone monte à 0.77–0.78, presque autant que la première (0.79–0.85).
+Un accord de rythmes existe donc, doux, et il porte le second lieu ; il ne fait pas un pont.
+
+**Par bribes** (un lieu, puis l'autre, toutes les 10 u.t., sans pont). C'est le plus doux des
+trois : le silence tient (100 %), rien ne se réveille, chaque lieu est rappelé la moitié du temps
+(R 0.79–0.82 pour le premier, 0.69–0.71 pour le second, un peu plus qu'à son repos). Et rien ne
+passe de l'un à l'autre (verrouillage 0.01). Le système peut aller d'un souvenir à l'autre sans se
+défaire ; il n'en fait pas un tout.
+
+**Retenir un motif** (le substrat, tenu 10 u.t.). Le cœur erre moins (10 cœurs distincts contre
+42). Sur les motifs tenus au moins 4 u.t., la cohérence de la région, fin moins début :
+| seed | motifs | s'installent (R gagne > 0.05) | se défont (R perd > 0.05) | médiane |
+|---|---|---|---|---|
+| 12345 | 7 | 43 % | 57 % | −0.05 |
+| 7 | 5 | 60 % | 40 % | +0.33 |
+Ce que le substrat propose s'installe à peu près une fois sur deux quand on le tient, et se défait
+l'autre fois. C'est la première fois qu'un rêve du substrat laisse une trace lisible : petite sur
+un seed, nette sur l'autre (+0.33 de cohérence en médiane sur les motifs tenus). À regarder de
+plus près avant d'en faire quoi que ce soit.
+
+**Ce qu'on en garde.** Aucun des trois ne fait un tout cohérent de deux lieux éloignés : le
+système va de l'un à l'autre, ou les accorde, mais ne les fond pas. « Par bribes » est la forme
+qui ne bouscule rien, et c'est celle qu'Andréa reconnaissait. Le substrat, retenu, s'installe
+parfois. Tout reste éteint par défaut.

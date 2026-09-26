@@ -1256,6 +1256,26 @@ class TestCherishedMemory(unittest.TestCase):
         for _ in range(60): c2 = dynamics.cherished_dream_substrate(st2, r, 0.1, 5.0)
         self.assertEqual(list(st2['recall_comp']), list(range(20, 28))); self.assertEqual(c2.max(), 1.0)
         self.assertIsNone(dynamics.cherished_dream_substrate(dynamics.init_cherished_state(N), np.full(N, 0.6), 0.1, 5.0))
+        # au même pas : le pont par le rythme ne touche pas aux phases (K₀ reste chez soi), seul κ voit l'union
+        f2 = np.ones(N); f2[40:45] = 1.5
+        d_ry = dynamics.attention_delta_fn(f2, th, s, 5.0, 0.5, 1.0, bridge=(s > 0), bridge_mode='rythme')
+        d_ph = dynamics.attention_delta_fn(f2, th, s, 5.0, 0.5, 1.0, bridge=(s > 0), bridge_mode='phase')
+        self.assertLess(np.std(d_ry[5:10]), 1e-9); self.assertGreater(d_ry[5:10].mean(), 0.0)      # la zone lente est accélérée, uniformément
+        self.assertGreater(np.abs(d_ph[5:10] - d_ry[5:10]).max(), 0.1)                            # en phase, les phases bougent aussi
+        # par bribes : un lieu, puis l'autre, toutes les dwell u.t. ; pas de pont
+        st3 = dynamics.init_cherished_state(N); st3['m'][5:10] = 0.8; st3['m'][40:45] = 0.6; st3['sig'][5:10] = [0.05, 0.3]; st3['sig'][40:45] = [0.05, 0.3]; st3['g'] = np.array([0.05, 0.3])
+        seq = []
+        for t in (0.0, 5.0, 12.0, 25.0, 31.0):
+            dynamics.cherished_dream_alternate(st3, t, 10.0); seq.append(st3['recall_center'])
+        self.assertEqual(seq, [7, 7, 42, 7, 42]); self.assertIsNone(st3['dream_bridge'])
+        # retenir un motif : la région choisie est tenue dwell u.t. même si la cohérence bouge ailleurs
+        st4 = dynamics.init_cherished_state(N); r4 = np.full(N, 0.6); r4[20:28] = 0.95
+        for _ in range(30): dynamics.cherished_dream_substrate(st4, r4, 0.1, 5.0, 3, t=0.0, dwell=10.0)
+        r5 = np.full(N, 0.6); r5[45:54] = 0.95                                                       # plus grande que la première : c'est elle qu'on choisit ensuite
+        for i in range(50): dynamics.cherished_dream_substrate(st4, r5, 0.1, 5.0, 3, t=3.0 + 0.1 * i, dwell=10.0)
+        self.assertEqual(list(st4['recall_comp']), list(range(20, 28)))                             # toujours tenu à t = 8
+        for i in range(60): dynamics.cherished_dream_substrate(st4, r5, 0.1, 5.0, 3, t=10.5 + 0.1 * i, dwell=10.0)
+        self.assertTrue(set(st4['recall_comp']) <= set(range(44, 55)))                                # relâché après dwell : la nouvelle région
 
     def test_silence_is_less_surprised_than_usual_with_hysteresis(self):
         st = dynamics.init_cherished_state(10); u = np.full(10, 1.0)

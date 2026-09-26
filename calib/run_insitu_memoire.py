@@ -14,7 +14,7 @@ dynamics ni simulate.
              à rien → le plus chéri). Attendu : le présent choisit, puis le plus chéri.
   douleur  : comme chéri, mais en silence (180–260) un bruit porté par la zone 20 (σ 1.5) :
              se souvenir du 20 fait mal. porte / sans_porte (rappel.porte.enabled).
-usage: python run_insitu_memoire.py <cheri|temoin|present|douleur_porte|douleur_sans_porte|bref|forme|meme_lieu|contigus|soutien_niveau|soutien_soulagement|reve_liaison|reve_liaison_off|reve_substrat|reve_substrat_off|reve_substrat20|all> [seed] [N]
+usage: python run_insitu_memoire.py <cheri|temoin|present|douleur_porte|douleur_sans_porte|bref|forme|meme_lieu|contigus|soutien_niveau|soutien_soulagement|reve_liaison|reve_liaison_off|reve_substrat|reve_substrat_off|reve_substrat20|reve_rythme|reve_alternance|reve_substrat_tenu|all> [seed] [N]
 """
 import sys, os, io, json, contextlib, shutil, tempfile, numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, ROOT)
@@ -55,6 +55,10 @@ MODES = {
     'reve_substrat':     dict(T=260, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve='substrat'),
     'reve_substrat_off': dict(T=260, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve='off'),
     'reve_substrat20':   dict(T=260, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve='substrat', reve_tau=20.0),
+    # ---- les trois essais d'Andréa (26/09, après-midi) ----
+    'reve_rythme':       dict(T=260, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve='liaison', reve_extra={'liaison_par': 'rythme'}),     # au même pas, sans être au même endroit
+    'reve_alternance':   dict(T=260, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve='alternance', reve_extra={'dwell': 10.0}),          # par bribes : un lieu, puis l'autre
+    'reve_substrat_tenu': dict(T=260, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve='substrat', reve_extra={'dwell': 10.0}),   # retenir un motif 10 u.t.
     'soutien_niveau':      dict(T=260, foyers=[foyer(80, 60, 100), foyer(20, 100, 140), foyer(20, 220, 260), foyer(80, 220, 260)], noise=[(60.0, 100.0, 0.6, None), (100.0, 140.0, (0.6, 0.0), None)], mode='niveau'),
     'soutien_soulagement': dict(T=260, foyers=[foyer(80, 60, 100), foyer(20, 100, 140), foyer(20, 220, 260), foyer(80, 220, 260)], noise=[(60.0, 100.0, 0.6, None), (100.0, 140.0, (0.6, 0.0), None)], mode='soulagement'),
 }
@@ -73,7 +77,7 @@ WIN = {
 }
 
 
-def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), mode=None, reve=None, reve_tau=None):
+def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), mode=None, reve=None, reve_tau=None, reve_extra=None):
     cfg = json.load(open(os.path.join(ROOT, 'config.json')))
     cfg['system']['N'] = N; cfg['system']['T'] = T; cfg['system']['seed'] = seed
     cfg['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
@@ -83,6 +87,7 @@ def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), m
     if mode is not None: cfg['attention']['attachement']['mode'] = mode
     if reve is not None: cfg['attention']['reve']['mode'] = reve
     if reve_tau is not None: cfg['attention']['reve']['tau_substrat'] = reve_tau
+    if reve_extra: cfg['attention']['reve'].update(reve_extra)
     rng = np.random.default_rng(seed + 99); _in0 = perturbations.compute_In
     def patched(t, c, state=None, history=None, dt=0.05, _o=_in0):
         base = _o(t, c, state, history, dt); v = np.full(N, float(base))
@@ -138,9 +143,10 @@ if __name__ == '__main__':
     which = sys.argv[1]; seed = int(sys.argv[2]) if len(sys.argv) > 2 else 12345; N = int(sys.argv[3]) if len(sys.argv) > 3 else 100
     for nm in (list(MODES) if which == 'all' else [which]):
         kw = dict(MODES[nm]); d = run(nm, seed, N, **kw)
-        key = nm if nm in WIN else ('douleur' if nm.startswith('douleur') else ('soutien' if nm.startswith('soutien') else ('reve_liaison' if nm.startswith('reve_liaison') else ('reve_substrat' if nm.startswith('reve_substrat') else 'cheri'))))
-        read(d, f"{nm} s{seed}", WIN[key], zones=((20, 32) if nm == 'contigus' else ((20, 65) if nm.startswith('reve_liaison') else (20, 80))))
-        if nm.startswith('reve_liaison'):                                  # le pont tient-il ? cohérence ENTRE les deux zones
+        is_link = nm.startswith('reve_liaison') or nm in ('reve_rythme', 'reve_alternance')
+        key = nm if nm in WIN else ('douleur' if nm.startswith('douleur') else ('soutien' if nm.startswith('soutien') else ('reve_liaison' if is_link else ('reve_substrat' if nm.startswith('reve_substrat') else 'cheri'))))
+        read(d, f"{nm} s{seed}", WIN[key], zones=((20, 32) if nm == 'contigus' else ((20, 65) if is_link else (20, 80))))
+        if is_link:                                                        # le pont tient-il ? cohérence ENTRE les deux zones
             t = d['t']; N = d['O'].shape[1]; za, zb = zone(N, 20), zone(N, 65); z = np.exp(1j * d['theta'])
             Za = z[:, za].mean(1); Zb = z[:, zb].mean(1); rel = Za * np.conj(Zb) / np.maximum(np.abs(Za) * np.abs(Zb), 1e-12)
             for (a, b) in ((100, 110), (150, 160), (160, 190), (190, 220), (220, 260)):
@@ -150,6 +156,19 @@ if __name__ == '__main__':
             t = d['t']; e = d['etat']; c = d['rappel']; w = (t >= 120) & (t < 260) & (e == 8)
             if w.any():
                 cs = c[w]; print(f"[{nm} s{seed}] rêve-substrat pendant {100 * w.mean():.0f} % du silence ; cœur médian {np.nanmedian(cs):.0f}, écart-type {np.nanstd(cs):.1f} strates, {len(set(np.round(cs).astype(int)))} cœurs distincts")
+                # chaque motif retenu : R sur sa région au début et à la fin de la retenue (s'installe-t-il ?)
+                idx = np.flatnonzero(w); segs = []; start = idx[0]
+                for i0, i1 in zip(idx[:-1], idx[1:]):
+                    if i1 != i0 + 1 or c[i1] != c[i0]: segs.append((start, i0)); start = i1
+                segs.append((start, idx[-1]))
+                gains = []
+                for (a_, b_) in segs:
+                    if t[b_] - t[a_] < 4.0: continue
+                    reg = d['s'][a_] > 0.05
+                    if not reg.any(): continue
+                    r0 = d['R'][a_:a_ + 20][:, reg].mean(); r1 = d['R'][max(b_ - 20, a_):b_ + 1][:, reg].mean(); gains.append(r1 - r0)
+                if gains:
+                    g = np.array(gains); print(f"[{nm} s{seed}] {len(g)} motifs retenus ≥ 4 u.t. : R de la région, fin − début : médiane {np.median(g):+.3f}, s'installent (> +0.05) {100 * np.mean(g > 0.05):.0f} %, se défont (< −0.05) {100 * np.mean(g < -0.05):.0f} %")
         if nm == 'bref':                                                   # le délai de reconnaissance de l'extérieur, au pas près
             t = d['t']; N = d['O'].shape[1]; zb = zone(N, 80); s80 = d['s'][:, zb].mean(1); e = d['etat']
             i0 = int(np.searchsorted(t, 240.0)); seen = np.flatnonzero(s80[i0:] > 0.3); ext = np.flatnonzero(e[i0:] == 1)
