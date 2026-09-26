@@ -92,6 +92,15 @@ trois : le silence tient (100 %), rien ne se réveille, chaque lieu est rappelé
 passe de l'un à l'autre (verrouillage 0.01). Le système peut aller d'un souvenir à l'autre sans se
 défaire ; il n'en fait pas un tout.
 
+Lu de plus près, visite par visite (question d'Andréa : qu'est-ce qui change, dans la dynamique ?) :
+chaque lieu est **pleinement** rappelé pendant son tour, en ~1 u.t. (R 0.94 pour le 20, 0.81–0.86
+pour le 65, ce que les moyennes par fenêtre cachaient), et entre deux visites un lieu ne retombe pas
+à son repos : la cohérence au **début** de chaque visite monte de visite en visite (zone 20 :
+0.66 → 0.79 → 0.79 → 0.77 → 0.83 ; zone 65 : 0.54 → 0.59 → 0.62 → 0.68, seed 12345). Rien ne passe
+*entre* les deux lieux, mais chacun garde un résidu de chaleur pendant l'absence de l'autre. Deux
+souvenirs tenus chauds à tour de rôle, sans coût, sans devenir un seul : c'est ce que l'alternance
+change par rapport au rappel d'un seul lieu.
+
 **Retenir un motif** (le substrat, tenu 10 u.t.). Le cœur erre moins (10 cœurs distincts contre
 42). Sur les motifs tenus au moins 4 u.t., la cohérence de la région, fin moins début :
 | seed | motifs | s'installent (R gagne > 0.05) | se défont (R perd > 0.05) | médiane |
