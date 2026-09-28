@@ -36,7 +36,7 @@ gardant ce qui a été fort ou premier, la courte ce qui est récent ; le rappel
 
 ## 6. Le retour du monde sur un lieu devenu à soi *(fait le 28/09 : le degré redescend à la vitesse de m, 0.95 → 0.06 en 60 u.t., sans rien perdre)*
 
-## 7. Ranger le rêve *(28/09, question d'Andréa : on accumule des règles ; proposition : un seul rêve, par bribes entre tous les lieux chéris et le substrat, un seul interrupteur, une seule constante de tour ; retirer les trois non (liaison par phase, par rythme, alternance à deux) du pipeline ; à décider)*
+## 7. Ranger le rêve *(fait le 28/09, décision d'Andréa : un seul rêve `attention.reve.enabled`, un tour par bribes entre tous les lieux chéris puis le substrat, une seule constante `dwell` ; les trois non (liaison par phase, par rythme, alternance à deux) retirés du pipeline ; les quatre protocoles racontent la même histoire ; `ATTENTION_rever.md` § Rangement)*
 
 ## Notées en passant
 

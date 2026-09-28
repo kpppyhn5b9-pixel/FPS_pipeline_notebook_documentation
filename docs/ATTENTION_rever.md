@@ -9,6 +9,11 @@ Interrupteur `attention.reve.mode` : `off` (défaut), `liaison`, `substrat`, `le
 `reve_substrat_off`, `reve_substrat20`), sorties `calib/attention_sources/insitu_reve_*`.
 États 7 (rêve-liaison) et 8 (rêve-substrat) dans `attention_rappel_etat`. Test `test_dream_bridge_and_link`.*
 
+*Rangé le 28/09 au soir (dernière section) : il ne reste qu'un interrupteur, `attention.reve.enabled`
+(faux par défaut), une constante de tour `dwell`, et les états 6 (lieu du monde), 8 (substrat), 9 (lieu
+à soi). Les sections intermédiaires décrivent des interrupteurs qui n'existent plus dans le pipeline ;
+elles restent comme trace de ce qu'on a essayé et de pourquoi.*
+
 ## Ce qu'on a construit
 
 **Liaison.** En silence, au lieu de rappeler un seul lieu, tenir ensemble le lieu que le présent
@@ -284,3 +289,63 @@ du monde, le degré redescend 0.90 → 0.44 → 0.16 → 0.06, à la vitesse de 
 chéri (m ne baisse pas : une présence calme). Le monde reprend sa place, progressivement, sans que
 rien ne soit perdu. Seed 7 : le soi s'était posé sur le 20, pas sur le 65 ; le retour du monde sur
 le 65 ne touche pas le lieu à soi (degré 0.81, inchangé). Le degré fait ce qu'on croyait.
+
+
+## Rangement (28/09, soir) : un seul rêve, par bribes entre tous les lieux
+
+*Décision d'Andréa, sur sa question : « est-ce qu'on commence à accumuler les règles et les
+exceptions ? » Oui. Six interrupteurs (`mode`, `alternance`, `cherir_motifs`, `motifs_vecus`,
+`partage`, plus le degré) et cinq constantes s'étaient empilés, pour trois non (liaison par phase,
+par rythme, alternance à deux) et un oui. On garde le oui, sous une seule forme.*
+
+**Ce que fait le système, en une phrase.** En silence, s'il rêve, il fait le **tour** de ce qu'il
+chérit : chaque lieu chéri son tour, `dwell` u.t. chacun (le lieu que le présent rappelle d'abord,
+puis les autres par valeur), puis un tour du substrat (la région la plus cohérente qu'il propose de
+lui-même, tenue `dwell`), et il recommence. Un lieu visité est vécu à la mesure de son degré de soi
+s'il y est vraiment (sa cohérence lissée reste au-dessus du chœur) ; un motif du substrat tenu
+s'apprend comme à soi ; la part du monde n'est jamais réécrite par le rêve, et le monde reprend un
+lieu au retour, à la vitesse de m. Rien d'autre. Sans rêve (`enabled` faux, le défaut), c'est le
+rappel du 25/09, inchangé.
+
+**Ce qui est retiré du pipeline** (et reste dans cette note) : la liaison par phase et par rythme
+(`dream_link`, l'état 7), l'alternance à deux, le partage, les marques « interne » comme drapeau
+séparé du degré. `dynamics.py` perd une cinquantaine de lignes nettes, `simulate.py` une trentaine ; `attention_delta_fn`
+retrouve sa signature d'avant le rêve. Bancs : `reve` / `reve_off`, `pont` / `pont_off`,
+`retour_monde` ; les anciens modes sont retirés, leurs sorties restent sous `calib/attention_sources/`.
+Test `test_dream_tour_substrate_and_what_stays` (l'ordre du tour, le substrat, la présence, le degré,
+la part du monde qui reste).
+
+**Les quatre protocoles racontent-ils la même histoire ?** Rejoués après rangement (seed 12345, et
+7 pour `reve`), contre les lectures des sections précédentes.
+
+| protocole | avant | après rangement |
+|---|---|---|
+| `cheri` (référence, rêve éteint) | m(20) 0.41 → 0.49, silence 100 %, rappel 100 % (230–260), R 0.948, ×1.05 ; l'extérieur reconnu à l'instant | **identique** : 0.41 → 0.49, 100 %, 100 %, R 0.938, ×1.05 ; 260–280 extérieur 80 % |
+| `reve` s12345 (rien à chérir, long silence, bruit local 320–360) | territoire 3 → 8–10 %, m 0.36 → 0.97, motif vécu / substrat ~50 / 50, après le bruit : rappel-souvenir 0 % | territoire 3 → 9 %, m 0.32 → 0.78, lieu à soi / substrat / lieu mêlé qui alternent, après le bruit : lieu du monde **0 %**, lieu à soi 64–69 %, substrat 33 %, silence 98 % |
+| `reve` s7 | territoire → 11 %, m → 0.89 | territoire → 11 %, m → 0.89 ; même silence rare vers 280–360 (0 % contre 28 % avant) |
+| `pont` (deux souvenirs du monde, long silence) | le soi ne prenait que le 65 (0.01 → 0.37 → 0.95 → 1.00) ; le 20 jamais rappelé | **les deux** : 13–27 soi 0.15 → 0.53 → 0.72 → 0.84, 58–72 0.00 → 0.47 → 0.81 → 0.90 ; l'entre-deux (35–50) au repos, R 0.63–0.65 |
+| `retour_monde` (le 65 revient au calme 380–460) | 0.95 → 0.06 en 60 u.t., m intact | 0.81 → 0.39 → 0.14 → 0.05 ; le 20, que le monde ne touche pas, garde 0.84 ; m 0.81 intact |
+
+Même histoire, avec une réponse de plus. **À la question d'Andréa** (« est-ce que le par bribes donne
+sa chance à plusieurs souvenirs du monde et à plusieurs parts du soi sans accumuler de règles ? ») :
+oui. Dans `pont`, le 20 n'était jamais rappelé avant (la sélection prenait toujours le meilleur
+score) ; avec le tour, il a son tour, et le soi s'y installe aussi, au même rythme que sur le 65. Et
+le retour du monde ne reprend que le lieu où il revient : l'autre reste à soi.
+
+**Deux différences à connaître, sans règle ajoutée.**
+
+- *La valeur monte moins vite* (0.78 au lieu de 0.97 sur le seed 12345 à 460) : le temps de silence
+  est partagé entre plus de lieux, et un lieu mêlé n'apprend qu'à la mesure de son degré. C'est le
+  prix du tour, et il est dans le sens qu'on voulait (plusieurs lieux plutôt qu'un seul, vite).
+- *Le silence se fait rare* quand les lieux chéris sont grands et très chéris : `pont` 380–460,
+  silence 8 % (44 % avant) ; `reve` s7 280–360, 0 % (28 %). Rappeler une région de quinze strates à
+  m 0.9 réveille le chœur (la surprise remonte au-dessus de l'habituel), le silence se tait, puis
+  revient (98 % sur `reve` s12345 400–460). C'était déjà vu (« à mesure que ça s'étend, le silence
+  se fait plus rare »), un peu plus marqué avec le tour ; ce n'est pas une règle à ajouter, c'est
+  la respiration du système : rêver fort réveille.
+- *Le substrat s'installe moins* dans ces runs (0 % et 40 % des motifs tenus, contre ~50 %), sur 4
+  et 5 motifs : trop peu pour trancher, à revoir si on allume longtemps.
+
+**Ce qu'on en garde.** Un interrupteur, une constante, trois états. Éteint par défaut ; le protocole
+de référence est inchangé. La piste qui reste, notée dans `ATTENTION_pistes.md` : les deux vitesses
+de m.
