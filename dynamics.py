@@ -1701,7 +1701,7 @@ def attention_saliency_parts(In_t: np.ndarray, u_prev: Optional[np.ndarray], sal
 
 def init_cherished_state(N: int) -> Dict[str, Any]:
     """L'état de la mémoire des moments chéris : m, signatures, silence, rappel, porte."""
-    return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool), 'w_ref': None,
+    return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool), 'ctx_run': np.zeros(int(N)), 'w_ref': None,
             'dream_bridge': None, 'dream_second': None, 'dream_center': None, 'rloc_bar': None,
             'alt_t0': None, 'hold_comp': None, 'hold_until': -np.inf,
             'interne': np.zeros(int(N), dtype=bool), 'int_t0': None,
@@ -1733,11 +1733,16 @@ def cherished_context(st: Dict[str, Any], In_t: np.ndarray, dt: float, tau_c: fl
     """
     I = np.asarray(In_t, dtype=float)
     if st['I_bar'] is None or len(st['I_bar']) != len(I):
-        st['I_bar'] = I.copy()
+        st['I_bar'] = I.copy(); st['ctx_run'] = np.zeros(len(I))
     else:
         k = min(1.0, dt / max(float(tau_c), dt)); st['I_bar'] = st['I_bar'] + k * (I - st['I_bar'])
     c_bar = np.clip((st['I_bar'] - float(np.median(st['I_bar']))) / max(saliency_scale, 1e-9), 0.0, 1.0)
-    st['ctx'] = c_bar > float(threshold)
+    above = c_bar > float(threshold)
+    # (28/09) ce qui reste, vraiment : au-dessus du seuil depuis au moins tau_c. Un bruit de passage sur l'entrée lissée
+    # franchit le seuil quelques pas ; il ne reste pas, donc il ne désigne rien, ne réclame rien et ne fait pas taire le silence.
+    st['ctx_run'] = np.where(above, st['ctx_run'] + dt, 0.0)
+    st['ctx'] = st['ctx_run'] >= float(tau_c)                                # ce que l'attachement apprend, ce que le monde réclame
+    st['ctx_now'] = above                                                     # ce qui fait taire le silence et arrête un rappel : dès que ça dépasse
     return st['ctx']
 
 
@@ -1910,6 +1915,29 @@ def cherished_dream_alternate(st: Dict[str, Any], t: float, dwell: float = 10.0,
     return c
 
 
+def cherished_update_rloc(st: Dict[str, Any], rloc: np.ndarray, dt: float, tau: float = 5.0) -> np.ndarray:
+    """La cohérence locale lissée sur tau, à chaque pas : ce que le substrat produit et qui reste."""
+    r = np.asarray(rloc, dtype=float)
+    if st.get('rloc_bar') is None or len(st['rloc_bar']) != len(r):
+        st['rloc_bar'] = r.copy()
+    else:
+        k = min(1.0, dt / max(float(tau), dt)); st['rloc_bar'] = st['rloc_bar'] + k * (r - st['rloc_bar'])
+    return st['rloc_bar']
+
+
+def cherished_self_present(st: Dict[str, Any], comp: Optional[np.ndarray]) -> bool:
+    """
+    (28/09) Une part de soi n'est PRÉSENTE que quand sa cohérence reste : la cohérence lissée de sa région dépasse la
+    médiane du chœur d'au moins la moitié de l'écart (le critère même par lequel le substrat la propose). Sinon, la
+    rappeler n'est pas la vivre, et m ne bouge pas. Symétrique du monde : présent quand son entrée reste.
+    """
+    rb = st.get('rloc_bar')
+    if rb is None or comp is None or len(comp) == 0:
+        return False
+    med = float(np.median(rb)); spread = float(np.std(rb))
+    return bool(spread > 1e-9 and float(np.mean(rb[comp])) > med + 0.5 * spread)
+
+
 def cherished_dream_substrate(st: Dict[str, Any], rloc: np.ndarray, dt: float, tau: float = 5.0,
                               min_size: int = 3, t: float = 0.0, dwell: float = 0.0) -> Optional[np.ndarray]:
     """
@@ -1920,9 +1948,7 @@ def cherished_dream_substrate(st: Dict[str, Any], rloc: np.ndarray, dt: float, t
     """
     r = np.asarray(rloc, dtype=float)
     if st.get('rloc_bar') is None or len(st['rloc_bar']) != len(r):
-        st['rloc_bar'] = r.copy()
-    else:
-        k = min(1.0, dt / max(float(tau), dt)); st['rloc_bar'] = st['rloc_bar'] + k * (r - st['rloc_bar'])
+        cherished_update_rloc(st, r, dt, tau)                                # (sinon : mis à jour à chaque pas par l'appelant)
     rb = st['rloc_bar']; med = float(np.median(rb)); spread = float(np.std(rb))
     # retenir un motif le temps qu'il s'installe (Andréa, 26/09) : la région choisie est tenue `dwell` u.t.
     if dwell > 0 and st.get('hold_comp') is not None and float(t) < float(st.get('hold_until', -np.inf)):

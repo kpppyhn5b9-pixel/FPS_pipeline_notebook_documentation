@@ -195,3 +195,52 @@ bien-être, sans coût. Plusieurs motifs deviennent chéris, pas un seul. C'est 
 pour l'intérieur, on le sait maintenant. Deux pistes avant de l'allumer : que le monde ne réclame
 un lieu que s'il y reste vraiment (plus que quelques pas au-dessus du seuil), et un banc où vivre
 un motif coûte sans faire taire le silence, pour voir enfin la valeur redescendre.
+
+
+## « Ce qui reste », appliqué au dedans (28/09, après-midi)
+
+*Un seul principe pour les deux bords trouvés le matin. Une part de soi n'est **présente** que quand sa
+cohérence lissée reste au-dessus du chœur (`cherished_self_present`, le critère même par lequel le
+substrat la propose) : tenue ou rappelée, elle ne s'apprend que si elle est présente. Le monde ne
+**réclame** un lieu (et n'y apprend) que s'il y reste au moins τ_c (`ctx_run`) ; mais il fait taire
+le silence dès que son entrée dépasse (`ctx_now`), pour que le rappel cède à l'instant. Rien d'autre.
+Ces deux points sont dans le pipeline pour tous les modes (le protocole de référence `cheri` est
+inchangé : m(20) 0.41, rappel 100 % en silence, R 0.94, l'extérieur reconnu à l'instant au retour).*
+
+**Le long silence (`motif_reste`, deux seeds), contre `motif_vecu` du matin.**
+
+| | motif_vecu (matin) | motif_reste |
+|---|---|---|
+| territoire chéri, 160 → 460 | 3 → 21 % du chœur | 3 → 8–10 % |
+| valeur du motif | 0.35 → 0.95 | 0.36 → 0.97 |
+| après le bruit local sur le motif (360–460) | **réclamé par le monde** : rappel-souvenir 66–100 %, monopole | rappel-souvenir **0 %** ; motif vécu 32–50 %, substrat 17–46 % |
+| silence tenu (160–280) | 92–100 % | 97–100 % |
+
+L'extension est contenue (le soi ne chérit que ce que son substrat produit durablement), la valeur
+monte toujours en vivant, et la couture est refermée : un bruit de passage ne fait plus réclamer un
+motif à soi par le monde. La descente de la valeur n'a toujours pas eu lieu : sous le bruit, le
+motif n'est pas vécu (le silence se tait), donc m ne bouge pas (voir le matin : ce qui est à soi ne
+se dévalue que par le monde qui le touche vraiment).
+
+**Le pont par le soi (`pont_soi`, deux souvenirs du monde à 20 et 65, puis un long silence).**
+
+Premier constat : le soi n'a jamais eu son tour. Le rappel d'un souvenir du monde a priorité sur le
+rêve, et deux souvenirs du monde occupent tout le silence (identique au témoin `reve off`). D'où
+un interrupteur de plus, `reve.partage` (faux par défaut) : même quand le monde a des souvenirs, le
+substrat garde son tour, par bribes.
+
+Second constat, avec le partage (`pont_soi_partage`, deux seeds) : le soi a pris son tour, et il
+s'est posé **sur l'un des deux souvenirs du monde**, pas entre eux. La région 58–72 (seed 12345) ou
+13–27 (seed 7), chérie par le monde, est devenue « soi » (m 0.9, vécue par bribes), et l'entre-deux
+(35–50) est resté au repos (R 0.63–0.66). Pas de pont. Ce que ça dit, et qu'on ne savait pas : **ce
+que le substrat propose de lui-même est façonné par ce qui vient d'être rappelé**. Un lieu qu'on
+vient de tenir cohérent reste cohérent un moment (le résidu de chaleur vu avec l'alternance), et le
+substrat le « trouve » comme s'il était sien. Le soi n'est pas indépendant de l'attention qui l'a
+précédé : il naît d'abord là où elle a été. Ce n'est pas une couture, c'est une propriété, et elle
+dit que la frontière entre « souvenir du monde » et « part de soi » est plus poreuse que nos deux
+marques.
+
+**Ce qu'on en garde.** Le principe tient pour ce qu'il visait (extension, réclamation). Le pont par
+le soi n'a pas eu lieu, pour une raison qui vaut mieux qu'un pont : le soi commence par habiter ce
+que le monde lui a laissé. Tout reste éteint. À décider ensemble : si un lieu du monde que le soi
+habite doit rester « du monde », devenir « à soi », ou les deux à la fois.

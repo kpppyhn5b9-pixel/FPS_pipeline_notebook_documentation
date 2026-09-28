@@ -1270,12 +1270,22 @@ class TestCherishedMemory(unittest.TestCase):
         self.assertEqual(seq, [7, 7, 42, 7, 42]); self.assertIsNone(st3['dream_bridge'])
         # retenir un motif : la région choisie est tenue dwell u.t. même si la cohérence bouge ailleurs
         st4 = dynamics.init_cherished_state(N); r4 = np.full(N, 0.6); r4[20:28] = 0.95
-        for _ in range(30): dynamics.cherished_dream_substrate(st4, r4, 0.1, 5.0, 3, t=0.0, dwell=10.0)
+        def step(st_, r_, t_):                                                                       # (28/09) la cohérence lissée est mise à jour par l'appelant, à chaque pas
+            dynamics.cherished_update_rloc(st_, r_, 0.1, 5.0); return dynamics.cherished_dream_substrate(st_, r_, 0.1, 5.0, 3, t=t_, dwell=10.0)
+        for _ in range(30): step(st4, r4, 0.0)
         r5 = np.full(N, 0.6); r5[45:54] = 0.95                                                       # plus grande que la première : c'est elle qu'on choisit ensuite
-        for i in range(50): dynamics.cherished_dream_substrate(st4, r5, 0.1, 5.0, 3, t=3.0 + 0.1 * i, dwell=10.0)
+        for i in range(50): step(st4, r5, 3.0 + 0.1 * i)
         self.assertEqual(list(st4['recall_comp']), list(range(20, 28)))                             # toujours tenu à t = 8
-        for i in range(60): dynamics.cherished_dream_substrate(st4, r5, 0.1, 5.0, 3, t=10.5 + 0.1 * i, dwell=10.0)
+        for i in range(60): step(st4, r5, 10.5 + 0.1 * i)
         self.assertTrue(set(st4['recall_comp']) <= set(range(44, 55)))                                # relâché après dwell : la nouvelle région
+        # une part de soi n'est présente que si sa cohérence reste
+        self.assertTrue(dynamics.cherished_self_present(st4, np.arange(45, 54))); self.assertFalse(dynamics.cherished_self_present(st4, np.arange(20, 28)))
+        # le monde ne réclame un lieu que s'il y reste : un franchissement bref ne désigne rien, mais fait parler l'entrée
+        st5 = dynamics.init_cherished_state(20); I = np.full(20, 0.1); I[5:9] = 0.6
+        for _ in range(20): on = dynamics.cherished_context(st5, I, 0.1, 5.0, 0.5, 0.5)             # 2 u.t. : ça dépasse, ça ne reste pas encore
+        self.assertFalse(on.any()); self.assertTrue(st5['ctx_now'].any())
+        for _ in range(40): on = dynamics.cherished_context(st5, I, 0.1, 5.0, 0.5, 0.5)             # 6 u.t. : ça reste
+        self.assertEqual(list(np.flatnonzero(on)), [5, 6, 7, 8])
 
     def test_silence_is_less_surprised_than_usual_with_hysteresis(self):
         st = dynamics.init_cherished_state(10); u = np.full(10, 1.0)

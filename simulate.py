@@ -310,6 +310,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
         # bribes : dwell u.t., puis le substrat reprend son tour. Les souvenirs du monde gardent leur règle (le rappel ne
         # réécrit pas m). Sans ça (26/09) : le premier motif à franchir m_min monopolisait le silence, figé au seuil.
         'motifs_vecus': bool(_atcfg.get('reve', {}).get('motifs_vecus', False)),
+        # le silence PARTAGÉ (28/09) : même quand le monde a des souvenirs, le substrat garde son tour (dwell de rappel du monde,
+        # dwell de substrat) ; sinon les souvenirs du monde occupent tout le silence et le soi n'a jamais de place entre eux.
+        'partage': bool(_atcfg.get('reve', {}).get('partage', False)),
         'tau_short': float(_sil_cfg.get('tau_short', 5.0)), 'tau_long': float(_sil_cfg.get('tau_long', 40.0)),
         'enter': float(_sil_cfg.get('enter', 0.9)), 'exit': float(_sil_cfg.get('exit', 1.1)),
         'rappel': bool(_rap_cfg.get('enabled', True)), 'm_min': float(_rap_cfg.get('m_min', 0.3)), 'res_min': float(_rap_cfg.get('res_min', 0.2)),
@@ -502,9 +505,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     _rel_prev = history[-1].get('activite_rel') if history else None
                     cherished_cfg['w'] = (float(np.clip(2.0 - float(_rel_prev), 0.0, 1.0)) if _rel_prev is not None and np.isfinite(_rel_prev) else None)
                     _ctx_on = dynamics.cherished_context(cherished_state, In_t, dt, cherished_cfg['tau_c'], attention_state['saliency_scale'], cherished_cfg['seuil_contexte'])
-                    cherished_cfg['external'] = bool(_ctx_on.any())                 # l'entrée désigne quelque chose qui reste
+                    cherished_cfg['external'] = bool(cherished_state.get('ctx_now', _ctx_on).any())   # l'entrée parle : le rappel cède dès que ça dépasse ; l'attachement, lui, attend que ça reste
                     cherished_cfg['recalling'] = False
                     dynamics.cherished_update_state_signature(cherished_state, np.array([float(np.mean(An_t)), _sig_att]), dt, cherished_cfg['tau_sig'])
+                    dynamics.cherished_update_rloc(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'])   # ce que le substrat produit et qui reste
                     dynamics.cherished_wellbeing_ref(cherished_state, cherished_cfg['w'], dt, cherished_cfg['tau_ref'])
                     if cherished_cfg['attach']:
                         dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'])
@@ -536,15 +540,22 @@ def run_fps_simulation(config, state, loggers, strict=False):
                                 _tour = int((float(t) - cherished_state['int_t0']) // max(cherished_cfg['reve_dwell'], 1e-9)) % 2
                                 if _tour == 0:
                                     cherished_cfg['dreaming'] = 3                                 # motif interne rappelé, vécu
-                                    _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
-                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True)
+                                    if dynamics.cherished_self_present(cherished_state, cherished_state['recall_comp']):   # (28/09) vécu seulement si sa cohérence reste
+                                        _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
+                                        dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True)
                                 else:
                                     _c_int = None                                                  # le tour du substrat
+                            elif (_c_int is not None and cherished_cfg['partage'] and cherished_cfg['reve'] in ('substrat', 'les_deux')):
+                                # un souvenir du MONDE est rappelé, et le silence est partagé : le substrat garde son tour
+                                if cherished_state['int_t0'] is None: cherished_state['int_t0'] = float(t)
+                                if int((float(t) - cherished_state['int_t0']) // max(cherished_cfg['reve_dwell'], 1e-9)) % 2 == 1:
+                                    _c_int = None
                         if _c_int is None and cherished_cfg['reve'] in ('substrat', 'les_deux'):
                             _c_int = dynamics.cherished_dream_substrate(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'], cherished_cfg['reve_min_size'], t, cherished_cfg['reve_dwell'])
                             if _c_int is not None:
                                 cherished_cfg['dreaming'] = 2                                     # le substrat
-                                if cherished_cfg['cherir_motifs'] and cherished_state.get('recall_comp') is not None:
+                                if (cherished_cfg['cherir_motifs'] and cherished_state.get('recall_comp') is not None
+                                        and dynamics.cherished_self_present(cherished_state, cherished_state['recall_comp'])):   # (28/09) tenu ET encore là
                                     _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
                                     dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True)
                         if _c_int is None:
@@ -1312,6 +1323,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'attention_s': (attention_state['s'].copy() if attention_state['enabled'] else None),
                 'attention_m_max': attention_m_max, 'attention_silence': attention_silence, 'attention_rappel': attention_rappel, 'attention_porte': attention_porte, 'attention_rappel_etat': attention_rappel_etat,
                 'attention_m': (cherished_state['m'].copy() if attention_state['enabled'] else None),
+                'attention_interne': (cherished_state['interne'].copy() if attention_state['enabled'] else None),
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
                 'En_mean(t)': En_mean_t,
