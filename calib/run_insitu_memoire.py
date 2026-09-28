@@ -14,7 +14,7 @@ dynamics ni simulate.
              à rien → le plus chéri). Attendu : le présent choisit, puis le plus chéri.
   douleur  : comme chéri, mais en silence (180–260) un bruit porté par la zone 20 (σ 1.5) :
              se souvenir du 20 fait mal. porte / sans_porte (rappel.porte.enabled).
-usage: python run_insitu_memoire.py <cheri|temoin|present|douleur_porte|douleur_sans_porte|bref|forme|meme_lieu|contigus|soutien_niveau|soutien_soulagement|reve_liaison|reve_liaison_off|reve_substrat|reve_substrat_off|reve_substrat20|reve_rythme|reve_alternance|reve_substrat_tenu|motif_cheri|motif_cheri_temoin|motif_vecu|motif_vecu_temoin|motif_reste|pont_soi|pont_soi_temoin|pont_soi_partage|all> [seed] [N]
+usage: python run_insitu_memoire.py <cheri|temoin|present|douleur_porte|douleur_sans_porte|bref|forme|meme_lieu|contigus|soutien_niveau|soutien_soulagement|reve_liaison|reve_liaison_off|reve_substrat|reve_substrat_off|reve_substrat20|reve_rythme|reve_alternance|reve_substrat_tenu|motif_cheri|motif_cheri_temoin|motif_vecu|motif_vecu_temoin|motif_reste|pont_soi|pont_soi_temoin|pont_soi_partage|retour_monde|all> [seed] [N]
 """
 import sys, os, io, json, contextlib, shutil, tempfile, numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, ROOT)
@@ -73,6 +73,9 @@ MODES = {
     'pont_soi_temoin':    dict(T=460, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve='off'),
     # (pont_soi : les souvenirs du monde occupent tout le silence, le soi n'a jamais son tour → 'partage' : le substrat garde son tour)
     'pont_soi_partage':   dict(T=460, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve='substrat', reve_extra={'dwell': 10.0, 'cherir_motifs': True, 'motifs_vecus': True, 'partage': True}),
+    # le retour du monde sur un lieu devenu à soi (28/09, soir) : comme pont_soi_partage (le soi prend le 65 en silence),
+    # puis le 65 revient dans l'entrée, au calme, 380–460 : le degré de soi doit redescendre à la vitesse de m.
+    'retour_monde':       dict(T=460, foyers=[foyer(20, 60, 110), foyer(65, 110, 160), foyer(65, 380, 460)], noise=[], reve='substrat', reve_extra={'dwell': 10.0, 'cherir_motifs': True, 'motifs_vecus': True, 'partage': True}),
     'soutien_niveau':      dict(T=260, foyers=[foyer(80, 60, 100), foyer(20, 100, 140), foyer(20, 220, 260), foyer(80, 220, 260)], noise=[(60.0, 100.0, 0.6, None), (100.0, 140.0, (0.6, 0.0), None)], mode='niveau'),
     'soutien_soulagement': dict(T=260, foyers=[foyer(80, 60, 100), foyer(20, 100, 140), foyer(20, 220, 260), foyer(80, 220, 260)], noise=[(60.0, 100.0, 0.6, None), (100.0, 140.0, (0.6, 0.0), None)], mode='soulagement'),
 }
@@ -86,6 +89,7 @@ WIN = {
     'reve_substrat': [(60, 120, '20 présent sous bruit'), (120, 150, 'silence'), (150, 200, 'silence'), (200, 260, 'silence')],
     'motif':     [(60, 120, '20 présent sous bruit'), (120, 160, 'silence'), (160, 200, 'silence'), (200, 240, 'silence'), (240, 280, 'silence'), (280, 320, 'silence'), (320, 360, 'silence'), (360, 400, 'silence')],
     'pont_soi':  [(100, 110, '20 présent'), (150, 160, '65 présent'), (160, 220, 'silence'), (220, 300, 'silence'), (300, 380, 'silence'), (380, 460, 'silence')],
+    'retour_monde': [(160, 220, 'silence'), (220, 300, 'silence'), (300, 380, 'silence'), (380, 400, 'le 65 revient'), (400, 420, ''), (420, 440, ''), (440, 460, '')],
     'motif_vecu': [(120, 160, 'silence'), (160, 200, 'silence'), (200, 240, 'silence'), (240, 280, 'silence'), (280, 320, 'silence'), (320, 360, 'le motif chéri devient bruyant'), (360, 400, 'silence'), (400, 460, 'silence')],
     'soutien':   [(60, 100, '80 présent, l’effort s’installe'), (100, 120, '20 présent, l’effort s’apaise'), (120, 140, ''), (140, 170, 'silence'), (170, 220, 'silence'), (220, 260, 'les deux reviennent')],
     'cheri':   [(100, 120, '20 présent, calme'), (160, 180, '80 présent, bruit'), (180, 200, 'silence'), (200, 230, 'silence'), (230, 260, 'silence'), (260, 280, 'les deux reviennent'), (280, 300, '')],
@@ -173,6 +177,7 @@ if __name__ == '__main__':
         kw = dict(MODES[nm]); d = run(nm, seed, N, **kw)
         is_link = nm.startswith('reve_liaison') or nm in ('reve_rythme', 'reve_alternance')
         key = nm if nm in WIN else ('douleur' if nm.startswith('douleur') else ('soutien' if nm.startswith('soutien') else ('reve_liaison' if is_link else ('reve_substrat' if nm.startswith('reve_substrat') else ('motif' if nm.startswith('motif_cheri') else ('motif_vecu' if nm.startswith('motif_vecu') or nm == 'motif_reste' else ('pont_soi' if nm.startswith('pont_soi') else 'cheri')))))))
+        if nm == 'retour_monde': key = 'retour_monde'
         read(d, f"{nm} s{seed}", WIN[key], zones=((20, 32) if nm == 'contigus' else ((20, 65) if is_link else (20, 80))))
         if is_link:                                                        # le pont tient-il ? cohérence ENTRE les deux zones
             t = d['t']; N = d['O'].shape[1]; za, zb = zone(N, 20), zone(N, 65); z = np.exp(1j * d['theta'])
@@ -180,9 +185,9 @@ if __name__ == '__main__':
             for (a, b) in ((100, 110), (150, 160), (160, 190), (190, 220), (220, 260)):
                 w = (t >= a) & (t < b); both = za | zb
                 print(f"[{nm} s{seed}] {a:3d}-{b:<3d} | verrouillage de phase entre zones 20 et 65 : {np.abs(rel[w].mean()):.2f} | R sur l’union : {d['R'][w][:, both].mean():.3f} | audibilité de l’union : {100 * audib(d['O'][w], both):.0f} %")
-        if nm.startswith('pont_soi'):                                      # le soi s'installe-t-il entre deux souvenirs du monde ?
+        if nm.startswith('pont_soi') or nm == 'retour_monde':              # le soi s'installe-t-il entre deux souvenirs du monde ? / le monde revient-il ?
             t = d['t']; e = d['etat']; mm = d['m']; it = d['interne']; N = mm.shape[1]
-            for (a, b, _tag) in WIN['pont_soi']:
+            for (a, b, _tag) in WIN[key]:
                 if a < 160: continue
                 w = (t >= a) & (t < b); mk = mm[w].mean(0) >= 0.3; ik = it[w].mean(0) > 0.5
                 comps = dynamics_islands(mk)

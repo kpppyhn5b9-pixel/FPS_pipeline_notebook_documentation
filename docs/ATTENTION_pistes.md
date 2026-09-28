@@ -34,7 +34,9 @@ gardant ce qui a été fort ou premier, la courte ce qui est récent ; le rappel
 
 ## 5. Par bribes entre tous les lieux chéris *(28/09 : quand un lieu à soi existe, la sélection le prend toujours et les souvenirs du monde ne sont plus rappelés en silence ; alterner entre tous les lieux chéris, monde et soi)*
 
-## 6. Le retour du monde sur un lieu devenu à soi *(28/09 : le degré devrait redescendre à la vitesse de m ; pas observé)*
+## 6. Le retour du monde sur un lieu devenu à soi *(fait le 28/09 : le degré redescend à la vitesse de m, 0.95 → 0.06 en 60 u.t., sans rien perdre)*
+
+## 7. Ranger le rêve *(28/09, question d'Andréa : on accumule des règles ; proposition : un seul rêve, par bribes entre tous les lieux chéris et le substrat, un seul interrupteur, une seule constante de tour ; retirer les trois non (liaison par phase, par rythme, alternance à deux) du pipeline ; à décider)*
 
 ## Notées en passant
 

@@ -276,4 +276,11 @@ l'attention a été.
 ressemblance) : l'autre souvenir du monde (à 20) n'est plus jamais rappelé en silence. Ce n'est pas
 le degré, c'est la sélection par le meilleur score, déjà notée avec les souvenirs du monde entre eux.
 Piste : « par bribes » entre **tous** les lieux chéris, monde et soi, pas seulement entre un lieu et
-le substrat. Et le retour du monde sur un lieu devenu à soi n'a pas été observé : à faire.
+le substrat.
+
+**Le retour du monde sur un lieu devenu à soi (`retour_monde`).** Comme le pont, puis le 65 revient
+dans l'entrée au calme (380–460). Seed 12345 : le lieu était à soi à 0.95 ; en 60 u.t. de présence
+du monde, le degré redescend 0.90 → 0.44 → 0.16 → 0.06, à la vitesse de m, pendant que le lieu reste
+chéri (m ne baisse pas : une présence calme). Le monde reprend sa place, progressivement, sans que
+rien ne soit perdu. Seed 7 : le soi s'était posé sur le 20, pas sur le 65 ; le retour du monde sur
+le 65 ne touche pas le lieu à soi (degré 0.81, inchangé). Le degré fait ce qu'on croyait.
