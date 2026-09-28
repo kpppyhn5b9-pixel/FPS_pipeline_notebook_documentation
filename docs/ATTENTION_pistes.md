@@ -30,7 +30,7 @@ sur les bords (`ATTENTION_enquetes_gepetto.md`) est déjà un indice de traces m
 Piste : deux vitesses pour m, comme pour la mémoire de soi (courte et longue), la longue
 gardant ce qui a été fort ou premier, la courte ce qui est récent ; le rappel lit les deux.
 
-## 4. Chérir ses propres motifs *(essayé le 26/09, `ATTENTION_rever.md` : bénéfice réel, dérive nette (monopole du premier motif au seuil) ; éteint ; deux pistes à décider)*
+## 4. Chérir ses propres motifs *(essayé le 26/09 puis le 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole et fait monter la valeur en vivant ; reste : l'extension du territoire chéri, et le monde qui réclame un motif au passage d'un bruit ; éteint)*
 
 ## Notées en passant
 

@@ -305,6 +305,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
         # pendant qu'un motif du substrat est TENU, m et la signature s'apprennent sur ses strates comme pour une présence
         # venue du monde (même bien-être, même association) ; jamais pendant un rappel (le rappel ne réécrit pas m).
         'cherir_motifs': bool(_atcfg.get('reve', {}).get('cherir_motifs', False)),
+        # motifs VÉCUS par bribes (28/09, décision d'Andréa et Claude) : un motif à soi s'apprend chaque fois qu'il est vécu,
+        # tenu OU rappelé (sa valeur monte quand il accompagne le calme, redescend quand il coûte), et il est rappelé par
+        # bribes : dwell u.t., puis le substrat reprend son tour. Les souvenirs du monde gardent leur règle (le rappel ne
+        # réécrit pas m). Sans ça (26/09) : le premier motif à franchir m_min monopolisait le silence, figé au seuil.
+        'motifs_vecus': bool(_atcfg.get('reve', {}).get('motifs_vecus', False)),
         'tau_short': float(_sil_cfg.get('tau_short', 5.0)), 'tau_long': float(_sil_cfg.get('tau_long', 40.0)),
         'enter': float(_sil_cfg.get('enter', 0.9)), 'exit': float(_sil_cfg.get('exit', 1.1)),
         'rappel': bool(_rap_cfg.get('enabled', True)), 'm_min': float(_rap_cfg.get('m_min', 0.3)), 'res_min': float(_rap_cfg.get('res_min', 0.2)),
@@ -524,13 +529,24 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             if _c_int is not None: cherished_cfg['dreaming'] = 1                  # par bribes : un lieu, puis l'autre
                         if _c_int is None:
                             _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
+                            if (_c_int is not None and cherished_cfg['cherir_motifs'] and cherished_cfg['motifs_vecus']
+                                    and cherished_state.get('recall_comp') is not None and cherished_state['interne'][cherished_state['recall_comp']].mean() > 0.5):
+                                # un motif À SOI est rappelé : vécu par bribes (dwell de rappel, dwell de substrat), et m s'apprend
+                                if cherished_state['int_t0'] is None: cherished_state['int_t0'] = float(t)
+                                _tour = int((float(t) - cherished_state['int_t0']) // max(cherished_cfg['reve_dwell'], 1e-9)) % 2
+                                if _tour == 0:
+                                    cherished_cfg['dreaming'] = 3                                 # motif interne rappelé, vécu
+                                    _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
+                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True)
+                                else:
+                                    _c_int = None                                                  # le tour du substrat
                         if _c_int is None and cherished_cfg['reve'] in ('substrat', 'les_deux'):
                             _c_int = dynamics.cherished_dream_substrate(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'], cherished_cfg['reve_min_size'], t, cherished_cfg['reve_dwell'])
                             if _c_int is not None:
                                 cherished_cfg['dreaming'] = 2                                     # le substrat
                                 if cherished_cfg['cherir_motifs'] and cherished_state.get('recall_comp') is not None:
                                     _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
-                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'])
+                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True)
                         if _c_int is None:
                             cherished_cfg['etat'] = 4 if bool(np.any(cherished_state['m'] >= cherished_cfg['m_min'])) else 3
                         elif cherished_cfg['porte'] and dynamics.cherished_gate(cherished_state, cherished_cfg['w'], t, dt, cherished_cfg['porte_tau'], cherished_cfg['porte_floor'], cherished_cfg['porte_refractory']):
@@ -539,11 +555,11 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             # le contexte vient du dedans, mais le monde n'est jamais caché par le souvenir (Gepetto, 25/09) :
                             # le geste voit le maximum des deux ; un événement bref est vu à l'instant, et le contexte
                             # qui reste (lissé) décide seul de la fin du rappel
-                            _c_att = np.maximum(_c_att, _c_int); cherished_cfg['recalling'] = True; cherished_cfg['etat'] = 6 + cherished_cfg['dreaming']   # 7 : rêve-liaison · 8 : rêve-substrat
+                            _c_att = np.maximum(_c_att, _c_int); cherished_cfg['recalling'] = True; cherished_cfg['etat'] = 6 + cherished_cfg['dreaming']   # 7 : rêve-liaison · 8 : rêve-substrat · 9 : motif à soi, vécu
                     else:
                         cherished_state['recall_center'] = None; cherished_state['recall_res'] = float('nan'); cherished_state['recall_comp'] = None
                         cherished_state['gate'] = None; cherished_state['gate_center'] = None
-                        cherished_state['alt_t0'] = None; cherished_state['hold_comp'] = None       # le rêve repart de zéro au prochain silence
+                        cherished_state['alt_t0'] = None; cherished_state['hold_comp'] = None; cherished_state['int_t0'] = None   # le rêve repart de zéro au prochain silence
                     attention_state['s'] = _c_att * (_nu_att + (1.0 - _nu_att) * cherished_state['m']) if cherished_cfg['attach'] else _c_att * _nu_att
                     _dfn = dynamics.attention_delta_fn(fn_t, _theta_att, attention_state['s'], attention_state['K0'], attention_state['kappa'],
                                                        attention_state['garde'], attention_state['island_threshold'],
@@ -1118,7 +1134,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'attention_silence': attention_silence,               # l'entrée se tait (1) : moins surpris que d'habitude, aucun îlot
                 'attention_rappel': attention_rappel,                 # strate au cœur du souvenir rappelé (NaN = pas de rappel)
                 'attention_porte': attention_porte,                   # bien-être pendant le rappel (NaN hors rappel)
-                'attention_rappel_etat': attention_rappel_etat,       # pourquoi : 0 désactivé · 1 l'extérieur parle · 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte · 6 rappel · 7 rêve (liaison) · 8 rêve (substrat)
+                'attention_rappel_etat': attention_rappel_etat,       # pourquoi : 0 désactivé · 1 l'extérieur parle · 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte · 6 rappel · 7 rêve (liaison) · 8 rêve (substrat) · 9 motif à soi, vécu
                 'innovation_cjs': innovation_cjs,  # C_JS enveloppe fₙ (moniteur lent d'identité)
                 'innovation_H': innovation_H,  # entropie de permutation : H bas = ordre, H haut = bruit
                 'temporal_coherence': temporal_coherence,  # Cohérence temporelle

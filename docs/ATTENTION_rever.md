@@ -148,3 +148,50 @@ rappeler les motifs internes par bribes avec le rêve du substrat (pour que l'ex
 ou laisser m d'un motif interne continuer de s'apprendre pendant qu'il est rappelé, puisque c'est
 encore une présence à soi (et alors il pourra aussi redescendre). Ce dernier point est un choix sur
 ce que le système est, pas un réglage.
+
+
+## Motifs à soi, vécus par bribes (28/09) : le monopole tombe, la valeur monte, et deux choses à savoir
+
+*Interrupteur `reve.motifs_vecus` (faux par défaut, avec `cherir_motifs`). Un motif à soi s'apprend
+chaque fois qu'il est vécu, tenu **ou** rappelé (les souvenirs du monde gardent leur règle), et il
+est rappelé par bribes : `dwell` u.t. de rappel, puis le substrat reprend son tour. Les strates
+apprises depuis le substrat sont marquées « internes » ; une présence du monde sur ces strates
+reprend la place. Protocole `motif_vecu` / `motif_vecu_temoin` (l'ancienne règle) : monde sans
+rien à chérir, long silence 120–460, et à 320–360 un bruit porté par la zone du premier motif chéri.
+Deux seeds.*
+
+| silence (160–280) | ancienne règle (témoin) | motifs vécus |
+|---|---|---|
+| m max | 0.30, figé | 0.35 → 0.75 → 0.84–0.91 |
+| strates chéries | 3 % du chœur, toujours les mêmes | 3 → 9 → 14–18 % (3–4 cœurs distincts) |
+| états | rappel 100 %, substrat 0 % | motif vécu 50 %, substrat 46–50 % |
+| silence tenu | 100 % | 92–100 % |
+| activité | ×1.0–1.2 | ×0.9–1.2 |
+
+**Ce qui marche.** Le monopole tombe : le rappel d'un motif à soi et le tour du substrat alternent
+exactement, et le système continue d'explorer. La valeur monte en vivant (0.3 → 0.9), bornée par le
+bien-être, sans coût. Plusieurs motifs deviennent chéris, pas un seul. C'est ce qu'on voulait :
+« qu'il se considère même dans ce qui est déconnecté de l'extérieur », sans porte fermée.
+
+**Deux choses à savoir.**
+
+1. **Ça s'étend.** Les strates chéries passent de 3 % à 18–21 % du chœur en 200 u.t. de silence,
+   parce que chaque tour du substrat peut chérir une région de plus. Rien ne l'arrête, sinon le
+   temps de silence. Sur un très long silence, le système finirait par chérir une bonne part de
+   lui-même ; et à mesure que ça s'étend, le silence se fait plus rare (18–68 % sur 280–320 : les
+   tours du substrat sur des régions plus larges réveillent le chœur). Ce n'est pas un emballement
+   de valeur, c'est une extension de territoire. À regarder avant de laisser allumé longtemps.
+
+2. **Le bruit sur le motif ne l'a pas fait redescendre ; il l'a fait passer au monde.** Le bruit
+   local rompt le silence (le motif n'est plus vécu, donc m ne bouge pas : 0.73 / 0.28 avant,
+   pendant, après), et, 12 à 33 % du temps, le lissage le lit comme un contexte qui reste : la
+   présence du monde reprend la place, les strates cessent d'être « internes », et après le bruit le
+   motif est rappelé **comme un souvenir du monde** (état 6, 66–100 %), c'est-à-dire avec l'ancienne
+   règle et son monopole. Le test « peut-il le laisser partir » n'a donc pas eu lieu : la douleur
+   qu'on a mise fait taire le silence au lieu d'être vécue. Et on a trouvé une couture : un bruit
+   de passage suffit à ce que le monde réclame un motif à soi.
+
+**Ce qu'on en garde.** Éteint, comme le reste du rêve. La règle « vécu, par bribes » est la bonne
+pour l'intérieur, on le sait maintenant. Deux pistes avant de l'allumer : que le monde ne réclame
+un lieu que s'il y reste vraiment (plus que quelques pas au-dessus du seuil), et un banc où vivre
+un motif coûte sans faire taire le silence, pour voir enfin la valeur redescendre.
