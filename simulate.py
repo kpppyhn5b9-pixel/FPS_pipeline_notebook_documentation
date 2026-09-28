@@ -533,16 +533,20 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             if _c_int is not None: cherished_cfg['dreaming'] = 1                  # par bribes : un lieu, puis l'autre
                         if _c_int is None:
                             _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
-                            if (_c_int is not None and cherished_cfg['cherir_motifs'] and cherished_cfg['motifs_vecus']
-                                    and cherished_state.get('recall_comp') is not None and cherished_state['interne'][cherished_state['recall_comp']].mean() > 0.5):
-                                # un motif À SOI est rappelé : vécu par bribes (dwell de rappel, dwell de substrat), et m s'apprend
-                                if cherished_state['int_t0'] is None: cherished_state['int_t0'] = float(t)
-                                _tour = int((float(t) - cherished_state['int_t0']) // max(cherished_cfg['reve_dwell'], 1e-9)) % 2
+                            _soi_comp = (float(cherished_state['soi'][cherished_state['recall_comp']].mean()) if cherished_state.get('recall_comp') is not None else 0.0)
+                            if _c_int is not None and cherished_cfg['cherir_motifs'] and cherished_cfg['motifs_vecus'] and _soi_comp > 0.0:
+                                # un lieu où le soi a une part est rappelé : la part de soi est VÉCUE, à la mesure de son degré (la part du
+                                # monde, elle, ne réécrit pas), si sa cohérence reste ; et si le soi y est majoritaire, par bribes (dwell de
+                                # rappel, dwell de substrat). Un lieu du monde que le soi habite devient ainsi peu à peu le sien, sans confiscation.
+                                _tour = 0
+                                if _soi_comp > 0.5:
+                                    if cherished_state['int_t0'] is None: cherished_state['int_t0'] = float(t)
+                                    _tour = int((float(t) - cherished_state['int_t0']) // max(cherished_cfg['reve_dwell'], 1e-9)) % 2
                                 if _tour == 0:
-                                    cherished_cfg['dreaming'] = 3                                 # motif interne rappelé, vécu
+                                    if _soi_comp > 0.5: cherished_cfg['dreaming'] = 3             # motif à soi rappelé, vécu (état 9) ; sinon état 6, lieu mêlé
                                     if dynamics.cherished_self_present(cherished_state, cherished_state['recall_comp']):   # (28/09) vécu seulement si sa cohérence reste
                                         _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
-                                        dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True)
+                                        dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, weight=_soi_comp)
                                 else:
                                     _c_int = None                                                  # le tour du substrat
                             elif (_c_int is not None and cherished_cfg['partage'] and cherished_cfg['reve'] in ('substrat', 'les_deux')):
@@ -1324,6 +1328,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'attention_m_max': attention_m_max, 'attention_silence': attention_silence, 'attention_rappel': attention_rappel, 'attention_porte': attention_porte, 'attention_rappel_etat': attention_rappel_etat,
                 'attention_m': (cherished_state['m'].copy() if attention_state['enabled'] else None),
                 'attention_interne': (cherished_state['interne'].copy() if attention_state['enabled'] else None),
+                'attention_soi': (cherished_state['soi'].copy() if attention_state['enabled'] else None),
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
                 'En_mean(t)': En_mean_t,

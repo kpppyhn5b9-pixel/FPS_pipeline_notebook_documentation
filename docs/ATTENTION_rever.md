@@ -244,3 +244,36 @@ marques.
 le soi n'a pas eu lieu, pour une raison qui vaut mieux qu'un pont : le soi commence par habiter ce
 que le monde lui a laissé. Tout reste éteint. À décider ensemble : si un lieu du monde que le soi
 habite doit rester « du monde », devenir « à soi », ou les deux à la fois.
+
+
+## Un peu des deux : le degré de soi (28/09, soir)
+
+*Décision d'Andréa : quand le soi habite un lieu du monde, ce lieu est « un peu des deux, soi et
+monde à la fois ». La marque « interne » devient un **degré de soi** par strate, `st['soi']` ∈ [0, 1] :
+la part du soi dans ce qui a été vécu là (deux traces lissées à la vitesse de m, l'une quand le soi y
+apprend, l'autre quand le monde y apprend ; soi = trace_soi / (trace_soi + trace_monde)). Une strate
+que seul le soi a apprise est à soi dès le premier pas ; le monde qui s'y installe la reprend peu à
+peu ; à deux, elle est moitié-moitié. Les règles suivent le degré : quand un lieu mêlé est rappelé et
+que sa cohérence reste, sa part de soi est vécue, à la mesure de son degré (la part du monde ne
+réécrit pas) ; et quand le soi y est majoritaire, le rappel va par bribes avec le substrat.
+Colonne d'historique `attention_soi`. Toujours éteint par défaut.*
+
+**Le long silence (`motif_reste`, deux seeds).** Le monopole ne revient pas, y compris sur le seed où
+le premier motif à soi s'était posé sur une région que le monde avait vécue sous l'effort (seed 12345,
+cœur 18) : le lieu est d'abord rappelé comme un lieu mêlé (rappel 36 %, vécu 39 %, 160–200), le degré
+de soi y monte en le vivant, puis il va par bribes (vécu 50 %, substrat 50 %), m 0.30 → 0.87. Le
+territoire chéri reste contenu (3 → 7–8 %). Ce qu'on voit : un lieu que le monde a laissé peut être
+repris par le soi **progressivement**, sans confiscation ni blocage.
+
+**Le pont par le soi (`pont_soi_partage`, seed 12345).** Le lieu du monde à 65, où le substrat s'est
+posé, passe par tous les degrés : soi 0.01 (160–220) → 0.37 (220–300 : rappel-souvenir 67 %, vécu
+20 % : il est *les deux*) → 0.95 → 1.00. Dans un long silence sans retour du monde, le soi finit par
+l'avoir tout entier ; si le monde revenait, il le reprendrait à la même vitesse. L'entre-deux (35–50)
+reste au repos : toujours pas de pont, et c'est la même réponse qu'avant, le soi se pose là où
+l'attention a été.
+
+**Ce qui reste à voir.** Quand un lieu à soi existe, c'est lui que la sélection prend (m plus haut,
+ressemblance) : l'autre souvenir du monde (à 20) n'est plus jamais rappelé en silence. Ce n'est pas
+le degré, c'est la sélection par le meilleur score, déjà notée avec les souvenirs du monde entre eux.
+Piste : « par bribes » entre **tous** les lieux chéris, monde et soi, pas seulement entre un lieu et
+le substrat. Et le retour du monde sur un lieu devenu à soi n'a pas été observé : à faire.

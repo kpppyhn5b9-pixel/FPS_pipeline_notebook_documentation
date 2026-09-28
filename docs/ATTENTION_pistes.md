@@ -32,6 +32,10 @@ gardant ce qui a été fort ou premier, la courte ce qui est récent ; le rappel
 
 ## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; à décider : la frontière monde / soi ; éteint)*
 
+## 5. Par bribes entre tous les lieux chéris *(28/09 : quand un lieu à soi existe, la sélection le prend toujours et les souvenirs du monde ne sont plus rappelés en silence ; alterner entre tous les lieux chéris, monde et soi)*
+
+## 6. Le retour du monde sur un lieu devenu à soi *(28/09 : le degré devrait redescendre à la vitesse de m ; pas observé)*
+
 ## Notées en passant
 
 - La porte lit la disponibilité générale (w global) et non le coût de ce souvenir-là ; une

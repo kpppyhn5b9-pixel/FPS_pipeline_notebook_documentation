@@ -130,6 +130,7 @@ def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), m
     z = np.exp(1j * theta); R = np.abs(0.5 * np.roll(z, 1, 1) + 0.5 * np.roll(z, -1, 1)); R[:, 0] = np.abs(z[:, 1]); R[:, -1] = np.abs(z[:, -2])
     out = dict(t=t, O=O, R=R, theta=theta, s=np.array([x['attention_s'] for x in h]), m=np.array([x['attention_m'] for x in h]),
                interne=np.array([x.get('attention_interne', np.zeros(N, dtype=bool)) for x in h]),
+               soi=np.array([x.get('attention_soi', np.zeros(N)) for x in h]),
                m_max=np.array([x['attention_m_max'] for x in h], dtype=float), silence=np.array([x['attention_silence'] for x in h], dtype=float),
                rappel=np.array([x['attention_rappel'] for x in h], dtype=float), porte=np.array([x['attention_porte'] for x in h], dtype=float),
                etat=np.array([x.get('attention_rappel_etat', np.nan) for x in h], dtype=float),
@@ -185,7 +186,8 @@ if __name__ == '__main__':
                 if a < 160: continue
                 w = (t >= a) & (t < b); mk = mm[w].mean(0) >= 0.3; ik = it[w].mean(0) > 0.5
                 comps = dynamics_islands(mk)
-                sizes = ' + '.join(f"{c_[0]}–{c_[-1]}{'(soi)' if ik[c_].mean() > 0.5 else '(monde)'}" for c_ in comps)
+                so = d['soi'][w].mean(0)
+                sizes = ' + '.join(f"{c_[0]}–{c_[-1]} (soi {so[c_].mean():.2f})" for c_ in comps)
                 print(f"[{nm} s{seed}] {a}-{b} | chéri : monde {100 * np.mean(mk & ~ik):.0f} %, soi {100 * np.mean(mk & ik):.0f} % du chœur | régions chéries : {sizes or 'aucune'} | rappel {100 * np.mean(e[w] == 6):.0f} % · vécu {100 * np.mean(e[w] == 9):.0f} % · substrat {100 * np.mean(e[w] == 8):.0f} % · silence {100 * np.nanmean(d['silence'][w]):.0f} % | R zone 20 {d['R'][w][:, zone(N, 20)].mean():.3f} · zone 65 {d['R'][w][:, zone(N, 65)].mean():.3f} · entre (35–50) {d['R'][w][:, 35:51].mean():.3f}")
         if nm.startswith('motif_cheri') or nm.startswith('motif_vecu') or nm == 'motif_reste':    # un motif à soi devient-il chéri, rappelé, et laissé ?
             t = d['t']; e = d['etat']; c = d['rappel']; mm = d['m']

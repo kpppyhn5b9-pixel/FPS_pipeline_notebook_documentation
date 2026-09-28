@@ -1704,7 +1704,7 @@ def init_cherished_state(N: int) -> Dict[str, Any]:
     return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool), 'ctx_run': np.zeros(int(N)), 'w_ref': None,
             'dream_bridge': None, 'dream_second': None, 'dream_center': None, 'rloc_bar': None,
             'alt_t0': None, 'hold_comp': None, 'hold_until': -np.inf,
-            'interne': np.zeros(int(N), dtype=bool), 'int_t0': None,
+            'interne': np.zeros(int(N), dtype=bool), 'soi': np.zeros(int(N)), 'q_soi': np.zeros(int(N)), 'q_monde': np.zeros(int(N)), 'int_t0': None,
             'u_short': None, 'u_long': None, 'quiet': False, 'ratio': float('nan'),
             'refract_until': np.full(int(N), -np.inf), 'gate': None, 'gate_center': None,
             'recall_center': None, 'recall_res': float('nan'), 'recall_comp': None}
@@ -1770,19 +1770,28 @@ def cherished_target(w: float, w_ref: Optional[float], mode: str = 'niveau') -> 
 
 
 def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt: float, tau_m: float,
-                     tau_sig: float, mode: str = 'soulagement', interne: bool = False) -> None:
+                     tau_sig: float, mode: str = 'soulagement', interne: bool = False, weight: float = 1.0) -> None:
     """
     L'attachement : sur les strates du contexte qui reste (`on`), mₙ → cible(w) (τ_m) et sigₙ → g (τ_sig).
-    `interne` (28/09) : ces strates sont apprises depuis un motif du substrat (marquées dans st['interne']) ;
-    une présence venue du monde sur les mêmes strates reprend la place (marque à False).
+    `interne` (28/09) : ces strates sont apprises depuis un motif du substrat. Depuis le soir du 28/09 (Andréa :
+    « un peu des deux, soi et monde à la fois »), ce n'est plus une marque mais un DEGRÉ de soi, st['soi'] ∈ [0, 1],
+    qui monte (vers 1) quand le soi y apprend et descend (vers 0) quand le monde y apprend, à la vitesse de m ;
+    st['interne'] en est la lecture majoritaire (> 0.5). `weight` (0–1) module la vitesse d'apprentissage.
     """
     if w is None or not np.isfinite(w):
         return
     on = np.asarray(on, dtype=bool)
     if not on.any():
         return
-    if 'interne' in st: st['interne'][on] = bool(interne)
-    k_m = min(1.0, dt / max(float(tau_m), dt)); k_s = min(1.0, dt / max(float(tau_sig), dt))
+    k_m = min(1.0, dt / max(float(tau_m), dt)) * float(weight); k_s = min(1.0, dt / max(float(tau_sig), dt))
+    if 'soi' in st:
+        # le degré de soi = la part du soi dans ce qui a été vécu là : deux traces (soi, monde) lissées à la vitesse de m,
+        # et soi = trace_soi / (trace_soi + trace_monde). Une strate que seul le soi a apprise est à soi dès le premier pas ;
+        # le monde qui s'y installe la reprend peu à peu ; à deux, elle est moitié-moitié.
+        q_on, q_off = ('q_soi', 'q_monde') if interne else ('q_monde', 'q_soi')
+        st[q_on][on] += k_m * (1.0 - st[q_on][on]); st[q_off][on] += k_m * (0.0 - st[q_off][on])
+        tot = st['q_soi'] + st['q_monde']
+        st['soi'] = np.where(tot > 1e-12, st['q_soi'] / np.maximum(tot, 1e-12), 0.0); st['interne'] = st['soi'] > 0.5
     st['m'][on] += k_m * (cherished_target(float(w), st.get('w_ref'), mode) - st['m'][on])
     if st['g'] is not None and np.all(np.isfinite(st['g'])):
         cur = st['sig'][on]
