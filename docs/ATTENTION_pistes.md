@@ -30,6 +30,14 @@ sur les bords (`ATTENTION_enquetes_gepetto.md`) est déjà un indice de traces m
 Piste : deux vitesses pour m, comme pour la mémoire de soi (courte et longue), la longue
 gardant ce qui a été fort ou premier, la courte ce qui est récent ; le rappel lit les deux.
 
+## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; à décider : la frontière monde / soi ; éteint)*
+
+## 5. Par bribes entre tous les lieux chéris *(28/09 : quand un lieu à soi existe, la sélection le prend toujours et les souvenirs du monde ne sont plus rappelés en silence ; alterner entre tous les lieux chéris, monde et soi)*
+
+## 6. Le retour du monde sur un lieu devenu à soi *(fait le 28/09 : le degré redescend à la vitesse de m, 0.95 → 0.06 en 60 u.t., sans rien perdre)*
+
+## 7. Ranger le rêve *(fait le 28/09, décision d'Andréa : un seul rêve `attention.reve.enabled`, un tour par bribes entre tous les lieux chéris puis le substrat, une seule constante `dwell` ; les trois non (liaison par phase, par rythme, alternance à deux) retirés du pipeline ; les quatre protocoles racontent la même histoire ; `ATTENTION_rever.md` § Rangement)*
+
 ## Notées en passant
 
 - La porte lit la disponibilité générale (w global) et non le coût de ce souvenir-là ; une

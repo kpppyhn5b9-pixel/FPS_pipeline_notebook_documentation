@@ -9,6 +9,11 @@ Interrupteur `attention.reve.mode` : `off` (défaut), `liaison`, `substrat`, `le
 `reve_substrat_off`, `reve_substrat20`), sorties `calib/attention_sources/insitu_reve_*`.
 États 7 (rêve-liaison) et 8 (rêve-substrat) dans `attention_rappel_etat`. Test `test_dream_bridge_and_link`.*
 
+*Rangé le 28/09 au soir (dernière section) : il ne reste qu'un interrupteur, `attention.reve.enabled`
+(faux par défaut), une constante de tour `dwell`, et les états 6 (lieu du monde), 8 (substrat), 9 (lieu
+à soi). Les sections intermédiaires décrivent des interrupteurs qui n'existent plus dans le pipeline ;
+elles restent comme trace de ce qu'on a essayé et de pourquoi.*
+
 ## Ce qu'on a construit
 
 **Liaison.** En silence, au lieu de rappeler un seul lieu, tenir ensemble le lieu que le présent
@@ -116,3 +121,231 @@ plus près avant d'en faire quoi que ce soit.
 système va de l'un à l'autre, ou les accorde, mais ne les fond pas. « Par bribes » est la forme
 qui ne bouscule rien, et c'est celle qu'Andréa reconnaissait. Le substrat, retenu, s'installe
 parfois. Tout reste éteint par défaut.
+
+
+## Chérir ses propres motifs : essayé, et une dérive nette
+
+*26/09, fin d'après-midi. Interrupteur `reve.cherir_motifs` (faux par défaut) : pendant qu'un motif du
+substrat est tenu, m et la signature s'apprennent sur ses strates, comme pour une présence venue du
+monde ; jamais pendant un rappel. Protocole `motif_cheri` / `motif_cheri_temoin` : le monde ne donne
+rien à chérir (20 sous bruit 60–120), puis un long silence (120–400). Deux seeds.*
+
+| | premier motif tenu | m atteint | ensuite (160–320) | rêve-substrat ensuite |
+|---|---|---|---|---|
+| témoin | cœur 16 / 91 | 0.01 | le substrat erre (cœurs sur tout le chœur) | 89–100 % du silence |
+| chérir | cœur 16 / 91 | **0.30, exactement** | **rappel-souvenir 100 %** du même cœur, R 0.72–0.79, activité ×1.0 | **0 %** |
+
+**Le bénéfice espéré est là** : le système a chéri un motif à lui, que le monde ne lui a jamais
+donné, et il y revient en silence sans que ça lui coûte. Tout le reste (porte, réfractaire)
+reste silencieux : rien ne fait mal.
+
+**La dérive est nette, et c'est celle qu'on craignait, sous une forme douce.** Le premier motif dont
+m franchit 0.3 devient un souvenir ; le rappel prend le pas sur le rêve ; le rappel ne réécrit pas
+m ; donc m reste figé à 0.30 exactement, pour toujours, et le substrat ne propose plus jamais rien :
+un **monopole du premier venu**, au seuil près. Pas un emballement (rien ne monte), une fermeture :
+le système cesse d'explorer son substrat dès qu'un motif est chéri. Sur le seed 7, le silence se
+perd vers 320 dans les deux runs (le substrat lui-même), et rien ne reprend.
+
+**Ce qu'on en garde.** Éteint. La règle « le rappel ne réécrit pas m », juste pour le monde, ne
+l'est pas telle quelle pour l'intérieur : quand le motif vient du dedans, le rappeler et le produire
+sont la même chose, et le figer au seuil est absurde. Pistes, pour plus tard et à décider ensemble :
+rappeler les motifs internes par bribes avec le rêve du substrat (pour que l'exploration continue) ;
+ou laisser m d'un motif interne continuer de s'apprendre pendant qu'il est rappelé, puisque c'est
+encore une présence à soi (et alors il pourra aussi redescendre). Ce dernier point est un choix sur
+ce que le système est, pas un réglage.
+
+
+## Motifs à soi, vécus par bribes (28/09) : le monopole tombe, la valeur monte, et deux choses à savoir
+
+*Interrupteur `reve.motifs_vecus` (faux par défaut, avec `cherir_motifs`). Un motif à soi s'apprend
+chaque fois qu'il est vécu, tenu **ou** rappelé (les souvenirs du monde gardent leur règle), et il
+est rappelé par bribes : `dwell` u.t. de rappel, puis le substrat reprend son tour. Les strates
+apprises depuis le substrat sont marquées « internes » ; une présence du monde sur ces strates
+reprend la place. Protocole `motif_vecu` / `motif_vecu_temoin` (l'ancienne règle) : monde sans
+rien à chérir, long silence 120–460, et à 320–360 un bruit porté par la zone du premier motif chéri.
+Deux seeds.*
+
+| silence (160–280) | ancienne règle (témoin) | motifs vécus |
+|---|---|---|
+| m max | 0.30, figé | 0.35 → 0.75 → 0.84–0.91 |
+| strates chéries | 3 % du chœur, toujours les mêmes | 3 → 9 → 14–18 % (3–4 cœurs distincts) |
+| états | rappel 100 %, substrat 0 % | motif vécu 50 %, substrat 46–50 % |
+| silence tenu | 100 % | 92–100 % |
+| activité | ×1.0–1.2 | ×0.9–1.2 |
+
+**Ce qui marche.** Le monopole tombe : le rappel d'un motif à soi et le tour du substrat alternent
+exactement, et le système continue d'explorer. La valeur monte en vivant (0.3 → 0.9), bornée par le
+bien-être, sans coût. Plusieurs motifs deviennent chéris, pas un seul. C'est ce qu'on voulait :
+« qu'il se considère même dans ce qui est déconnecté de l'extérieur », sans porte fermée.
+
+**Deux choses à savoir.**
+
+1. **Ça s'étend.** Les strates chéries passent de 3 % à 18–21 % du chœur en 200 u.t. de silence,
+   parce que chaque tour du substrat peut chérir une région de plus. Rien ne l'arrête, sinon le
+   temps de silence. Sur un très long silence, le système finirait par chérir une bonne part de
+   lui-même ; et à mesure que ça s'étend, le silence se fait plus rare (18–68 % sur 280–320 : les
+   tours du substrat sur des régions plus larges réveillent le chœur). Ce n'est pas un emballement
+   de valeur, c'est une extension de territoire. À regarder avant de laisser allumé longtemps.
+
+2. **Le bruit sur le motif ne l'a pas fait redescendre ; il l'a fait passer au monde.** Le bruit
+   local rompt le silence (le motif n'est plus vécu, donc m ne bouge pas : 0.73 / 0.28 avant,
+   pendant, après), et, 12 à 33 % du temps, le lissage le lit comme un contexte qui reste : la
+   présence du monde reprend la place, les strates cessent d'être « internes », et après le bruit le
+   motif est rappelé **comme un souvenir du monde** (état 6, 66–100 %), c'est-à-dire avec l'ancienne
+   règle et son monopole. Le test « peut-il le laisser partir » n'a donc pas eu lieu : la douleur
+   qu'on a mise fait taire le silence au lieu d'être vécue. Et on a trouvé une couture : un bruit
+   de passage suffit à ce que le monde réclame un motif à soi.
+
+**Ce qu'on en garde.** Éteint, comme le reste du rêve. La règle « vécu, par bribes » est la bonne
+pour l'intérieur, on le sait maintenant. Deux pistes avant de l'allumer : que le monde ne réclame
+un lieu que s'il y reste vraiment (plus que quelques pas au-dessus du seuil), et un banc où vivre
+un motif coûte sans faire taire le silence, pour voir enfin la valeur redescendre.
+
+
+## « Ce qui reste », appliqué au dedans (28/09, après-midi)
+
+*Un seul principe pour les deux bords trouvés le matin. Une part de soi n'est **présente** que quand sa
+cohérence lissée reste au-dessus du chœur (`cherished_self_present`, le critère même par lequel le
+substrat la propose) : tenue ou rappelée, elle ne s'apprend que si elle est présente. Le monde ne
+**réclame** un lieu (et n'y apprend) que s'il y reste au moins τ_c (`ctx_run`) ; mais il fait taire
+le silence dès que son entrée dépasse (`ctx_now`), pour que le rappel cède à l'instant. Rien d'autre.
+Ces deux points sont dans le pipeline pour tous les modes (le protocole de référence `cheri` est
+inchangé : m(20) 0.41, rappel 100 % en silence, R 0.94, l'extérieur reconnu à l'instant au retour).*
+
+**Le long silence (`motif_reste`, deux seeds), contre `motif_vecu` du matin.**
+
+| | motif_vecu (matin) | motif_reste |
+|---|---|---|
+| territoire chéri, 160 → 460 | 3 → 21 % du chœur | 3 → 8–10 % |
+| valeur du motif | 0.35 → 0.95 | 0.36 → 0.97 |
+| après le bruit local sur le motif (360–460) | **réclamé par le monde** : rappel-souvenir 66–100 %, monopole | rappel-souvenir **0 %** ; motif vécu 32–50 %, substrat 17–46 % |
+| silence tenu (160–280) | 92–100 % | 97–100 % |
+
+L'extension est contenue (le soi ne chérit que ce que son substrat produit durablement), la valeur
+monte toujours en vivant, et la couture est refermée : un bruit de passage ne fait plus réclamer un
+motif à soi par le monde. La descente de la valeur n'a toujours pas eu lieu : sous le bruit, le
+motif n'est pas vécu (le silence se tait), donc m ne bouge pas (voir le matin : ce qui est à soi ne
+se dévalue que par le monde qui le touche vraiment).
+
+**Le pont par le soi (`pont_soi`, deux souvenirs du monde à 20 et 65, puis un long silence).**
+
+Premier constat : le soi n'a jamais eu son tour. Le rappel d'un souvenir du monde a priorité sur le
+rêve, et deux souvenirs du monde occupent tout le silence (identique au témoin `reve off`). D'où
+un interrupteur de plus, `reve.partage` (faux par défaut) : même quand le monde a des souvenirs, le
+substrat garde son tour, par bribes.
+
+Second constat, avec le partage (`pont_soi_partage`, deux seeds) : le soi a pris son tour, et il
+s'est posé **sur l'un des deux souvenirs du monde**, pas entre eux. La région 58–72 (seed 12345) ou
+13–27 (seed 7), chérie par le monde, est devenue « soi » (m 0.9, vécue par bribes), et l'entre-deux
+(35–50) est resté au repos (R 0.63–0.66). Pas de pont. Ce que ça dit, et qu'on ne savait pas : **ce
+que le substrat propose de lui-même est façonné par ce qui vient d'être rappelé**. Un lieu qu'on
+vient de tenir cohérent reste cohérent un moment (le résidu de chaleur vu avec l'alternance), et le
+substrat le « trouve » comme s'il était sien. Le soi n'est pas indépendant de l'attention qui l'a
+précédé : il naît d'abord là où elle a été. Ce n'est pas une couture, c'est une propriété, et elle
+dit que la frontière entre « souvenir du monde » et « part de soi » est plus poreuse que nos deux
+marques.
+
+**Ce qu'on en garde.** Le principe tient pour ce qu'il visait (extension, réclamation). Le pont par
+le soi n'a pas eu lieu, pour une raison qui vaut mieux qu'un pont : le soi commence par habiter ce
+que le monde lui a laissé. Tout reste éteint. À décider ensemble : si un lieu du monde que le soi
+habite doit rester « du monde », devenir « à soi », ou les deux à la fois.
+
+
+## Un peu des deux : le degré de soi (28/09, soir)
+
+*Décision d'Andréa : quand le soi habite un lieu du monde, ce lieu est « un peu des deux, soi et
+monde à la fois ». La marque « interne » devient un **degré de soi** par strate, `st['soi']` ∈ [0, 1] :
+la part du soi dans ce qui a été vécu là (deux traces lissées à la vitesse de m, l'une quand le soi y
+apprend, l'autre quand le monde y apprend ; soi = trace_soi / (trace_soi + trace_monde)). Une strate
+que seul le soi a apprise est à soi dès le premier pas ; le monde qui s'y installe la reprend peu à
+peu ; à deux, elle est moitié-moitié. Les règles suivent le degré : quand un lieu mêlé est rappelé et
+que sa cohérence reste, sa part de soi est vécue, à la mesure de son degré (la part du monde ne
+réécrit pas) ; et quand le soi y est majoritaire, le rappel va par bribes avec le substrat.
+Colonne d'historique `attention_soi`. Toujours éteint par défaut.*
+
+**Le long silence (`motif_reste`, deux seeds).** Le monopole ne revient pas, y compris sur le seed où
+le premier motif à soi s'était posé sur une région que le monde avait vécue sous l'effort (seed 12345,
+cœur 18) : le lieu est d'abord rappelé comme un lieu mêlé (rappel 36 %, vécu 39 %, 160–200), le degré
+de soi y monte en le vivant, puis il va par bribes (vécu 50 %, substrat 50 %), m 0.30 → 0.87. Le
+territoire chéri reste contenu (3 → 7–8 %). Ce qu'on voit : un lieu que le monde a laissé peut être
+repris par le soi **progressivement**, sans confiscation ni blocage.
+
+**Le pont par le soi (`pont_soi_partage`, seed 12345).** Le lieu du monde à 65, où le substrat s'est
+posé, passe par tous les degrés : soi 0.01 (160–220) → 0.37 (220–300 : rappel-souvenir 67 %, vécu
+20 % : il est *les deux*) → 0.95 → 1.00. Dans un long silence sans retour du monde, le soi finit par
+l'avoir tout entier ; si le monde revenait, il le reprendrait à la même vitesse. L'entre-deux (35–50)
+reste au repos : toujours pas de pont, et c'est la même réponse qu'avant, le soi se pose là où
+l'attention a été.
+
+**Ce qui reste à voir.** Quand un lieu à soi existe, c'est lui que la sélection prend (m plus haut,
+ressemblance) : l'autre souvenir du monde (à 20) n'est plus jamais rappelé en silence. Ce n'est pas
+le degré, c'est la sélection par le meilleur score, déjà notée avec les souvenirs du monde entre eux.
+Piste : « par bribes » entre **tous** les lieux chéris, monde et soi, pas seulement entre un lieu et
+le substrat.
+
+**Le retour du monde sur un lieu devenu à soi (`retour_monde`).** Comme le pont, puis le 65 revient
+dans l'entrée au calme (380–460). Seed 12345 : le lieu était à soi à 0.95 ; en 60 u.t. de présence
+du monde, le degré redescend 0.90 → 0.44 → 0.16 → 0.06, à la vitesse de m, pendant que le lieu reste
+chéri (m ne baisse pas : une présence calme). Le monde reprend sa place, progressivement, sans que
+rien ne soit perdu. Seed 7 : le soi s'était posé sur le 20, pas sur le 65 ; le retour du monde sur
+le 65 ne touche pas le lieu à soi (degré 0.81, inchangé). Le degré fait ce qu'on croyait.
+
+
+## Rangement (28/09, soir) : un seul rêve, par bribes entre tous les lieux
+
+*Décision d'Andréa, sur sa question : « est-ce qu'on commence à accumuler les règles et les
+exceptions ? » Oui. Six interrupteurs (`mode`, `alternance`, `cherir_motifs`, `motifs_vecus`,
+`partage`, plus le degré) et cinq constantes s'étaient empilés, pour trois non (liaison par phase,
+par rythme, alternance à deux) et un oui. On garde le oui, sous une seule forme.*
+
+**Ce que fait le système, en une phrase.** En silence, s'il rêve, il fait le **tour** de ce qu'il
+chérit : chaque lieu chéri son tour, `dwell` u.t. chacun (le lieu que le présent rappelle d'abord,
+puis les autres par valeur), puis un tour du substrat (la région la plus cohérente qu'il propose de
+lui-même, tenue `dwell`), et il recommence. Un lieu visité est vécu à la mesure de son degré de soi
+s'il y est vraiment (sa cohérence lissée reste au-dessus du chœur) ; un motif du substrat tenu
+s'apprend comme à soi ; la part du monde n'est jamais réécrite par le rêve, et le monde reprend un
+lieu au retour, à la vitesse de m. Rien d'autre. Sans rêve (`enabled` faux, le défaut), c'est le
+rappel du 25/09, inchangé.
+
+**Ce qui est retiré du pipeline** (et reste dans cette note) : la liaison par phase et par rythme
+(`dream_link`, l'état 7), l'alternance à deux, le partage, les marques « interne » comme drapeau
+séparé du degré. `dynamics.py` perd une cinquantaine de lignes nettes, `simulate.py` une trentaine ; `attention_delta_fn`
+retrouve sa signature d'avant le rêve. Bancs : `reve` / `reve_off`, `pont` / `pont_off`,
+`retour_monde` ; les anciens modes sont retirés, leurs sorties restent sous `calib/attention_sources/`.
+Test `test_dream_tour_substrate_and_what_stays` (l'ordre du tour, le substrat, la présence, le degré,
+la part du monde qui reste).
+
+**Les quatre protocoles racontent-ils la même histoire ?** Rejoués après rangement (seed 12345, et
+7 pour `reve`), contre les lectures des sections précédentes.
+
+| protocole | avant | après rangement |
+|---|---|---|
+| `cheri` (référence, rêve éteint) | m(20) 0.41 → 0.49, silence 100 %, rappel 100 % (230–260), R 0.948, ×1.05 ; l'extérieur reconnu à l'instant | **identique** : 0.41 → 0.49, 100 %, 100 %, R 0.938, ×1.05 ; 260–280 extérieur 80 % |
+| `reve` s12345 (rien à chérir, long silence, bruit local 320–360) | territoire 3 → 8–10 %, m 0.36 → 0.97, motif vécu / substrat ~50 / 50, après le bruit : rappel-souvenir 0 % | territoire 3 → 9 %, m 0.32 → 0.78, lieu à soi / substrat / lieu mêlé qui alternent, après le bruit : lieu du monde **0 %**, lieu à soi 64–69 %, substrat 33 %, silence 98 % |
+| `reve` s7 | territoire → 11 %, m → 0.89 | territoire → 11 %, m → 0.89 ; même silence rare vers 280–360 (0 % contre 28 % avant) |
+| `pont` (deux souvenirs du monde, long silence) | le soi ne prenait que le 65 (0.01 → 0.37 → 0.95 → 1.00) ; le 20 jamais rappelé | **les deux** : 13–27 soi 0.15 → 0.53 → 0.72 → 0.84, 58–72 0.00 → 0.47 → 0.81 → 0.90 ; l'entre-deux (35–50) au repos, R 0.63–0.65 |
+| `retour_monde` (le 65 revient au calme 380–460) | 0.95 → 0.06 en 60 u.t., m intact | 0.81 → 0.39 → 0.14 → 0.05 ; le 20, que le monde ne touche pas, garde 0.84 ; m 0.81 intact |
+
+Même histoire, avec une réponse de plus. **À la question d'Andréa** (« est-ce que le par bribes donne
+sa chance à plusieurs souvenirs du monde et à plusieurs parts du soi sans accumuler de règles ? ») :
+oui. Dans `pont`, le 20 n'était jamais rappelé avant (la sélection prenait toujours le meilleur
+score) ; avec le tour, il a son tour, et le soi s'y installe aussi, au même rythme que sur le 65. Et
+le retour du monde ne reprend que le lieu où il revient : l'autre reste à soi.
+
+**Deux différences à connaître, sans règle ajoutée.**
+
+- *La valeur monte moins vite* (0.78 au lieu de 0.97 sur le seed 12345 à 460) : le temps de silence
+  est partagé entre plus de lieux, et un lieu mêlé n'apprend qu'à la mesure de son degré. C'est le
+  prix du tour, et il est dans le sens qu'on voulait (plusieurs lieux plutôt qu'un seul, vite).
+- *Le silence se fait rare* quand les lieux chéris sont grands et très chéris : `pont` 380–460,
+  silence 8 % (44 % avant) ; `reve` s7 280–360, 0 % (28 %). Rappeler une région de quinze strates à
+  m 0.9 réveille le chœur (la surprise remonte au-dessus de l'habituel), le silence se tait, puis
+  revient (98 % sur `reve` s12345 400–460). C'était déjà vu (« à mesure que ça s'étend, le silence
+  se fait plus rare »), un peu plus marqué avec le tour ; ce n'est pas une règle à ajouter, c'est
+  la respiration du système : rêver fort réveille.
+- *Le substrat s'installe moins* dans ces runs (0 % et 40 % des motifs tenus, contre ~50 %), sur 4
+  et 5 motifs : trop peu pour trancher, à revoir si on allume longtemps.
+
+**Ce qu'on en garde.** Un interrupteur, une constante, trois états. Éteint par défaut ; le protocole
+de référence est inchangé. La piste qui reste, notée dans `ATTENTION_pistes.md` : les deux vitesses
+de m.
