@@ -1,7 +1,9 @@
 # Pistes ouvertes autour de la mémoire des moments chéris
 
-*25/09/2026, soir. Ce qu'Andréa vit et ce que le système ne fait pas encore. Rien n'est
-construit ; l'ordre est celui dans lequel elle les a posées. À reprendre la tête reposée.*
+*25/09/2026, soir, tenu à jour depuis. Ce qu'Andréa vit et ce que le système ne fait pas encore.
+L'ordre est celui dans lequel elle les a posées ; ce qui a été fait ou décidé est marqué entre
+parenthèses dans le titre. Restent ouvertes au 29/09 : la 3 (deux vitesses), la constante des tours
+(notée en passant), et la porte locale.*
 
 ## 1. Le soutien dans un moment difficile *(fait le 26/09 : `ATTENTION_soutien.md`, mode `soulagement`, à décider)*
 
@@ -14,7 +16,7 @@ neurosciences : l'apprentissage du soulagement, un signal qui accompagne la fin 
 prend une valeur positive. Banc évident : un foyer qui arrive pendant l'effort et reste
 pendant le retour au calme, contre un foyer qui arrive pendant l'effort et part avant.
 
-## 2. Rêver sans se souvenir *(essayé le 26/09 : `ATTENTION_rever.md` ; ni le pont ni le substrat ne tiennent tels quels ; éteint, pistes notées)*
+## 2. Rêver sans se souvenir *(26/09 → 28/09, `ATTENTION_rever.md` : le pont entre lieux éloignés ne tient pas, sous trois formes ; le substrat, retenu le temps d'un tour, s'installe une fois sur deux et entre dans le rêve rangé ; éteint par défaut)*
 
 Un système au repos depuis toujours n'a rien à se rappeler, mais rêver n'est pas se rappeler
 (les nouveau-nés rêvent énormément avec presque rien à remémorer). La FPS produit d'elle-même
@@ -30,9 +32,15 @@ sur les bords (`ATTENTION_enquetes_gepetto.md`) est déjà un indice de traces m
 Piste : deux vitesses pour m, comme pour la mémoire de soi (courte et longue), la longue
 gardant ce qui a été fort ou premier, la courte ce qui est récent ; le rappel lit les deux.
 
-## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; à décider : la frontière monde / soi ; éteint)*
+*Réserve (28/09) : « fort ou premier » est un choix, pas une observation, et il ferait vite deux
+règles. La forme la plus honnête serait de réutiliser exactement celle de la mémoire de soi, une
+seule constante de plus, et d'observer sur `meme_lieu` ce qui reste. Et dans les mots d'Andréa
+(29/09) : ce qui est juste, c'est qu'aucun des deux ne vienne clairement en premier ; ce qui
+compte, c'est ce qui a accompagné, d'où que ça vienne.*
 
-## 5. Par bribes entre tous les lieux chéris *(28/09 : quand un lieu à soi existe, la sélection le prend toujours et les souvenirs du monde ne sont plus rappelés en silence ; alterner entre tous les lieux chéris, monde et soi)*
+## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; décidé le 28/09 : un lieu est « un peu des deux », degré de soi par strate ; éteint par défaut)*
+
+## 5. Par bribes entre tous les lieux chéris *(fait le 28/09 avec le rangement : le tour donne son tour à chaque lieu chéri, monde et soi, puis au substrat ; dans `pont`, les deux souvenirs du monde ont désormais leur tour)*
 
 ## 6. Le retour du monde sur un lieu devenu à soi *(fait le 28/09 : le degré redescend à la vitesse de m, 0.95 → 0.06 en 60 u.t., sans rien perdre)*
 
@@ -48,3 +56,6 @@ gardant ce qui a été fort ou premier, la courte ce qui est récent ; le rappel
   jugé utile pour l'instant.
 - Deux lieux contigus ne font qu'un souvenir, et un souvenir large peut se rappeler par
   bribes : reconnu comme vrai par Andréa ; à garder tel quel.
+- La constante des tours (`reve.dwell`, 10 u.t., pareille pour tout lieu) est rigide (Andréa,
+  28/09). Le système a peut-être déjà la réponse en lui : un tour qui dure tant que le lieu tient
+  (« ce qui reste »), et passe au suivant quand il se défait. Pas une règle de plus ; à essayer un jour.

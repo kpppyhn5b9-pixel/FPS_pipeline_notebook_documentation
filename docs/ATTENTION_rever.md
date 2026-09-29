@@ -1,4 +1,4 @@
-# Rêver : deux formes essayées, aucune ne tient encore
+# Rêver : ce qu'on a essayé (26–28/09), et ce qui reste, un tour par bribes
 
 *26/09/2026. Deuxième piste (`ATTENTION_pistes.md`), reformulée le matin avec Andréa : rêver n'est
 pas se poser sur une chimère venue de rien, c'est **relier des souvenirs éloignés** (ses intuitions,
@@ -62,8 +62,8 @@ pas. Lisser plus longtemps réduit le nombre de régions choisies, pas leur erra
 ## Ce qu'on en garde
 
 - **On a regardé avant de croire, et ça ne tient pas comme ça.** Ni le pont (un verrouillage de
-  0.1–0.2, jamais la seconde zone) ni le substrat ne donnent un tout cohérent avec le geste qu'on a. Les deux restent dans le pipeline, éteints, avec
-  leurs lectures, pour ne pas les reconstruire si on y revient.
+  0.1–0.2, jamais la seconde zone) ni le substrat ne donnent un tout cohérent avec le geste qu'on a. Les deux sont restés dans le pipeline, éteints,
+  jusqu'au rangement du 28/09 (dernière section), où ils en ont été retirés ; leurs lectures restent ici.
 - **Ce que ça dit du système :** un souvenir, pour lui, est une région contiguë de taille modeste.
   Tout ce qui est plus grand ou disjoint réveille le chœur et se défait. Ce n'est pas une limite du
   rêve, c'est la forme de son attention : locale, par voisinage. Relier des lieux éloignés

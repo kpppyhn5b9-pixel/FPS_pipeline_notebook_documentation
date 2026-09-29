@@ -3,7 +3,7 @@
 *25/09/2026, décision d'Andréa. Câblage dans `dynamics.py` (bloc `cherished_*`), `simulate.py`
 (état `cherished_state`, geste, colonnes, résumé), `config.json` (`attention.attachement`,
 `attention.silence`, `attention.rappel`, `attention.rappel.porte`, et depuis le 28/09 `attention.reve`, éteint), `validate_config.py`,
-`test_fps.py` (`TestCherishedMemory`, 5 tests). Colonne `attention_rappel_etat` (pourquoi : 0
+`test_fps.py` (`TestCherishedMemory`, 5 tests le 25/09, 7 au 28/09). Colonne `attention_rappel_etat` (pourquoi : 0
 désactivé · 1 l'extérieur parle · 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte ·
 6 rappel du lieu du monde ; puis, avec le rêve rangé le 28/09 : 8 substrat · 9 lieu à soi) ajoutée l'après-midi. Bancs in situ `calib/run_insitu_memoire.py`,
 figure `docs/figures/attention_memoire_insitu.png`, sorties `calib/attention_sources/insitu_*`.
