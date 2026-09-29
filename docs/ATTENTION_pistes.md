@@ -67,6 +67,29 @@ après une visite accomplie ; il traverse les silences, là où le compteur repa
 le second point : chaque strate apprendrait à la mesure de son propre degré, pas de celui de sa
 composante (un vecteur au lieu d'un scalaire). À explorer ensemble ; rien n'est changé.
 
+*Suite, le même soir.* Le repos court pendant que le monde parle (Andréa : « autant s'inspirer de la
+nature ») ; le monde reprend toujours un lieu qui se repose. Et plutôt qu'une constante, une durée que
+le système lit sur lui-même : **un lieu se repose tant qu'il est encore chaud de sa dernière visite**
+(sa cohérence lissée encore au-dessus du chœur, le critère même de la présence à soi), et redevient
+rappelable quand il a refroidi. Observation pure sur les runs du 28/09 (`calib/observe_chaleur.py`) :
+
+| run | visites ≥ 3 u.t. | chaudes à la fin de la visite | refroidissement, médiane (quartiles) | revisitées encore chaudes |
+|---|---|---|---|---|
+| `reve` s12345 (petits motifs à soi, m 0.3–0.8) | 18 | 56 % | 1.5 u.t. (0.1–4.0) | 6 |
+| `reve` s7 | 13 | 54 % | 2.2 u.t. (0.1–5.0) | 0 |
+| `pont` s12345 (deux lieux de quinze strates, m 0.5–0.9) | 18 | 100 % | 7.7 u.t. (5.1–8.3), max 17 | 2 |
+| `retour_monde` s12345 | 17 | 100 % | 6.7 u.t. (5.0–8.3) | 2 |
+
+La chaleur existe et se mesure : de deux à huit unités de temps, plus longue quand le lieu a été
+mieux tenu (les grands lieux chéris restent chauds ~8 u.t., les petits motifs à soi refroidissent en
+deux, et près d'une visite sur deux d'un petit motif finit déjà froide : visiter ne réchauffe pas
+toujours). Les « revisitées encore chaudes » sont le point de Gepetto vu dans les données : le tour
+repartait de zéro et revenait sur le lieu qu'il venait de quitter. Ce que ça dit pour la piste : un
+repos par chaleur donne la variété **dans** un silence sans aucune constante (période naturelle
+≈ visite + refroidissement) ; entre des silences hachés séparés par de longues périodes du monde, tout
+a refroidi et le présent choisit, ce qui est juste, mais ne garantit pas à lui seul que le substrat ou
+un lieu moins appelé ait son tour. À regarder en le faisant.
+
 ## Notées en passant
 
 - La porte lit la disponibilité générale (w global) et non le coût de ce souvenir-là ; une
