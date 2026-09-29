@@ -46,6 +46,27 @@ compte, c'est ce qui a accompagné, d'où que ça vienne.*
 
 ## 7. Ranger le rêve *(fait le 28/09, décision d'Andréa : un seul rêve `attention.reve.enabled`, un tour par bribes entre tous les lieux chéris puis le substrat, une seule constante `dwell` ; les trois non (liaison par phase, par rythme, alternance à deux) retirés du pipeline ; les quatre protocoles racontent la même histoire ; `ATTENTION_rever.md` § Rangement)*
 
+## 8. Que chacun ait son tour, d'un silence à l'autre *(29/09, lectures de Gepetto et question d'Andréa ; exploration, pas réparation)*
+
+Gepetto, au code : le compteur du tour repart de zéro à chaque sortie de silence ; des silences
+répétés plus courts que `dwell` visitent toujours le premier lieu (et nos runs montrent que rappeler
+un lieu fort hache le silence). Et « la part du monde n'est jamais réécrite » est plus fort que le
+câblage : un seul m par strate, appris au degré moyen de la composante. Sa réserve sur « tant que le
+lieu tient » : l'attention fait tenir le lieu qu'elle tient ; attendre qu'il se défasse réinviterait
+le monopole. Sa question : comment laisser quelque chose rester important tout en donnant une place
+à ce qui n'a pas encore été visité ?
+
+Andréa : « un type de moment, et un souvenir ou une part de soi l'un après l'autre à mesure que les
+moments de ce type se succèdent ». Ce que la neuroscience en dit, et qui converge : le présent choisit
+(Tulving, spécificité de l'encodage : la signature) ; ce qui vient d'être visité est désavantagé un
+moment (inhibition de retour, Posner et Cohen 1984 ; adaptation et « latching » dans les réseaux à
+attracteurs, Treves ; itinérance, Tsuda) ; l'hippocampe alterne entre options à chaque cycle thêta
+(Kay et Frank 2020) et rejoue les souvenirs entrelacés, jamais un seul (systèmes complémentaires,
+McClelland). Piste sans règle nouvelle : le réfractaire de la porte, qui existe déjà, servirait aussi
+après une visite accomplie ; il traverse les silences, là où le compteur repartait de zéro. Et pour
+le second point : chaque strate apprendrait à la mesure de son propre degré, pas de celui de sa
+composante (un vecteur au lieu d'un scalaire). À explorer ensemble ; rien n'est changé.
+
 ## Notées en passant
 
 - La porte lit la disponibilité générale (w global) et non le coût de ce souvenir-là ; une

@@ -303,8 +303,9 @@ chérit : chaque lieu chéri son tour, `dwell` u.t. chacun (le lieu que le prés
 puis les autres par valeur), puis un tour du substrat (la région la plus cohérente qu'il propose de
 lui-même, tenue `dwell`), et il recommence. Un lieu visité est vécu à la mesure de son degré de soi
 s'il y est vraiment (sa cohérence lissée reste au-dessus du chœur) ; un motif du substrat tenu
-s'apprend comme à soi ; la part du monde n'est jamais réécrite par le rêve, et le monde reprend un
-lieu au retour, à la vitesse de m. Rien d'autre. Sans rêve (`enabled` faux, le défaut), c'est le
+s'apprend comme à soi ; la part du monde n'est pas réécrite par le rêve (*précision de Gepetto, 29/09 :
+c'est vrai au degré moyen de la composante, pas strate par strate ; voir `ATTENTION_pistes.md` § 8*),
+et le monde reprend un lieu au retour, à la vitesse de m. Rien d'autre. Sans rêve (`enabled` faux, le défaut), c'est le
 rappel du 25/09, inchangé.
 
 **Ce qui est retiré du pipeline** (et reste dans cette note) : la liaison par phase et par rythme
