@@ -90,6 +90,30 @@ repos par chaleur donne la variété **dans** un silence sans aucune constante (
 a refroidi et le présent choisit, ce qui est juste, mais ne garantit pas à lui seul que le substrat ou
 un lieu moins appelé ait son tour. À regarder en le faisant.
 
+*30/09 : deux hypothèses sur ce qui est déjà là, regardées.* Le pipeline écrit désormais dans l'historique la
+signature de chaque strate, l'état présent et la présence du lieu visité (`attention_sig`, `attention_g`,
+`attention_present` : rien ne change dans la dynamique) ; `calib/observe_signature.py` relit `reve` (deux
+seeds) et `pont`.
+
+1. **« Un lieu à soi est signé par le silence, donc toujours appelé en premier » : faux.** En silence, tout
+   ressemble au présent : ressemblance médiane 0.95–0.96 pour les souvenirs du monde, 0.97 pour les lieux à
+   soi, jamais sous 0.2. La signature ne discrimine pas entre des lieux vécus au calme ; elle ne compte que
+   sous des ambiances différentes (`present`). Quand monde et soi coexistent, le soi ressemble un peu plus
+   (62–68 % des pas), mais ce n'est pas lui qui décide : le meilleur score est celui de m (`pont` : soi 100 %
+   avec m 0.75 contre 0.50 ; `reve` s12345 : soi 23 % tant que son m est sous celui du lieu mêlé). Et le
+   premier lieu visité à chaque nouveau silence suit m : le monde d'abord (158–271), le soi ensuite
+   (311–452), une fois que son m a dépassé.
+2. **La vraie asymétrie, et c'est la cause du point de Gepetto :** un lieu à soi est *vécu* quand il est
+   rappelé (m monte, à la mesure de son degré), un souvenir du monde ne l'est pas (le rappel ne réécrit pas m,
+   par décision du 24/09). En silence, le soi se nourrit, le monde non. Tôt ou tard le soi a le m le plus
+   haut, et le présent l'appelle en premier, à chaque silence. Ce n'est pas la signature, ce n'est pas le
+   compteur : c'est que seule une des deux mémoires grandit dans le silence. À décider ensemble ce que ça
+   veut dire ; ce n'est peut-être pas faux (le silence est le lieu du soi), mais c'est une pente.
+3. **Présence des lieux visités :** un lieu à soi est là (au sens du critère) 57–71 % des pas où il est
+   rappelé, un lieu du monde mêlé 23–66 %, un motif du substrat tenu 55–89 %. Un tiers à la moitié du temps
+   de rappel d'un lieu à soi est vide : rappelé sans être là. Pas « pour toujours froid », mais assez pour
+   qu'on le sache.
+
 ## Notées en passant
 
 - La porte lit la disponibilité générale (w global) et non le coût de ce souvenir-là ; une
