@@ -1297,6 +1297,9 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'attention_m': (cherished_state['m'].copy() if attention_state['enabled'] else None),
                 'attention_interne': (cherished_state['interne'].copy() if attention_state['enabled'] else None),
                 'attention_soi': (cherished_state['soi'].copy() if attention_state['enabled'] else None),
+                'attention_sig': (cherished_state['sig'].copy() if attention_state['enabled'] else None),          # (30/09, observation) la signature de chaque strate
+                'attention_g': (None if not attention_state['enabled'] or cherished_state.get('g') is None else np.asarray(cherished_state['g'], dtype=float).copy()),   # et l'état présent
+                'attention_present': (bool(dynamics.cherished_self_present(cherished_state, cherished_state.get('recall_comp'))) if attention_state['enabled'] and cherished_state.get('recall_comp') is not None else None),   # le lieu visité est-il là ?
                 'mean_abs_error': mean_abs_error,
                 'effort_status': effort_status,
                 'En_mean(t)': En_mean_t,
