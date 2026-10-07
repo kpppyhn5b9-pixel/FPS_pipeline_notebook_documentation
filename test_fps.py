@@ -1257,6 +1257,12 @@ class TestCherishedMemory(unittest.TestCase):
         for _sil in range(3):
             for _ in range(80): ks.append(dynamics.cherished_tour(st3, 0.0, 0.1, 10.0)[0])          # 8 u.t. de silence, puis le monde
         self.assertEqual(ks[0], 0); self.assertIn(1, ks); self.assertIn(2, ks)                       # avant : toujours 0
+        # ne rêver que du présent : dwell est un maximum ; un lieu qui n'est pas là après tau cède son tour, un lieu présent garde les dix
+        st8 = dynamics.init_cherished_state(N); st8['m'][5:10] = 0.6; st8['m'][40:45] = 0.9; st8['sig'][5:10] = [0.05, 0.3]; st8['sig'][40:45] = [0.02, 0.3]; st8['g'] = np.array([0.05, 0.3])
+        st8['rloc_bar'] = np.full(N, 0.6); st8['rloc_bar'][40:45] = 0.95                             # le 40–44 est là, le 5–9 ne l'est pas
+        ks8 = [dynamics.cherished_tour(st8, 0.0, 0.1, 10.0, tau=5.0)[0] for _ in range(100)]
+        self.assertEqual(ks8[:40].count(0), 40); self.assertEqual(ks8[60], 1)                        # le 5–9 cède après 5 u.t. (pas 10) : le 40–44 commence à t ≈ 5
+        self.assertEqual(ks8[99], 1)                                                                # et, présent, garde ses dix unités
         # chaque strate apprend à la mesure de SON degré : la strate que seul le monde a vécue n'est pas réécrite par le rêve
         st7 = dynamics.init_cherished_state(20); on7 = np.zeros(20, dtype=bool); on7[3:7] = True; st7['m'][3:7] = 0.5
         st7['q_soi'][3:5] = 1.0; st7['q_monde'][5:7] = 1.0; st7['soi'] = st7['q_soi'] / (st7['q_soi'] + st7['q_monde'])

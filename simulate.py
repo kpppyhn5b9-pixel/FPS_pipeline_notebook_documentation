@@ -517,7 +517,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
                         else:
                             # le tour : tous les lieux chéris (le présent d'abord), puis le substrat, par bribes
-                            _k, _comps, _c_int = dynamics.cherished_tour(cherished_state, t, dt, cherished_cfg['reve_dwell'], cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
+                            _k, _comps, _c_int = dynamics.cherished_tour(cherished_state, t, dt, cherished_cfg['reve_dwell'], cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'], tau=cherished_cfg['reve_tau'])
                             if _c_int is not None:
                                 _comp = cherished_state['recall_comp']; _soi_comp = float(cherished_state['soi'][_comp].mean())
                                 if _soi_comp > 0.5: cherished_cfg['dreaming'] = 3                # un lieu à soi (état 9) ; sinon un lieu du monde (état 6)

@@ -1846,7 +1846,7 @@ def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: 
 
 
 def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0, m_min: float = 0.3, res_min: float = 0.2,
-                   sig_width=(0.2, 0.1)):
+                   sig_width=(0.2, 0.1), tau: Optional[float] = None):
     """
     RÊVER, la seule forme gardée (28/09, Andréa : « par bribes ») : en silence, le système passe par TOUS ses lieux
     chéris, souvenirs du monde et parts de soi sans distinction, celui que le présent appelle en premier, puis les
@@ -1857,6 +1857,10 @@ def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0,
     en était, et des silences hachés plus courts que `dwell` finissent quand même par donner son tour à chacun ; avant,
     le compteur repartait de zéro à chaque silence et revenait toujours sur le premier lieu. Deux lieux ou dix, c'est
     le même tour, seulement plus long : ce qui distingue le monde du soi n'est pas ici, c'est le degré de chaque lieu.
+    `tau` (07/10, « ne rêver que du présent ») : `dwell` devient un MAXIMUM. Un lieu a sa chance le temps d'un lissage de
+    la cohérence (tau, la constante qui existe déjà : observé, un lieu visité devient présent dans les 5 premières u.t.
+    quand il le devient) ; passé ce temps, s'il n'est pas présent (`cherished_self_present`), la visite s'arrête et le
+    tour passe au suivant. Une visite vide ne dure plus dix unités. Le substrat garde sa place dans le tour.
     """
     c1 = cherished_recall(st, t, m_min, res_min, sig_width)
     comps = []
@@ -1867,7 +1871,9 @@ def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0,
         others = [comp for comp in attention_islands(ok.astype(float), 0.5)]
         comps = [comps[0]] + sorted(others, key=lambda c_: -float(m[c_].mean()))
     st['tour_t'] = float(st.get('tour_t', 0.0)) + float(dt)
-    k = int(st['tour_t'] // max(float(dwell), 1e-9)) % (len(comps) + 1)
+    dw = max(float(dwell), 1e-9); slot = int(st['tour_t'] // dw); k = slot % (len(comps) + 1)
+    if k < len(comps) and tau is not None and (st['tour_t'] - slot * dw) >= float(tau) and not cherished_self_present(st, comps[k]):
+        st['tour_t'] = (slot + 1) * dw; slot += 1; k = slot % (len(comps) + 1)          # pas là : on passe au suivant
     if k < len(comps):
         comp = comps[k]; m = st['m']; n_star = int(comp[len(comp) // 2])
         c = np.zeros(len(m)); c[comp] = np.clip(m[comp] / max(float(m[comp].max()), 1e-9), 0.0, 1.0)
