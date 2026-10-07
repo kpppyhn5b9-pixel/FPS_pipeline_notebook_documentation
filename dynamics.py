@@ -1861,6 +1861,9 @@ def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0,
     la cohérence (tau, la constante qui existe déjà : observé, un lieu visité devient présent dans les 5 premières u.t.
     quand il le devient) ; passé ce temps, s'il n'est pas présent (`cherished_self_present`), la visite s'arrête et le
     tour passe au suivant. Une visite vide ne dure plus dix unités. Le substrat garde sa place dans le tour.
+    Décision d'Andréa (07/10, soir) : ceci ne vaut que pour ce qui vient du substrat, les lieux À SOI (degré > 0.5, le
+    seuil qui distingue déjà l'état 9 de l'état 6) ; un souvenir du MONDE est absent par nature, c'est le geste qui le
+    fait revenir, et il garde son temps plein. Considérer l'absent reste le sens de cette mémoire.
     """
     c1 = cherished_recall(st, t, m_min, res_min, sig_width)
     comps = []
@@ -1872,8 +1875,9 @@ def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0,
         comps = [comps[0]] + sorted(others, key=lambda c_: -float(m[c_].mean()))
     st['tour_t'] = float(st.get('tour_t', 0.0)) + float(dt)
     dw = max(float(dwell), 1e-9); slot = int(st['tour_t'] // dw); k = slot % (len(comps) + 1)
-    if k < len(comps) and tau is not None and (st['tour_t'] - slot * dw) >= float(tau) and not cherished_self_present(st, comps[k]):
-        st['tour_t'] = (slot + 1) * dw; slot += 1; k = slot % (len(comps) + 1)          # pas là : on passe au suivant
+    if (k < len(comps) and tau is not None and (st['tour_t'] - slot * dw) >= float(tau)
+            and float(st['soi'][comps[k]].mean()) > 0.5 and not cherished_self_present(st, comps[k])):
+        st['tour_t'] = (slot + 1) * dw; slot += 1; k = slot % (len(comps) + 1)          # un lieu à soi qui n'est pas là : on passe au suivant
     if k < len(comps):
         comp = comps[k]; m = st['m']; n_star = int(comp[len(comp) // 2])
         c = np.zeros(len(m)); c[comp] = np.clip(m[comp] / max(float(m[comp].max()), 1e-9), 0.0, 1.0)

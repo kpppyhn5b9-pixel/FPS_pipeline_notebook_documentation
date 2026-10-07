@@ -349,5 +349,6 @@ le retour du monde ne reprend que le lieu où il revient : l'autre reste à soi.
 
 **Ce qu'on en garde.** Un interrupteur, une constante, trois états. Éteint par défaut ; le protocole
 de référence est inchangé. *(07/10 : deux corrections sur lecture de Gepetto, le tour en temps de silence
-accumulé et le degré lu strate par strate ; `ATTENTION_pistes.md` § 8.)* La piste qui reste, notée dans `ATTENTION_pistes.md` : les deux vitesses
+accumulé et le degré lu strate par strate ; puis `dwell` devenu un plafond pour les lieux à soi, la présence
+décidant de la durée, et temps plein pour les souvenirs du monde ; `ATTENTION_pistes.md` § 8.)* La piste qui reste, notée dans `ATTENTION_pistes.md` : les deux vitesses
 de m.

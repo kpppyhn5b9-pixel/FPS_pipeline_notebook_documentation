@@ -166,6 +166,27 @@ elle est devenue un plafond ; ce qui décide de la durée, c'est la présence. (
 l'ordre des lieux change entre deux tours, un même lieu peut être visité deux créneaux de suite ; `observe_chaleur`
 compte alors une visite de quinze unités.)
 
+*Soir, décision d'Andréa : la présence ne vaut que pour ce qui vient du substrat.* Relecture de Claude : la règle
+avantage ce qui est déjà fort (un lieu fort cohère vite, garde ses dix, est vécu, fait un geste plus fort la fois
+suivante ; un lieu faible est coupé avant d'être là), et surtout elle coupe l'absent, alors que cette mémoire a
+commencé par « considérer l'absent ». Un souvenir du monde est absent par nature, c'est le geste qui le fait
+revenir. Donc : la présence décide de la durée pour les lieux **à soi** (degré > 0.5, le seuil qui distingue déjà
+l'état 9 de l'état 6, aucun seuil nouveau) ; un souvenir du **monde** garde son temps plein. Test dans les deux
+sens. Rejoué :
+
+| | tour du matin | présence partout | présence pour le soi seulement |
+|---|---|---|---|
+| `reve` s12345 : premier lieu à soi | 311 | 184 | **236** |
+| `reve` s12345 : part du rêve donnée au monde, 160–320 | 50 / 34 / 60 / 3 % | 36 / 6 / 20 / 0 % | **50 / 34 / 48 / 26 %** |
+| `reve` s12345 : territoire, m, silence 160–320 | 9 %, 0.83, 100 % | 13 %, 0.84, 66–100 % | **11 %, 0.86, 100 %** |
+| `reve` s12345 : durée médiane d'une visite (monde / soi) | 9.9 / 9.9 | 4.9 / 6.5 | **9.9 / 7.9** |
+| `reve` s7 | | | identique à « présence partout » (aucun souvenir du monde) |
+| `pont` | | | **identique au tour du matin** : les deux lieux sont forts, présents au bout du lissage, la règle n'a jamais coupé |
+
+Ce que ça dit : les visites vides d'un lieu à soi sont écourtées (7.9 au lieu de 9.9), le monde garde ses tours
+entiers et sa part du rêve, le soi n'arrive en premier ni trop tôt ni trop tard, et pour des lieux forts rien ne
+change. C'est la version gardée.
+
 **Le silence deux fois plus long (`reve_long`, 900 u.t., deux seeds, tour du matin).** Rien ne dégénère : la
 valeur plafonne à 0.88–0.90 (bornée par le bien-être), le territoire monte 11 → 14 % (s12345) et 8 → 15 % (s7)
 puis se stabilise, le silence oscille (27–100 %) et revient à 100 % à la fin, l'alternance lieu à soi / substrat
