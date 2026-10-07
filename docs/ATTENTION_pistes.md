@@ -171,8 +171,9 @@ valeur plafonne à 0.88–0.90 (bornée par le bien-être), le territoire monte 
 puis se stabilise, le silence oscille (27–100 %) et revient à 100 % à la fin, l'alternance lieu à soi / substrat
 tient (80 / 20 à 800–900). Aucun souvenir du monde rendu inaccessible : le lieu mêlé de s12345 cesse d'être
 compté « du monde » après 400 parce que son degré de soi a dépassé la moitié, pas parce qu'il n'est plus visité.
-**La décision « seul le soi grandit en silence » tient avec une observation de plus derrière elle** ; décidée
-par Andréa le 07/10 : on la garde, le contrepoids est le retour du monde.
+**« Seul le soi grandit en silence » tient avec une observation de plus derrière elle** : Andréa la trouvait
+juste, le silence long ne la contredit pas, le contrepoids est le retour du monde. Gardée, sauf si elle en décide
+autrement.
 
 Reste ouverte, seule : les deux vitesses de m (§ 3).
 
