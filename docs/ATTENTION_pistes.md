@@ -24,7 +24,7 @@ des îlots de cohérence (la chimère de la lentille de couplage, tout au début
 considérer ce que son propre substrat produit spontanément : un troisième contexte, après
 l'extérieur et le souvenir, le sien. Ferme une boucle avec le premier fil.
 
-## 3. Le dernier souvenir ne l'emporte pas toujours
+## 3. Le dernier souvenir ne l'emporte pas toujours *(la seule porte encore ouverte au 07/10)*
 
 Parfois le premier reste, parfois le plus fort. m n'a qu'une vitesse ; le cerveau consolide
 (un moment intense s'inscrit plus profond et résiste à la réécriture). La frange observée
@@ -138,6 +138,43 @@ repos (avec sa limite, vue le 07/10 au matin : seule, elle affamerait le substra
 pendant la visite de B et de nouveau disponible après ; c'est le tour qui garantit la place du substrat, la chaleur
 répondrait aux revisites et aux silences hachés, les deux ont des rôles différents), et la question de fond :
 seul le soi grandit en silence.
+
+*07/10, après-midi : deux des trois portes regardées (proposition d'Andréa).*
+
+**« Ne rêver que du présent » : `dwell` devient un maximum.** Observé d'abord (sorties du matin) : quand un lieu
+visité devient présent, c'est dans les cinq premières unités de temps (médiane 2.0–2.6, neuvième décile 2.9–5.7),
+c'est-à-dire le temps du lissage de la cohérence (τ_substrat 5, constante existante). Règle, sans constante
+nouvelle : un lieu a sa chance le temps d'un lissage ; s'il n'est pas présent ensuite, la visite s'arrête et le
+tour passe au suivant (`cherished_tour(tau=…)`, test). Le substrat garde sa place.
+
+| | matin (tour en temps de silence) | avec « que du présent » |
+|---|---|---|
+| lieu à soi présent pendant sa visite | 53–58 % | **73–77 %** |
+| lieu du monde (mêlé) présent | 24 % (`reve`), 52 % (`pont`) | **54 %, 66 %** |
+| substrat présent pendant sa tenue | 52–55 %, 98 % | **82 %, 55 %, 95 %** |
+| durée médiane d'une visite d'un lieu à soi | 9.9 | 6.5–7.5 (les vides sont écourtées) |
+| `reve` s12345 : territoire, m, premier lieu à soi | 9 %, 0.83, à 311 | **13 %, 0.84, à 184** |
+| `reve` s7 : territoire, m | 11 %, 0.82 | 14 %, 0.81 |
+| `pont` : degré 13–27 / 58–72 à la fin | 0.66 / 0.84 | **0.74 / 0.63** (plus équilibré) ; substrat 40 % à 300–380 |
+| `pont` : silence tenu 380–460 | 45 % | 31 % |
+
+Ce que ça fait : les visites vides tombent, le substrat a plus de vrai temps, les deux lieux de `pont` sont
+habités à parts comparables. Le prix, à savoir : le soi va **plus vite** (le lieu mêlé, souvent absent, est
+écourté ; le lieu à soi, présent, garde ses dix unités ; dans `reve` s12345 le soi passe en premier dès 184 au
+lieu de 311) et le territoire est un peu plus large (13–14 % au lieu de 9–11 %). La constante n'a pas disparu,
+elle est devenue un plafond ; ce qui décide de la durée, c'est la présence. (Un artefact de lecture : quand
+l'ordre des lieux change entre deux tours, un même lieu peut être visité deux créneaux de suite ; `observe_chaleur`
+compte alors une visite de quinze unités.)
+
+**Le silence deux fois plus long (`reve_long`, 900 u.t., deux seeds, tour du matin).** Rien ne dégénère : la
+valeur plafonne à 0.88–0.90 (bornée par le bien-être), le territoire monte 11 → 14 % (s12345) et 8 → 15 % (s7)
+puis se stabilise, le silence oscille (27–100 %) et revient à 100 % à la fin, l'alternance lieu à soi / substrat
+tient (80 / 20 à 800–900). Aucun souvenir du monde rendu inaccessible : le lieu mêlé de s12345 cesse d'être
+compté « du monde » après 400 parce que son degré de soi a dépassé la moitié, pas parce qu'il n'est plus visité.
+**La décision « seul le soi grandit en silence » tient avec une observation de plus derrière elle** ; décidée
+par Andréa le 07/10 : on la garde, le contrepoids est le retour du monde.
+
+Reste ouverte, seule : les deux vitesses de m (§ 3).
 
 ## Notées en passant
 
