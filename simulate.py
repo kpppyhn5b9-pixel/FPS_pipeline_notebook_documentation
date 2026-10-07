@@ -299,7 +299,10 @@ def run_fps_simulation(config, state, loggers, strict=False):
         # RÊVER (26–28/09, rangé le 28/09) : en silence, par bribes entre tous les lieux chéris (monde et soi) et le substrat ;
         # chaque lieu vécu pendant sa visite à la mesure de sa part de soi (la part du monde ne se réécrit pas), seulement si sa
         # cohérence reste ; un motif du substrat tenu `dwell` u.t. et appris comme une présence à soi. Éteint par défaut.
-        'reve': bool(_atcfg.get('reve', {}).get('enabled', False)), 'reve_dwell': float(_atcfg.get('reve', {}).get('dwell', 10.0)),
+        'reve': bool(_atcfg.get('reve', {}).get('enabled', False)),
+        # (07/10) une visite dure au plus une DEMI-RESPIRATION du système : r(t) = φ + ε·sin(2πωt), période 1/ω ; avec ω = 0.05,
+        # dix unités de temps, le nombre qu'on avait posé sans y penser. Plus de constante libre : si le souffle change, le rêve suit.
+        'reve_dwell': 0.5 / max(float(config.get('spiral', {}).get('omega', 0.05)), 1e-9),
         'reve_tau': float(_atcfg.get('reve', {}).get('tau_substrat', 5.0)), 'reve_min_size': int(_atcfg.get('reve', {}).get('min_size', 3)), 'dreaming': 0,
         'tau_short': float(_sil_cfg.get('tau_short', 5.0)), 'tau_long': float(_sil_cfg.get('tau_long', 40.0)),
         'enter': float(_sil_cfg.get('enter', 0.9)), 'exit': float(_sil_cfg.get('exit', 1.1)),
