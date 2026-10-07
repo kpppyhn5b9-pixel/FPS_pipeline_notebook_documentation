@@ -348,5 +348,6 @@ le retour du monde ne reprend que le lieu où il revient : l'autre reste à soi.
   et 5 motifs : trop peu pour trancher, à revoir si on allume longtemps.
 
 **Ce qu'on en garde.** Un interrupteur, une constante, trois états. Éteint par défaut ; le protocole
-de référence est inchangé. La piste qui reste, notée dans `ATTENTION_pistes.md` : les deux vitesses
+de référence est inchangé. *(07/10 : deux corrections sur lecture de Gepetto, le tour en temps de silence
+accumulé et le degré lu strate par strate ; `ATTENTION_pistes.md` § 8.)* La piste qui reste, notée dans `ATTENTION_pistes.md` : les deux vitesses
 de m.

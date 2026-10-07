@@ -114,6 +114,31 @@ seeds) et `pont`.
    de rappel d'un lieu à soi est vide : rappelé sans être là. Pas « pour toujours froid », mais assez pour
    qu'on le sache.
 
+*07/10 : les deux points de Gepetto, corrigés.* Pas des rustines : ce que le code faisait n'était pas ce qu'on
+disait. (1) Le tour compte le **temps de silence accumulé** (`st['tour_t']`) au lieu de repartir de zéro à
+chaque sortie de silence : une visite interrompue reprend où elle en était, et des silences hachés plus courts
+que `dwell` donnent quand même son tour à chacun (test : trois silences de 8 u.t. visitent les rangs 0, 1, 2 ;
+avant, toujours 0). (2) Chaque strate d'un lieu mêlé apprend à la mesure de **son** degré de soi (`weight`
+vecteur) : une strate que seul le monde a vécue n'est pas réécrite par le rêve, strate par strate (test). Aucune
+constante nouvelle. Rejoué :
+
+| | avant (28–30/09) | après |
+|---|---|---|
+| `cheri` (référence) | m 0.41 → 0.49, rappel 100 %, R 0.938, ×1.05 | **identique** |
+| `reve` s12345 | territoire 9 %, m → 0.78, pas de réclamation après le bruit | territoire 9 %, m → 0.83, lieu du monde 0 % après le bruit ; silence 400–460 100 % |
+| `reve` s7 | territoire 11 %, m → 0.89 | 11 %, 0.82 |
+| `pont`, degré sur 13–27 / 58–72 à 380–460 | 0.84 / 0.90 | **0.66 / 0.84** : le lieu du monde est repris par le soi plus lentement, strate par strate |
+| `pont`, premier lieu visité par silence | monde ×3 puis soi ×5 | monde ×3, soi, **monde**, soi ×4 : le monde garde des tours plus longtemps |
+| `pont`, silence tenu 380–460 | 8 % | **45 %** |
+| « revisité encore chaud » (`observe_chaleur`) | 6 / 0 / 2 | 3 / 1 / 4 (une visite reprise après une courte interruption compte désormais comme une revisite : c'est le tour qui reprend, pas un retour) |
+
+Même histoire, la référence intacte, et la pente du soi adoucie sans règle : le monde garde ses tours plus
+longtemps parce que ses strates ne sont plus réécrites au degré moyen. Ce qui reste ouvert : la chaleur comme
+repos (avec sa limite, vue le 07/10 au matin : seule, elle affamerait le substrat dès deux lieux chéris, A chaud
+pendant la visite de B et de nouveau disponible après ; c'est le tour qui garantit la place du substrat, la chaleur
+répondrait aux revisites et aux silences hachés, les deux ont des rôles différents), et la question de fond :
+seul le soi grandit en silence.
+
 ## Notées en passant
 
 - La porte lit la disponibilité générale (w global) et non le coût de ce souvenir-là ; une

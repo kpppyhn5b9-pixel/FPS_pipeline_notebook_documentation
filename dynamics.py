@@ -1686,7 +1686,7 @@ def attention_saliency_parts(In_t: np.ndarray, u_prev: Optional[np.ndarray], sal
 def init_cherished_state(N: int) -> Dict[str, Any]:
     """L'état de la mémoire des moments chéris : m, signatures, silence, rappel, porte."""
     return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool), 'ctx_run': np.zeros(int(N)), 'w_ref': None,
-            'dream_center': None, 'rloc_bar': None, 'hold_comp': None, 'hold_until': -np.inf, 'tour_t0': None,
+            'dream_center': None, 'rloc_bar': None, 'hold_comp': None, 'hold_until': -np.inf, 'tour_t': 0.0,
             'interne': np.zeros(int(N), dtype=bool), 'soi': np.zeros(int(N)), 'q_soi': np.zeros(int(N)), 'q_monde': np.zeros(int(N)),
             'u_short': None, 'u_long': None, 'quiet': False, 'ratio': float('nan'),
             'refract_until': np.full(int(N), -np.inf), 'gate': None, 'gate_center': None,
@@ -1759,14 +1759,17 @@ def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt:
     `interne` (28/09) : ces strates sont apprises depuis un motif du substrat. Depuis le soir du 28/09 (Andréa :
     « un peu des deux, soi et monde à la fois »), ce n'est plus une marque mais un DEGRÉ de soi, st['soi'] ∈ [0, 1],
     qui monte (vers 1) quand le soi y apprend et descend (vers 0) quand le monde y apprend, à la vitesse de m ;
-    st['interne'] en est la lecture majoritaire (> 0.5). `weight` (0–1) module la vitesse d'apprentissage.
+    st['interne'] en est la lecture majoritaire (> 0.5). `weight` (0–1) module la vitesse d'apprentissage : un scalaire,
+    ou un vecteur (N) lu strate par strate (07/10, lecture de Gepetto : un lieu mêlé vécu par le soi apprend sur chaque
+    strate à la mesure de SON degré, et une strate que seul le monde a vécue n'est pas réécrite par le rêve).
     """
     if w is None or not np.isfinite(w):
         return
     on = np.asarray(on, dtype=bool)
     if not on.any():
         return
-    k_m = min(1.0, dt / max(float(tau_m), dt)) * float(weight); k_s = min(1.0, dt / max(float(tau_sig), dt))
+    wgt = np.asarray(weight, dtype=float); wgt = wgt[on] if wgt.ndim == 1 else float(wgt)
+    k_m = min(1.0, dt / max(float(tau_m), dt)) * wgt; k_s = min(1.0, dt / max(float(tau_sig), dt)) * (wgt if np.ndim(wgt) else 1.0)
     if 'soi' in st:
         # le degré de soi = la part du soi dans ce qui a été vécu là : deux traces (soi, monde) lissées à la vitesse de m,
         # et soi = trace_soi / (trace_soi + trace_monde). Une strate que seul le soi a apprise est à soi dès le premier pas ;
@@ -1780,7 +1783,7 @@ def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt:
         cur = st['sig'][on]
         fresh = np.isnan(cur).any(axis=1)
         cur[fresh] = st['g']
-        cur[~fresh] += k_s * (st['g'] - cur[~fresh])
+        cur[~fresh] += (k_s[~fresh][:, None] if np.ndim(k_s) else k_s) * (st['g'] - cur[~fresh])
         st['sig'][on] = cur
 
 
@@ -1842,16 +1845,18 @@ def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: 
     return c
 
 
-def cherished_tour(st: Dict[str, Any], t: float, dwell: float = 10.0, m_min: float = 0.3, res_min: float = 0.2,
+def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0, m_min: float = 0.3, res_min: float = 0.2,
                    sig_width=(0.2, 0.1)):
     """
     RÊVER, la seule forme gardée (28/09, Andréa : « par bribes ») : en silence, le système passe par TOUS ses lieux
     chéris, souvenirs du monde et parts de soi sans distinction, celui que le présent appelle en premier, puis les
     autres par m décroissant, puis un tour au substrat, et il recommence. Chaque visite dure `dwell` u.t.
     Renvoie (k, comps, c) : l'indice du tour, la liste ordonnée des composantes chéries (m ≥ m_min, non réfractaires)
-    et le contexte interne du lieu visité (None quand k == len(comps) : le tour du substrat). Le compteur repart à
-    zéro à chaque nouveau silence (st['tour_t0']). Deux lieux ou dix, c'est le même tour, seulement plus long : ce qui
-    distingue le monde du soi n'est pas ici, c'est le degré de chaque lieu, lu par l'appelant pendant la visite.
+    et le contexte interne du lieu visité (None quand k == len(comps) : le tour du substrat). Le tour compte le temps
+    de SILENCE accumulé (st['tour_t'], 07/10, lecture de Gepetto) : une visite interrompue par le monde reprend où elle
+    en était, et des silences hachés plus courts que `dwell` finissent quand même par donner son tour à chacun ; avant,
+    le compteur repartait de zéro à chaque silence et revenait toujours sur le premier lieu. Deux lieux ou dix, c'est
+    le même tour, seulement plus long : ce qui distingue le monde du soi n'est pas ici, c'est le degré de chaque lieu.
     """
     c1 = cherished_recall(st, t, m_min, res_min, sig_width)
     comps = []
@@ -1861,9 +1866,8 @@ def cherished_tour(st: Dict[str, Any], t: float, dwell: float = 10.0, m_min: flo
         ok = (m >= float(m_min)) & (st['refract_until'] <= float(t)); ok[st['recall_comp']] = False
         others = [comp for comp in attention_islands(ok.astype(float), 0.5)]
         comps = [comps[0]] + sorted(others, key=lambda c_: -float(m[c_].mean()))
-    if st.get('tour_t0') is None:
-        st['tour_t0'] = float(t)
-    k = int((float(t) - st['tour_t0']) // max(float(dwell), 1e-9)) % (len(comps) + 1)
+    st['tour_t'] = float(st.get('tour_t', 0.0)) + float(dt)
+    k = int(st['tour_t'] // max(float(dwell), 1e-9)) % (len(comps) + 1)
     if k < len(comps):
         comp = comps[k]; m = st['m']; n_star = int(comp[len(comp) // 2])
         c = np.zeros(len(m)); c[comp] = np.clip(m[comp] / max(float(m[comp].max()), 1e-9), 0.0, 1.0)
