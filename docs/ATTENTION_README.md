@@ -39,14 +39,17 @@ qu'une exception) ; tout réversible (un interrupteur, éteint par défaut, jusq
   chéri ; le monde reprend la main dès qu'il parle ; la porte repose un souvenir qui fait mal, sans
   le dévaluer.
 - **Rêve** (éteint) : en silence, le tour de tous les lieux chéris, monde et soi, puis du substrat,
-  par bribes de `dwell` ; un lieu visité est vécu à la mesure de son degré de soi ; la part du monde
-  n'est jamais réécrite par le rêve.
+  par bribes de `dwell` au plus (un lieu à soi qui n'est pas là cède son tour après un lissage ; un
+  souvenir du monde garde son temps plein) ; un lieu visité est vécu strate par strate à la mesure de
+  son degré de soi ; ce que seul le monde a vécu n'est pas réécrit par le rêve.
 
 ## Les portes encore ouvertes (29/09)
 
 1. **Deux vitesses pour m** (`ATTENTION_pistes.md` § 3) : le dernier souvenir ne l'emporte pas
    toujours. À faire avec la forme de la mémoire de soi, sans décider « fort ou premier ».
-2. **La constante des tours** : `dwell` est rigide ; « ce qui reste » pourrait la remplacer.
-3. **La porte locale** : la porte lit un bien-être global ; un bien-être local n'existe pas.
+2. **La porte locale** : la porte lit un bien-être global ; un bien-être local n'existe pas.
+
+*Fermées le 07/10 (`ATTENTION_pistes.md` § 8) : la constante des tours est devenue un plafond, la présence décide
+de la durée ; « seul le soi grandit en silence » gardée, après un silence de 900 u.t. où rien ne dégénère.*
 
 Bancs : `calib/README.md`. Sorties : `calib/attention_sources/`. Figures : `docs/figures/attention_*.png`.

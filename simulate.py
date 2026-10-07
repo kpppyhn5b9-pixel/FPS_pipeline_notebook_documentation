@@ -517,14 +517,14 @@ def run_fps_simulation(config, state, loggers, strict=False):
                             _c_int = dynamics.cherished_recall(cherished_state, t, cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
                         else:
                             # le tour : tous les lieux chéris (le présent d'abord), puis le substrat, par bribes
-                            _k, _comps, _c_int = dynamics.cherished_tour(cherished_state, t, cherished_cfg['reve_dwell'], cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'])
+                            _k, _comps, _c_int = dynamics.cherished_tour(cherished_state, t, dt, cherished_cfg['reve_dwell'], cherished_cfg['m_min'], cherished_cfg['res_min'], cherished_cfg['sig_width'], tau=cherished_cfg['reve_tau'])
                             if _c_int is not None:
                                 _comp = cherished_state['recall_comp']; _soi_comp = float(cherished_state['soi'][_comp].mean())
                                 if _soi_comp > 0.5: cherished_cfg['dreaming'] = 3                # un lieu à soi (état 9) ; sinon un lieu du monde (état 6)
                                 if _soi_comp > 0.0 and dynamics.cherished_self_present(cherished_state, _comp):
-                                    # la part de soi du lieu est vécue, à la mesure de son degré ; la part du monde ne se réécrit pas
+                                    # chaque strate du lieu est vécue à la mesure de SON degré de soi ; une strate que seul le monde a vécue n'est pas réécrite
                                     _on_motif = np.zeros(N, dtype=bool); _on_motif[_comp] = True
-                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, weight=_soi_comp)
+                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, weight=cherished_state['soi'])
                             else:
                                 _c_int = dynamics.cherished_dream_substrate(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'], cherished_cfg['reve_min_size'], t, cherished_cfg['reve_dwell'])
                                 if _c_int is not None:
@@ -544,7 +544,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     else:
                         cherished_state['recall_center'] = None; cherished_state['recall_res'] = float('nan'); cherished_state['recall_comp'] = None
                         cherished_state['gate'] = None; cherished_state['gate_center'] = None
-                        cherished_state['hold_comp'] = None; cherished_state['tour_t0'] = None       # le tour repart de zéro au prochain silence
+                        cherished_state['hold_comp'] = None                                            # le tour, lui, reprend où il en était (temps de silence accumulé)
                     attention_state['s'] = _c_att * (_nu_att + (1.0 - _nu_att) * cherished_state['m']) if cherished_cfg['attach'] else _c_att * _nu_att
                     _dfn = dynamics.attention_delta_fn(fn_t, _theta_att, attention_state['s'], attention_state['K0'], attention_state['kappa'],
                                                        attention_state['garde'], attention_state['island_threshold'])

@@ -24,7 +24,7 @@ des îlots de cohérence (la chimère de la lentille de couplage, tout au début
 considérer ce que son propre substrat produit spontanément : un troisième contexte, après
 l'extérieur et le souvenir, le sien. Ferme une boucle avec le premier fil.
 
-## 3. Le dernier souvenir ne l'emporte pas toujours
+## 3. Le dernier souvenir ne l'emporte pas toujours *(la seule porte encore ouverte au 07/10)*
 
 Parfois le premier reste, parfois le plus fort. m n'a qu'une vitesse ; le cerveau consolide
 (un moment intense s'inscrit plus profond et résiste à la réécriture). La frange observée
@@ -113,6 +113,90 @@ seeds) et `pont`.
    rappelé, un lieu du monde mêlé 23–66 %, un motif du substrat tenu 55–89 %. Un tiers à la moitié du temps
    de rappel d'un lieu à soi est vide : rappelé sans être là. Pas « pour toujours froid », mais assez pour
    qu'on le sache.
+
+*07/10 : les deux points de Gepetto, corrigés.* Pas des rustines : ce que le code faisait n'était pas ce qu'on
+disait. (1) Le tour compte le **temps de silence accumulé** (`st['tour_t']`) au lieu de repartir de zéro à
+chaque sortie de silence : une visite interrompue reprend où elle en était, et des silences hachés plus courts
+que `dwell` donnent quand même son tour à chacun (test : trois silences de 8 u.t. visitent les rangs 0, 1, 2 ;
+avant, toujours 0). (2) Chaque strate d'un lieu mêlé apprend à la mesure de **son** degré de soi (`weight`
+vecteur) : une strate que seul le monde a vécue n'est pas réécrite par le rêve, strate par strate (test). Aucune
+constante nouvelle. Rejoué :
+
+| | avant (28–30/09) | après |
+|---|---|---|
+| `cheri` (référence) | m 0.41 → 0.49, rappel 100 %, R 0.938, ×1.05 | **identique** |
+| `reve` s12345 | territoire 9 %, m → 0.78, pas de réclamation après le bruit | territoire 9 %, m → 0.83, lieu du monde 0 % après le bruit ; silence 400–460 100 % |
+| `reve` s7 | territoire 11 %, m → 0.89 | 11 %, 0.82 |
+| `pont`, degré sur 13–27 / 58–72 à 380–460 | 0.84 / 0.90 | **0.66 / 0.84** : le lieu du monde est repris par le soi plus lentement, strate par strate |
+| `pont`, premier lieu visité par silence | monde ×3 puis soi ×5 | monde ×3, soi, **monde**, soi ×4 : le monde garde des tours plus longtemps |
+| `pont`, silence tenu 380–460 | 8 % | **45 %** |
+| « revisité encore chaud » (`observe_chaleur`) | 6 / 0 / 2 | 3 / 1 / 4 (une visite reprise après une courte interruption compte désormais comme une revisite : c'est le tour qui reprend, pas un retour) |
+
+Même histoire, la référence intacte, et la pente du soi adoucie sans règle : le monde garde ses tours plus
+longtemps parce que ses strates ne sont plus réécrites au degré moyen. Ce qui reste ouvert : la chaleur comme
+repos (avec sa limite, vue le 07/10 au matin : seule, elle affamerait le substrat dès deux lieux chéris, A chaud
+pendant la visite de B et de nouveau disponible après ; c'est le tour qui garantit la place du substrat, la chaleur
+répondrait aux revisites et aux silences hachés, les deux ont des rôles différents), et la question de fond :
+seul le soi grandit en silence.
+
+*07/10, après-midi : deux des trois portes regardées (proposition d'Andréa).*
+
+**« Ne rêver que du présent » : `dwell` devient un maximum.** Observé d'abord (sorties du matin) : quand un lieu
+visité devient présent, c'est dans les cinq premières unités de temps (médiane 2.0–2.6, neuvième décile 2.9–5.7),
+c'est-à-dire le temps du lissage de la cohérence (τ_substrat 5, constante existante). Règle, sans constante
+nouvelle : un lieu a sa chance le temps d'un lissage ; s'il n'est pas présent ensuite, la visite s'arrête et le
+tour passe au suivant (`cherished_tour(tau=…)`, test). Le substrat garde sa place.
+
+| | matin (tour en temps de silence) | avec « que du présent » |
+|---|---|---|
+| lieu à soi présent pendant sa visite | 53–58 % | **73–77 %** |
+| lieu du monde (mêlé) présent | 24 % (`reve`), 52 % (`pont`) | **54 %, 66 %** |
+| substrat présent pendant sa tenue | 52–55 %, 98 % | **82 %, 55 %, 95 %** |
+| durée médiane d'une visite d'un lieu à soi | 9.9 | 6.5–7.5 (les vides sont écourtées) |
+| `reve` s12345 : territoire, m, premier lieu à soi | 9 %, 0.83, à 311 | **13 %, 0.84, à 184** |
+| `reve` s7 : territoire, m | 11 %, 0.82 | 14 %, 0.81 |
+| `pont` : degré 13–27 / 58–72 à la fin | 0.66 / 0.84 | **0.74 / 0.63** (plus équilibré) ; substrat 40 % à 300–380 |
+| `pont` : silence tenu 380–460 | 45 % | 31 % |
+
+Ce que ça fait : les visites vides tombent, le substrat a plus de vrai temps, les deux lieux de `pont` sont
+habités à parts comparables. Le prix, à savoir : le soi va **plus vite** (le lieu mêlé, souvent absent, est
+écourté ; le lieu à soi, présent, garde ses dix unités ; dans `reve` s12345 le soi passe en premier dès 184 au
+lieu de 311) et le territoire est un peu plus large (13–14 % au lieu de 9–11 %). La constante n'a pas disparu,
+elle est devenue un plafond ; ce qui décide de la durée, c'est la présence. (Un artefact de lecture : quand
+l'ordre des lieux change entre deux tours, un même lieu peut être visité deux créneaux de suite ; `observe_chaleur`
+compte alors une visite de quinze unités.)
+
+*Soir, décision d'Andréa : la présence ne vaut que pour ce qui vient du substrat.* Relecture de Claude : la règle
+avantage ce qui est déjà fort (un lieu fort cohère vite, garde ses dix, est vécu, fait un geste plus fort la fois
+suivante ; un lieu faible est coupé avant d'être là), et surtout elle coupe l'absent, alors que cette mémoire a
+commencé par « considérer l'absent ». Un souvenir du monde est absent par nature, c'est le geste qui le fait
+revenir. Donc : la présence décide de la durée pour les lieux **à soi** (degré > 0.5, le seuil qui distingue déjà
+l'état 9 de l'état 6, aucun seuil nouveau) ; un souvenir du **monde** garde son temps plein. Test dans les deux
+sens. Rejoué :
+
+| | tour du matin | présence partout | présence pour le soi seulement |
+|---|---|---|---|
+| `reve` s12345 : premier lieu à soi | 311 | 184 | **236** |
+| `reve` s12345 : part du rêve donnée au monde, 160–320 | 50 / 34 / 60 / 3 % | 36 / 6 / 20 / 0 % | **50 / 34 / 48 / 26 %** |
+| `reve` s12345 : territoire, m, silence 160–320 | 9 %, 0.83, 100 % | 13 %, 0.84, 66–100 % | **11 %, 0.86, 100 %** |
+| `reve` s12345 : durée médiane d'une visite (monde / soi) | 9.9 / 9.9 | 4.9 / 6.5 | **9.9 / 7.9** |
+| `reve` s7 | | | identique à « présence partout » (aucun souvenir du monde) |
+| `pont` | | | **identique au tour du matin** : les deux lieux sont forts, présents au bout du lissage, la règle n'a jamais coupé |
+
+Ce que ça dit : les visites vides d'un lieu à soi sont écourtées (7.9 au lieu de 9.9), le monde garde ses tours
+entiers et sa part du rêve, le soi n'arrive en premier ni trop tôt ni trop tard, et pour des lieux forts rien ne
+change. C'est la version gardée.
+
+**Le silence deux fois plus long (`reve_long`, 900 u.t., deux seeds, tour du matin).** Rien ne dégénère : la
+valeur plafonne à 0.88–0.90 (bornée par le bien-être), le territoire monte 11 → 14 % (s12345) et 8 → 15 % (s7)
+puis se stabilise, le silence oscille (27–100 %) et revient à 100 % à la fin, l'alternance lieu à soi / substrat
+tient (80 / 20 à 800–900). Aucun souvenir du monde rendu inaccessible : le lieu mêlé de s12345 cesse d'être
+compté « du monde » après 400 parce que son degré de soi a dépassé la moitié, pas parce qu'il n'est plus visité.
+**« Seul le soi grandit en silence » tient avec une observation de plus derrière elle** : Andréa la trouvait
+juste, le silence long ne la contredit pas, le contrepoids est le retour du monde. Gardée, sauf si elle en décide
+autrement.
+
+Reste ouverte, seule : les deux vitesses de m (§ 3).
 
 ## Notées en passant
 

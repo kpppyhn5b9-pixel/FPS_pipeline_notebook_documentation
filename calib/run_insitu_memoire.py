@@ -47,6 +47,7 @@ MODES = {
     # reve       : le monde ne donne rien à chérir (20 sous bruit 60–120), long silence 120–460 ; à 320–360 un bruit sur la zone du
     #              premier motif à soi (16 / 91 selon le seed). reve_off : le même sans rêve (rappel ordinaire : rien n'est chéri).
     'reve':      dict(T=460, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve=True, noise_by_seed={12345: [(320.0, 360.0, 1.5, 16)], 7: [(320.0, 360.0, 1.5, 91)]}),
+    'reve_long': dict(T=900, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve=True),           # un silence deux fois plus long : quelque chose dégénère-t-il ?
     'reve_off':  dict(T=460, foyers=[foyer(20, 60, 120)], noise=[(60.0, 120.0, 0.6, None)], reve=False, noise_by_seed={12345: [(320.0, 360.0, 1.5, 16)], 7: [(320.0, 360.0, 1.5, 91)]}),
     # pont       : deux souvenirs du monde éloignés (20 et 65, au calme), puis un long silence où le rêve tourne ; le soi s'installe-t-il, et où ?
     'pont':      dict(T=460, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve=True),
@@ -62,6 +63,7 @@ WIN = {
     'forme':     [(100, 120, '20 présent en PLATEAU'), (200, 230, 'silence'), (230, 260, 'silence'), (260, 300, 'les deux reviennent')],
     'meme_lieu': [(100, 120, '20 présent, calme'), (150, 170, '20 présent, bruit'), (190, 210, ''), (210, 240, 'silence'), (240, 290, 'silence')],
     'contigus':  [(100, 120, '20 présent'), (160, 180, '32 présent'), (180, 220, 'silence'), (220, 260, 'silence')],
+    'reve_long': [(120, 200, 'silence'), (200, 300, ''), (300, 400, ''), (400, 500, ''), (500, 600, ''), (600, 700, ''), (700, 800, ''), (800, 900, '')],
     'reve':      [(60, 120, '20 présent sous bruit'), (120, 160, 'silence'), (160, 200, 'silence'), (200, 240, 'silence'), (240, 280, 'silence'), (280, 320, 'silence'), (320, 360, 'le motif chéri devient bruyant'), (360, 400, 'silence'), (400, 460, 'silence')],
     'pont':      [(100, 110, '20 présent'), (150, 160, '65 présent'), (160, 220, 'silence'), (220, 300, 'silence'), (300, 380, 'silence'), (380, 460, 'silence')],
     'retour_monde': [(160, 220, 'silence'), (220, 300, 'silence'), (300, 380, 'silence'), (380, 400, 'le 65 revient'), (400, 420, ''), (420, 440, ''), (440, 460, '')],

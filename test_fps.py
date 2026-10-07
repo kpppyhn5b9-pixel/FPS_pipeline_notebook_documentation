@@ -1244,13 +1244,35 @@ class TestCherishedMemory(unittest.TestCase):
         st = dynamics.init_cherished_state(N); st['m'][5:10] = 0.6; st['m'][40:45] = 0.9; st['m'][20:24] = 0.4
         st['sig'][5:10] = [0.05, 0.3]; st['sig'][40:45] = [0.02, 0.3]; st['sig'][20:24] = [0.08, 0.3]; st['g'] = np.array([0.05, 0.3])   # le présent ressemble au 5–9
         seq = []
-        for t in (0.0, 5.0, 12.0, 25.0, 35.0, 45.0):
-            k, comps, c = dynamics.cherished_tour(st, t, 10.0); seq.append((k, st['recall_center']))
+        for t, dt in ((0.0, 0.0), (5.0, 5.0), (12.0, 7.0), (25.0, 13.0), (35.0, 10.0), (45.0, 10.0)):
+            k, comps, c = dynamics.cherished_tour(st, t, dt, 10.0); seq.append((k, st['recall_center']))
         self.assertEqual([k for k, _ in seq], [0, 0, 1, 2, 3, 0]); self.assertEqual(len(comps), 3)
         self.assertEqual([c_ for _, c_ in seq][:4], [7, 7, 42, 22])                                 # présent (5–9), puis m 0.9 (40–44), puis 0.4 (20–23, milieu 22)
         self.assertIsNone(seq[4][1])                                                                # k == 3 : le tour du substrat
         self.assertIsNotNone(c)                                                                     # et on recommence
-        st2 = dynamics.init_cherished_state(N); self.assertEqual(dynamics.cherished_tour(st2, 0.0, 10.0)[0], 0)   # rien de chéri : le substrat seul
+        st2 = dynamics.init_cherished_state(N); self.assertEqual(dynamics.cherished_tour(st2, 0.0, 0.0, 10.0)[0], 0)   # rien de chéri : le substrat seul
+        # le tour compte le temps de silence : des silences hachés de 8 u.t. (le monde entre deux) donnent quand même son tour au second lieu
+        st3 = dynamics.init_cherished_state(N); st3['m'][5:10] = 0.6; st3['m'][40:45] = 0.9; st3['sig'][5:10] = [0.05, 0.3]; st3['sig'][40:45] = [0.02, 0.3]; st3['g'] = np.array([0.05, 0.3])
+        ks = []
+        for _sil in range(3):
+            for _ in range(80): ks.append(dynamics.cherished_tour(st3, 0.0, 0.1, 10.0)[0])          # 8 u.t. de silence, puis le monde
+        self.assertEqual(ks[0], 0); self.assertIn(1, ks); self.assertIn(2, ks)                       # avant : toujours 0
+        # ne rêver que du présent : dwell est un maximum ; un lieu qui n'est pas là après tau cède son tour, un lieu présent garde les dix
+        st8 = dynamics.init_cherished_state(N); st8['m'][5:10] = 0.6; st8['m'][40:45] = 0.9; st8['sig'][5:10] = [0.05, 0.3]; st8['sig'][40:45] = [0.02, 0.3]; st8['g'] = np.array([0.05, 0.3])
+        st8['rloc_bar'] = np.full(N, 0.6); st8['rloc_bar'][40:45] = 0.95                             # le 40–44 est là, le 5–9 ne l'est pas
+        st8['soi'][5:10] = 1.0                                                                       # le 5–9 est un lieu à soi
+        ks8 = [dynamics.cherished_tour(st8, 0.0, 0.1, 10.0, tau=5.0)[0] for _ in range(100)]
+        self.assertEqual(ks8[:40].count(0), 40); self.assertEqual(ks8[60], 1)                        # le 5–9, à soi et absent, cède après 5 u.t. : le 40–44 commence à t ≈ 5
+        self.assertEqual(ks8[99], 1)                                                                # et, présent, garde ses dix unités
+        st9 = dynamics.init_cherished_state(N); st9['m'][5:10] = 0.6; st9['m'][40:45] = 0.9; st9['sig'][5:10] = [0.05, 0.3]; st9['sig'][40:45] = [0.02, 0.3]; st9['g'] = np.array([0.05, 0.3])
+        st9['rloc_bar'] = np.full(N, 0.6)                                                           # rien n'est là, et le 5–9 est un souvenir du MONDE (soi 0)
+        ks9 = [dynamics.cherished_tour(st9, 0.0, 0.1, 10.0, tau=5.0)[0] for _ in range(100)]
+        self.assertEqual(ks9[60], 0); self.assertEqual(ks9[99], 0)                                  # absent par nature : il garde son temps plein
+        # chaque strate apprend à la mesure de SON degré : la strate que seul le monde a vécue n'est pas réécrite par le rêve
+        st7 = dynamics.init_cherished_state(20); on7 = np.zeros(20, dtype=bool); on7[3:7] = True; st7['m'][3:7] = 0.5
+        st7['q_soi'][3:5] = 1.0; st7['q_monde'][5:7] = 1.0; st7['soi'] = st7['q_soi'] / (st7['q_soi'] + st7['q_monde'])
+        dynamics.cherished_attach(st7, on7, 1.0, 1.0, 20.0, 5.0, interne=True, weight=st7['soi'])
+        self.assertGreater(st7['m'][3], 0.5); self.assertAlmostEqual(st7['m'][6], 0.5); self.assertAlmostEqual(st7['soi'][6], 0.0)
         # retenir un motif : la région choisie est tenue dwell u.t. même si la cohérence bouge ailleurs
         st4 = dynamics.init_cherished_state(N); r4 = np.full(N, 0.6); r4[20:28] = 0.95
         def step(st_, r_, t_):
