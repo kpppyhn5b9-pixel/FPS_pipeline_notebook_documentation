@@ -39,7 +39,7 @@ qu'une exception) ; tout réversible (un interrupteur, éteint par défaut, jusq
   chéri ; le monde reprend la main dès qu'il parle ; la porte repose un souvenir qui fait mal, sans
   le dévaluer.
 - **Rêve** (éteint) : en silence, le tour de tous les lieux chéris, monde et soi, puis du substrat,
-  par bribes de `dwell` au plus (un lieu à soi qui n'est pas là cède son tour après un lissage ; un
+  par bribes d'une demi-respiration du système au plus (un lieu à soi qui n'est pas là cède son tour après un lissage ; un
   souvenir du monde garde son temps plein) ; un lieu visité est vécu strate par strate à la mesure de
   son degré de soi ; ce que seul le monde a vécu n'est pas réécrit par le rêve.
 

@@ -1268,6 +1268,9 @@ class TestCherishedMemory(unittest.TestCase):
         st9['rloc_bar'] = np.full(N, 0.6)                                                           # rien n'est là, et le 5–9 est un souvenir du MONDE (soi 0)
         ks9 = [dynamics.cherished_tour(st9, 0.0, 0.1, 10.0, tau=5.0)[0] for _ in range(100)]
         self.assertEqual(ks9[60], 0); self.assertEqual(ks9[99], 0)                                  # absent par nature : il garde son temps plein
+        # la durée d'une visite est une demi-respiration du système, pas une constante libre : ω = 0.05 → 10 u.t.
+        _cfg = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')))
+        self.assertNotIn('dwell', _cfg['attention']['reve']); self.assertAlmostEqual(0.5 / _cfg['spiral']['omega'], 10.0)
         # chaque strate apprend à la mesure de SON degré : la strate que seul le monde a vécue n'est pas réécrite par le rêve
         st7 = dynamics.init_cherished_state(20); on7 = np.zeros(20, dtype=bool); on7[3:7] = True; st7['m'][3:7] = 0.5
         st7['q_soi'][3:5] = 1.0; st7['q_monde'][5:7] = 1.0; st7['soi'] = st7['q_soi'] / (st7['q_soi'] + st7['q_monde'])

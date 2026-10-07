@@ -10,8 +10,8 @@ Interrupteur `attention.reve.mode` : `off` (défaut), `liaison`, `substrat`, `le
 États 7 (rêve-liaison) et 8 (rêve-substrat) dans `attention_rappel_etat`. Test `test_dream_bridge_and_link`.*
 
 *Rangé le 28/09 au soir (dernière section) : il ne reste qu'un interrupteur, `attention.reve.enabled`
-(faux par défaut), une constante de tour `dwell`, et les états 6 (lieu du monde), 8 (substrat), 9 (lieu
-à soi). Les sections intermédiaires décrivent des interrupteurs qui n'existent plus dans le pipeline ;
+(faux par défaut), une constante de tour `dwell` (devenue le 07/10 une demi-respiration du système, plus une
+constante), et les états 6 (lieu du monde), 8 (substrat), 9 (lieu à soi). Les sections intermédiaires décrivent des interrupteurs qui n'existent plus dans le pipeline ;
 elles restent comme trace de ce qu'on a essayé et de pourquoi.*
 
 ## Ce qu'on a construit

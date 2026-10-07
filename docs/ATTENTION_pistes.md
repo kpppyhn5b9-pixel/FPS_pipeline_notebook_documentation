@@ -198,6 +198,18 @@ autrement.
 
 Reste ouverte, seule : les deux vitesses de m (§ 3).
 
+*Soir, question d'Andréa : remplacer le plafond de dix par la chaleur (monde) et la présence (soi) ?* Non : ni l'une
+ni l'autre ne sait dire « ça suffit ». La chaleur est la trace d'après (pendant la visite, le lieu est chaud par
+construction) ; la présence sait dire « il n'est pas là, passe », pas « assez » (un lieu à soi qui tient resterait
+présent tant qu'on le visite : réserve de Gepetto). Pour finir une visite il faut une fatigue ou un rythme ; le
+système n'a pas de fatigue d'une région tenue, mais il a un rythme : sa respiration r(t) = φ + ε·sin(2πωt),
+ω = 0.05, période 20 u.t. **Une visite de dix, c'est une demi-respiration.** Piste, en deux pas : (1) **fait le 07/10 au soir** :
+`dwell` est une demi-respiration (1/(2ω)) et n'est plus dans `config.json`, identique aujourd'hui (10 u.t.), une
+constante de moins, et si le système change de souffle, le rêve suit (test ; `reve` rejoué identique) ; (2) basculer de lieu sur le souffle lui-même (une
+visite par inspiration, une par expiration), la durée n'étant plus un nombre mais la phase de r(t) ; à observer si
+les bascules à moments fixes coupent au mauvais moment ou si le rêve se cale sur la respiration du chœur (le
+rythme thêta de l'hippocampe fait ça : il alterne entre options à cadence fixe, Kay et Frank 2020).
+
 ## Notées en passant
 
 - La porte lit la disponibilité générale (w global) et non le coût de ce souvenir-là ; une
