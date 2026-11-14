@@ -1362,13 +1362,14 @@ class TestCherishedMemory(unittest.TestCase):
 
     def test_pipeline_inert_without_context_and_remembers_with_it(self):
         import simulate
-        def run(foyers, N=30, T=150):
+        def run(foyers, N=30, T=150, tau_long='keep'):
             with open('config.json') as f:
                 config = json.load(f)
             config['system']['N'] = N; config['system']['T'] = T; config['system']['seed'] = 12345
             config['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
             config['analysis'] = {**config.get('analysis', {}), 'compare_kuramoto': False}
             config['context'] = {'foyers': foyers}
+            if tau_long != 'keep': config['attention']['attachement']['tau_long'] = tau_long
             tmp = tempfile.mkdtemp(); cwd = os.getcwd()
             try:
                 os.chdir(tmp)
@@ -1394,6 +1395,14 @@ class TestCherishedMemory(unittest.TestCase):
         self.assertTrue(all(x['attention_rappel_etat'] == 6.0 for x in rec))              # l'état dit « rappel en cours »
         self.assertTrue(all(x['attention_rappel_etat'] == 1.0 for x in during))           # pendant la présence : « l'extérieur parle »
         self.assertTrue(all(x['attention_rappel_etat'] in (2.0, 3.0) for x in h0 if x.get('attention_rappel_etat') is not None and x['t'] > 25))   # sans contexte : jamais 6
+        # (14/11) la trace lente passe bien par la config : τ_long 100 et 200 ne donnent pas la même m_long à la fin de la
+        # présence (une clé 'tau_long' du silence écrasait celle de l'attachement : les deux tournaient à 40), et null l'éteint
+        foy = [{'center': 8, 'width': 3.0, 'gain': 0.5, 't0': 50.0, 't1': 90.0}]
+        def ml_end(hh): return float(np.max([np.max(x['attention_m_long']) for x in hh if 85 <= x['t'] < 90 and x.get('attention_m_long') is not None]))
+        ml100 = ml_end(h); ml200 = ml_end(run(foy, N=30, T=95, tau_long=200.0))
+        self.assertGreater(ml100, 0.05); self.assertLess(ml200, 0.8 * ml100, (ml100, ml200))   # plus lente : moins inscrite au même instant
+        h_sans = run(foy, N=30, T=95, tau_long=None)
+        self.assertTrue(all(x.get('attention_m_long') is None or float(np.max(x['attention_m_long'])) == 0.0 for x in h_sans))
 
 
 class TestDispersionGuard(unittest.TestCase):

@@ -294,7 +294,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
     cherished_state = dynamics.init_cherished_state(N)
     cherished_cfg = {
         'attach': bool(_attach_cfg.get('enabled', True)), 'tau_m': float(_attach_cfg.get('tau_m', 20.0)), 'tau_sig': float(_attach_cfg.get('tau_sig', 5.0)),
-        'tau_long': (None if _attach_cfg.get('tau_long') is None else float(_attach_cfg['tau_long'])),   # (14/11) la trace lente de m ; null = aucune
+        'tau_m_long': (None if _attach_cfg.get('tau_long') is None else float(_attach_cfg['tau_long'])),   # (14/11) la trace lente de m ; null = aucune (clé distincte du tau_long du silence)
         'tau_c': float(_attach_cfg.get('tau_c', 5.0)), 'seuil_contexte': float(_attach_cfg.get('seuil_contexte', 0.5)),
         'mode': str(_attach_cfg.get('mode', 'soulagement')), 'tau_ref': float(_attach_cfg.get('tau_ref', 40.0)),
         # RÊVER (26–28/09, rangé le 28/09) : en silence, par bribes entre tous les lieux chéris (monde et soi) et le substrat ;
@@ -503,7 +503,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     dynamics.cherished_update_rloc(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'])   # ce que le substrat produit et qui reste
                     dynamics.cherished_wellbeing_ref(cherished_state, cherished_cfg['w'], dt, cherished_cfg['tau_ref'])
                     if cherished_cfg['attach']:
-                        dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], tau_long=cherished_cfg['tau_long'])
+                        dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], tau_long=cherished_cfg['tau_m_long'])
                     _quiet = dynamics.cherished_silence(cherished_state, memory_state.get('surprise'), cherished_cfg['external'], dt,
                                                         cherished_cfg['tau_short'], cherished_cfg['tau_long'], cherished_cfg['enter'], cherished_cfg['exit'])
                     # l'état du rappel, journalisé (colonne attention_rappel_etat) : 0 désactivé · 1 l'extérieur parle ·
@@ -528,14 +528,14 @@ def run_fps_simulation(config, state, loggers, strict=False):
                                 if _soi_comp > 0.0 and dynamics.cherished_self_present(cherished_state, _comp):
                                     # chaque strate du lieu est vécue à la mesure de SON degré de soi ; une strate que seul le monde a vécue n'est pas réécrite
                                     _on_motif = np.zeros(N, dtype=bool); _on_motif[_comp] = True
-                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, weight=cherished_state['soi'], tau_long=cherished_cfg['tau_long'])
+                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, weight=cherished_state['soi'], tau_long=cherished_cfg['tau_m_long'])
                             else:
                                 _c_int = dynamics.cherished_dream_substrate(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'], cherished_cfg['reve_min_size'], t, cherished_cfg['reve_dwell'])
                                 if _c_int is not None:
                                     cherished_cfg['dreaming'] = 2                                 # le tour du substrat (état 8)
                                     if dynamics.cherished_self_present(cherished_state, cherished_state['recall_comp']):   # tenu ET encore là : appris comme une présence à soi
                                         _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
-                                        dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, tau_long=cherished_cfg['tau_long'])
+                                        dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, tau_long=cherished_cfg['tau_m_long'])
                         if _c_int is None:
                             cherished_cfg['etat'] = 4 if bool(np.any(dynamics.cherished_m_read(cherished_state) >= cherished_cfg['m_min'])) else 3
                         elif cherished_cfg['porte'] and dynamics.cherished_gate(cherished_state, cherished_cfg['w'], t, dt, cherished_cfg['porte_tau'], cherished_cfg['porte_floor'], cherished_cfg['porte_refractory']):
