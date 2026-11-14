@@ -294,6 +294,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
     cherished_state = dynamics.init_cherished_state(N)
     cherished_cfg = {
         'attach': bool(_attach_cfg.get('enabled', True)), 'tau_m': float(_attach_cfg.get('tau_m', 20.0)), 'tau_sig': float(_attach_cfg.get('tau_sig', 5.0)),
+        'tau_long': (None if _attach_cfg.get('tau_long') is None else float(_attach_cfg['tau_long'])),   # (14/11) la trace lente de m ; null = aucune
         'tau_c': float(_attach_cfg.get('tau_c', 5.0)), 'seuil_contexte': float(_attach_cfg.get('seuil_contexte', 0.5)),
         'mode': str(_attach_cfg.get('mode', 'soulagement')), 'tau_ref': float(_attach_cfg.get('tau_ref', 40.0)),
         # RÊVER (26–28/09, rangé le 28/09) : en silence, par bribes entre tous les lieux chéris (monde et soi) et le substrat ;
@@ -502,7 +503,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                     dynamics.cherished_update_rloc(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'])   # ce que le substrat produit et qui reste
                     dynamics.cherished_wellbeing_ref(cherished_state, cherished_cfg['w'], dt, cherished_cfg['tau_ref'])
                     if cherished_cfg['attach']:
-                        dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'])
+                        dynamics.cherished_attach(cherished_state, _ctx_on, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], tau_long=cherished_cfg['tau_long'])
                     _quiet = dynamics.cherished_silence(cherished_state, memory_state.get('surprise'), cherished_cfg['external'], dt,
                                                         cherished_cfg['tau_short'], cherished_cfg['tau_long'], cherished_cfg['enter'], cherished_cfg['exit'])
                     # l'état du rappel, journalisé (colonne attention_rappel_etat) : 0 désactivé · 1 l'extérieur parle ·
@@ -527,16 +528,16 @@ def run_fps_simulation(config, state, loggers, strict=False):
                                 if _soi_comp > 0.0 and dynamics.cherished_self_present(cherished_state, _comp):
                                     # chaque strate du lieu est vécue à la mesure de SON degré de soi ; une strate que seul le monde a vécue n'est pas réécrite
                                     _on_motif = np.zeros(N, dtype=bool); _on_motif[_comp] = True
-                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, weight=cherished_state['soi'])
+                                    dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, weight=cherished_state['soi'], tau_long=cherished_cfg['tau_long'])
                             else:
                                 _c_int = dynamics.cherished_dream_substrate(cherished_state, _rloc_att, dt, cherished_cfg['reve_tau'], cherished_cfg['reve_min_size'], t, cherished_cfg['reve_dwell'])
                                 if _c_int is not None:
                                     cherished_cfg['dreaming'] = 2                                 # le tour du substrat (état 8)
                                     if dynamics.cherished_self_present(cherished_state, cherished_state['recall_comp']):   # tenu ET encore là : appris comme une présence à soi
                                         _on_motif = np.zeros(N, dtype=bool); _on_motif[cherished_state['recall_comp']] = True
-                                        dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True)
+                                        dynamics.cherished_attach(cherished_state, _on_motif, cherished_cfg['w'], dt, cherished_cfg['tau_m'], cherished_cfg['tau_sig'], cherished_cfg['mode'], interne=True, tau_long=cherished_cfg['tau_long'])
                         if _c_int is None:
-                            cherished_cfg['etat'] = 4 if bool(np.any(cherished_state['m'] >= cherished_cfg['m_min'])) else 3
+                            cherished_cfg['etat'] = 4 if bool(np.any(dynamics.cherished_m_read(cherished_state) >= cherished_cfg['m_min'])) else 3
                         elif cherished_cfg['porte'] and dynamics.cherished_gate(cherished_state, cherished_cfg['w'], t, dt, cherished_cfg['porte_tau'], cherished_cfg['porte_floor'], cherished_cfg['porte_refractory']):
                             _c_int = None; cherished_cfg['etat'] = 5                # on n'y pense pas maintenant ; m intact
                         if _c_int is not None:
@@ -548,7 +549,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                         cherished_state['recall_center'] = None; cherished_state['recall_res'] = float('nan'); cherished_state['recall_comp'] = None
                         cherished_state['gate'] = None; cherished_state['gate_center'] = None
                         cherished_state['hold_comp'] = None                                            # le tour, lui, reprend où il en était (temps de silence accumulé)
-                    attention_state['s'] = _c_att * (_nu_att + (1.0 - _nu_att) * cherished_state['m']) if cherished_cfg['attach'] else _c_att * _nu_att
+                    attention_state['s'] = _c_att * (_nu_att + (1.0 - _nu_att) * dynamics.cherished_m_read(cherished_state)) if cherished_cfg['attach'] else _c_att * _nu_att   # la valeur LUE : la plus haute des deux traces
                     _dfn = dynamics.attention_delta_fn(fn_t, _theta_att, attention_state['s'], attention_state['K0'], attention_state['kappa'],
                                                        attention_state['garde'], attention_state['island_threshold'])
                     _sal = attention_state['s'] > 0.5
@@ -1093,7 +1094,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             attention_m_max = None; attention_silence = None; attention_rappel = None; attention_porte = None; attention_rappel_etat = None
             if attention_state['enabled']:
                 attention_rappel_etat = float(cherished_cfg['etat'])
-                attention_m_max = float(np.max(cherished_state['m'])); attention_silence = float(bool(cherished_state['quiet']))
+                attention_m_max = float(np.max(dynamics.cherished_m_read(cherished_state))); attention_silence = float(bool(cherished_state['quiet']))
                 attention_rappel = (float(cherished_state['recall_center']) if cherished_cfg['recalling'] and cherished_state['recall_center'] is not None else float('nan'))
                 attention_porte = (float(cherished_state['gate']) if cherished_state['gate'] is not None else float('nan'))
             all_metrics = {
@@ -1298,6 +1299,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 'attention_s': (attention_state['s'].copy() if attention_state['enabled'] else None),
                 'attention_m_max': attention_m_max, 'attention_silence': attention_silence, 'attention_rappel': attention_rappel, 'attention_porte': attention_porte, 'attention_rappel_etat': attention_rappel_etat,
                 'attention_m': (cherished_state['m'].copy() if attention_state['enabled'] else None),
+                'attention_m_long': (cherished_state['m_long'].copy() if attention_state['enabled'] else None),
                 'attention_interne': (cherished_state['interne'].copy() if attention_state['enabled'] else None),
                 'attention_soi': (cherished_state['soi'].copy() if attention_state['enabled'] else None),
                 'attention_sig': (cherished_state['sig'].copy() if attention_state['enabled'] else None),          # (30/09, observation) la signature de chaque strate
@@ -1429,7 +1431,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             'attention_salient_steps': int(sum(1 for h in history if (h.get('attention_salient_share') or 0.0) > 0)),
             'attention_audibility_mean': (float(np.mean([h['attention_audibility'] for h in history if (h.get('attention_salient_share') or 0.0) > 0]))
                                           if any((h.get('attention_salient_share') or 0.0) > 0 for h in history) else None),
-            'attention_m_max': (float(np.max(cherished_state['m'])) if attention_state['enabled'] else None),
+            'attention_m_max': (float(np.max(dynamics.cherished_m_read(cherished_state))) if attention_state['enabled'] else None),
             'attention_silence_share': (float(np.mean([h['attention_silence'] for h in history if h.get('attention_silence') is not None]))
                                         if any(h.get('attention_silence') is not None for h in history) else None),
             'attention_rappel_steps': int(sum(1 for h in history if h.get('attention_rappel') is not None and np.isfinite(h['attention_rappel']))),

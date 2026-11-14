@@ -1223,6 +1223,23 @@ class TestCherishedMemory(unittest.TestCase):
         dynamics.cherished_attach(st, np.zeros(20, dtype=bool), 0.9, 0.1, 20.0, 5.0)  # sans contexte : rien ne bouge
         self.assertLess(st['m'][6], 0.15)
 
+    def test_slow_trace_keeps_what_accompanied_long(self):
+        # deux vitesses de m (14/11) : une longue compagnie puis une mauvaise histoire au même endroit ; m tombe, m_long tient,
+        # et le rappel (qui lit la plus haute) retrouve le lieu ; une compagnie brève ne s'inscrit pas en profondeur
+        def story(n_good):
+            st = dynamics.init_cherished_state(20); on = np.zeros(20, dtype=bool); on[8:13] = True
+            for _ in range(n_good): dynamics.cherished_attach(st, on, 1.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0)   # bien-être plein
+            m_after_good = float(st['m'][10])
+            for _ in range(600): dynamics.cherished_attach(st, on, 0.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0)      # 60 u.t. d'effort
+            return st, m_after_good
+        st_long, m_good = story(1800)                                                                         # 180 u.t. de compagnie
+        self.assertGreater(m_good, 0.9); self.assertLess(st_long['m'][10], 0.1); self.assertGreater(st_long['m_long'][10], 0.3)
+        self.assertIsNotNone(dynamics.cherished_recall(st_long, 0.0))                                           # rappelable par le long
+        st_short, _ = story(600)                                                                                # 60 u.t. seulement
+        self.assertLess(st_short['m_long'][10], 0.3); self.assertIsNone(dynamics.cherished_recall(st_short, 0.0))  # pas inscrit en profondeur
+        st_none = dynamics.init_cherished_state(20); on = np.zeros(20, dtype=bool); on[8:13] = True
+        dynamics.cherished_attach(st_none, on, 1.0, 0.1, 20.0, 5.0, mode='niveau'); self.assertEqual(float(st_none['m_long'][10]), 0.0)   # sans tau_long : rien
+
     def test_relief_cherishes_what_was_there_when_it_got_better(self):
         # niveau : la cible est w ; soulagement : w + (w − habituel), bornée
         self.assertEqual(dynamics.cherished_target(0.5, 0.1, 'niveau'), 0.5)

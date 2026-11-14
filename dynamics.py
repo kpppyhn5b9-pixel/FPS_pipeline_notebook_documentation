@@ -1685,7 +1685,7 @@ def attention_saliency_parts(In_t: np.ndarray, u_prev: Optional[np.ndarray], sal
 
 def init_cherished_state(N: int) -> Dict[str, Any]:
     """L'état de la mémoire des moments chéris : m, signatures, silence, rappel, porte."""
-    return {'m': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool), 'ctx_run': np.zeros(int(N)), 'w_ref': None,
+    return {'m': np.zeros(int(N)), 'm_long': np.zeros(int(N)), 'sig': np.full((int(N), 2), np.nan), 'g': None, 'I_bar': None, 'ctx': np.zeros(int(N), dtype=bool), 'ctx_run': np.zeros(int(N)), 'w_ref': None,
             'dream_center': None, 'rloc_bar': None, 'hold_comp': None, 'hold_until': -np.inf, 'tour_t': 0.0,
             'interne': np.zeros(int(N), dtype=bool), 'soi': np.zeros(int(N)), 'q_soi': np.zeros(int(N)), 'q_monde': np.zeros(int(N)),
             'u_short': None, 'u_long': None, 'quiet': False, 'ratio': float('nan'),
@@ -1752,13 +1752,25 @@ def cherished_target(w: float, w_ref: Optional[float], mode: str = 'niveau') -> 
     return float(w)
 
 
+def cherished_m_read(st: Dict[str, Any]) -> np.ndarray:
+    """Ce que le rappel LIT (14/11, décision d'Andréa : « le long rappelable tout court ») : la plus haute des deux traces,
+    m (ce que le lieu vaut maintenant, τ_m) et m_long (ce qu'il a valu longtemps, τ_long). Sans trace lente, c'est m."""
+    ml = st.get('m_long')
+    return st['m'] if ml is None else np.maximum(st['m'], ml)
+
+
 def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt: float, tau_m: float,
-                     tau_sig: float, mode: str = 'soulagement', interne: bool = False, weight: float = 1.0) -> None:
+                     tau_sig: float, mode: str = 'soulagement', interne: bool = False, weight: float = 1.0,
+                     tau_long: Optional[float] = None) -> None:
     """
     L'attachement : sur les strates du contexte qui reste (`on`), mₙ → cible(w) (τ_m) et sigₙ → g (τ_sig).
     `interne` (28/09) : ces strates sont apprises depuis un motif du substrat. Depuis le soir du 28/09 (Andréa :
     « un peu des deux, soi et monde à la fois »), ce n'est plus une marque mais un DEGRÉ de soi, st['soi'] ∈ [0, 1],
     qui monte (vers 1) quand le soi y apprend et descend (vers 0) quand le monde y apprend, à la vitesse de m ;
+    `tau_long` (14/11) : une SECONDE trace, m_long, suit la même cible à une vitesse lente ; elle garde ce qui a accompagné
+    longtemps (observé sur meme_lieu / meme_lieu_long : une histoire de 60 u.t. ne s'y inscrit pas, une de 180 traverse une
+    mauvaise histoire au-dessus du seuil, quelle que soit τ_long entre 60 et 200). Ni « fort » ni « premier » : la durée.
+    Le rappel lit la plus haute des deux (`cherished_m_read`). None : pas de trace lente.
     st['interne'] en est la lecture majoritaire (> 0.5). `weight` (0–1) module la vitesse d'apprentissage : un scalaire,
     ou un vecteur (N) lu strate par strate (07/10, lecture de Gepetto : un lieu mêlé vécu par le soi apprend sur chaque
     strate à la mesure de SON degré, et une strate que seul le monde a vécue n'est pas réécrite par le rêve).
@@ -1778,7 +1790,11 @@ def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt:
         st[q_on][on] += k_m * (1.0 - st[q_on][on]); st[q_off][on] += k_m * (0.0 - st[q_off][on])
         tot = st['q_soi'] + st['q_monde']
         st['soi'] = np.where(tot > 1e-12, st['q_soi'] / np.maximum(tot, 1e-12), 0.0); st['interne'] = st['soi'] > 0.5
-    st['m'][on] += k_m * (cherished_target(float(w), st.get('w_ref'), mode) - st['m'][on])
+    _cible = cherished_target(float(w), st.get('w_ref'), mode)
+    st['m'][on] += k_m * (_cible - st['m'][on])
+    if tau_long is not None and 'm_long' in st:
+        k_l = min(1.0, dt / max(float(tau_long), dt)) * wgt
+        st['m_long'][on] += k_l * (_cible - st['m_long'][on])
     if st['g'] is not None and np.all(np.isfinite(st['g'])):
         cur = st['sig'][on]
         fresh = np.isnan(cur).any(axis=1)
@@ -1812,7 +1828,7 @@ def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: 
     Le souvenir que le présent appelle. Renvoie le contexte interne c (N) ou None. Remplit
     st['recall_center'], st['recall_res'], st['recall_comp'].
     """
-    m = st['m']; N = len(m)
+    m = cherished_m_read(st); N = len(m)
     ok = (m >= float(m_min)) & (st['refract_until'] <= float(t))
     st['recall_center'] = None; st['recall_res'] = float('nan'); st['recall_comp'] = None
     if not ok.any():
@@ -1869,7 +1885,7 @@ def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0,
     comps = []
     if c1 is not None:
         comps.append(st['recall_comp'])
-        m = st['m']
+        m = cherished_m_read(st)
         ok = (m >= float(m_min)) & (st['refract_until'] <= float(t)); ok[st['recall_comp']] = False
         others = [comp for comp in attention_islands(ok.astype(float), 0.5)]
         comps = [comps[0]] + sorted(others, key=lambda c_: -float(m[c_].mean()))
@@ -1879,7 +1895,7 @@ def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0,
             and float(st['soi'][comps[k]].mean()) > 0.5 and not cherished_self_present(st, comps[k])):
         st['tour_t'] = (slot + 1) * dw; slot += 1; k = slot % (len(comps) + 1)          # un lieu à soi qui n'est pas là : on passe au suivant
     if k < len(comps):
-        comp = comps[k]; m = st['m']; n_star = int(comp[len(comp) // 2])
+        comp = comps[k]; m = cherished_m_read(st); n_star = int(comp[len(comp) // 2])
         c = np.zeros(len(m)); c[comp] = np.clip(m[comp] / max(float(m[comp].max()), 1e-9), 0.0, 1.0)
         st['recall_comp'] = comp; st['recall_center'] = n_star
         if k > 0: st['recall_res'] = float('nan')

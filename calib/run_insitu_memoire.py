@@ -111,6 +111,7 @@ def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), m
     out = dict(t=t, O=O, R=R, theta=theta, s=np.array([x['attention_s'] for x in h]), m=np.array([x['attention_m'] for x in h]),
                interne=np.array([x.get('attention_interne', np.zeros(N, dtype=bool)) for x in h]),
                soi=np.array([x.get('attention_soi', np.zeros(N)) for x in h]),
+               m_long=np.array([x['attention_m_long'] if x.get('attention_m_long') is not None else np.zeros(N) for x in h]),
                sig=np.array([x['attention_sig'] if x.get('attention_sig') is not None else np.full((N, 2), np.nan) for x in h]),
                g=np.array([x['attention_g'] if x.get('attention_g') is not None else np.full(2, np.nan) for x in h]),
                present=np.array([np.nan if x.get('attention_present') is None else float(x['attention_present']) for x in h]),
