@@ -3,7 +3,7 @@
 *25/09/2026, décision d'Andréa. Câblage dans `dynamics.py` (bloc `cherished_*`), `simulate.py`
 (état `cherished_state`, geste, colonnes, résumé), `config.json` (`attention.attachement`,
 `attention.silence`, `attention.rappel`, `attention.rappel.porte`, et depuis le 28/09 `attention.reve`, éteint), `validate_config.py`,
-`test_fps.py` (`TestCherishedMemory`, 5 tests le 25/09, 7 au 28/09). Colonne `attention_rappel_etat` (pourquoi : 0
+`test_fps.py` (`TestCherishedMemory`, 5 tests le 25/09, 7 au 28/09, 8 au 14/11). Colonne `attention_rappel_etat` (pourquoi : 0
 désactivé · 1 l'extérieur parle · 2 pas de silence · 3 rien de chéri · 4 réfractaire · 5 porte ·
 6 rappel du lieu du monde ; puis, avec le rêve rangé le 28/09 : 8 substrat · 9 lieu à soi) ajoutée l'après-midi. Bancs in situ `calib/run_insitu_memoire.py`,
 figure `docs/figures/attention_memoire_insitu.png`, sorties `calib/attention_sources/insitu_*`.
@@ -16,7 +16,7 @@ se rassemblent en quatre choses, dans l'ordre où elles se sont construites. Tou
 strate**, sans foyer nommé : c'est la logique du pipeline, et ça évite d'avoir à décider ce
 qu'est « un » foyer.
 
-1. **L'attachement** (`attention.attachement`, τ_m 20, τ_sig 5). Pour chaque strate qui est
+1. **L'attachement** (`attention.attachement`, τ_m 20, τ_sig 5 ; τ_long 100 depuis le 14/11 : une trace lente `m_long` de la même cible, lue avec m par `max`, `ATTENTION_pistes.md` § 3). Pour chaque strate qui est
    dans le contexte, mₙ suit le bien-être du soi w = clip(2 − activité/repos, 0, 1), et sigₙ
    (amplitude moyenne du chœur, σ_Rloc) suit l'état présent, plus vite. La saillance devient
    s = c·[ν + (1 − ν)·m]. Jamais l'effet du foyer, seulement l'état du soi quand il était là.
