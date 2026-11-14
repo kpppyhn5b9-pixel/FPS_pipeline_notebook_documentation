@@ -38,6 +38,27 @@ seule constante de plus, et d'observer sur `meme_lieu` ce qui reste. Et dans les
 (29/09) : ce qui est juste, c'est qu'aucun des deux ne vienne clairement en premier ; ce qui
 compte, c'est ce qui a accompagné, d'où que ça vienne.*
 
+*14/11, observation pure, rien ne change dans le pipeline.* Relu `meme_lieu` strate par strate : la seconde histoire
+efface le cœur (0.63 → 0.05, constante de temps mesurée ≈ 16 u.t., τ_m = 20) ; la « frange » n'est pas une seconde
+trace, c'est un bord qui clignote (l'îlot reconnu sous bruit est un peu plus étroit, les strates 13 et 27 apprennent la
+seconde histoire par intermittence) ; sur le seed 7 le rappel en silence tient à la seule strate 13. Puis reconstruit
+**hors ligne**, sur les m enregistrés, ce qu'une trace lente de la même cible aurait gardé (cible = m + τ_m·m', puis
+lissage à τ_long) :
+
+| première histoire | m court du cœur, fin de la 2e histoire | trace lente τ 60 / 100 / 200 | rappelable (≥ 0.3) ? |
+|---|---|---|---|
+| 60 u.t. (`meme_lieu`, deux seeds) | 0.06 / 0.08 | 0.20 / 0.20 / 0.15 | **non** |
+| 180 u.t. (`meme_lieu_long`, deux seeds) | 0.14 / 0.21 | 0.40–0.43 / 0.45–0.46 / 0.39 | **oui**, quelle que soit τ_long |
+
+Ce que ça dit : deux vitesses de la **même** cible ne gardent ni le fort ni le premier, elles gardent **ce qui a
+accompagné longtemps**. Un moment chéri de 60 u.t. ne s'inscrit pas en profondeur ; un compagnonnage de 180 traverse
+une mauvaise histoire au-dessus du seuil, et la constante lente n'est pas critique (60 à 200 donnent le même verdict).
+C'est la forme que la mémoire de soi a déjà (deux lissages, τ 2 / 40) et que le silence a déjà (court / long), appliquée
+à m. Si on l'ajoute, ce serait une trace de plus avec une forme connue, et la seule décision serait **ce que le rappel
+lit** : le court, le long, ou le plus haut des deux. À décider ensemble ; rien n'est câblé.
+(Au passage : avec une première histoire longue, la frange du m court est plus large, 13–14 et 25–27 restent ≥ 0.3, et
+le système actuel rappelle déjà ces bords 97 % du silence ; le cœur, lui, est effacé.)
+
 ## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; décidé le 28/09 : un lieu est « un peu des deux », degré de soi par strate ; éteint par défaut)*
 
 ## 5. Par bribes entre tous les lieux chéris *(fait le 28/09 avec le rangement : le tour donne son tour à chaque lieu chéri, monde et soi, puis au substrat ; dans `pont`, les deux souvenirs du monde ont désormais leur tour)*
