@@ -1847,7 +1847,7 @@ def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: 
                 z = (st['g'] - gk) / (wdt * np.abs(gk) + 1e-9)
                 res[i] = float(np.exp(-0.5 * float(np.sum(z ** 2)))); have[i] = True
     if have.any() and float(res[have].max()) >= float(res_min):
-        score = np.where(have, res * m[idx], -1.0); st['recall_appel'] = 1.0            # le présent appelle
+        score = np.where(have, res * m[idx], -1.0); st['recall_appel'] = 1.0            # le présent appelle (2 : visite du tour du rêve, 3 : substrat ; posés par cherished_tour / cherished_dream_substrate)
     else:
         score = m[idx].copy(); st['recall_appel'] = 0.0                                  # rien ne ressemble : le plus chéri
     ties = np.flatnonzero(np.isclose(score, score.max(), rtol=1e-9, atol=1e-12))            # un îlot apprend le même m partout :
@@ -1902,9 +1902,9 @@ def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0,
         comp = comps[k]; m = cherished_m_read(st); n_star = int(comp[len(comp) // 2])
         c = np.zeros(len(m)); c[comp] = np.clip(m[comp] / max(float(m[comp].max()), 1e-9), 0.0, 1.0)
         st['recall_comp'] = comp; st['recall_center'] = n_star
-        if k > 0: st['recall_res'] = float('nan')
+        if k > 0: st['recall_res'] = float('nan'); st['recall_appel'] = 2.0                # (14/11, lecture de Codex) visite du tour : ni appelé, ni repli
         return k, comps, c
-    st['recall_comp'] = None; st['recall_center'] = None; st['recall_res'] = float('nan')
+    st['recall_comp'] = None; st['recall_center'] = None; st['recall_res'] = float('nan'); st['recall_appel'] = float('nan')
     return k, comps, None
 
 
@@ -1947,7 +1947,7 @@ def cherished_dream_substrate(st: Dict[str, Any], rloc: np.ndarray, dt: float, t
     if dwell > 0 and st.get('hold_comp') is not None and float(t) < float(st.get('hold_until', -np.inf)):
         comp = st['hold_comp']; c = np.zeros(len(r))
         c[comp] = np.clip((rb[comp] - med) / max(float(rb[comp].max() - med), 1e-9), 0.0, 1.0) if rb[comp].max() > med else 0.3
-        st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan')
+        st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan'); st['recall_appel'] = 3.0   # (14/11) le substrat
         return c
     st['dream_center'] = None; st['hold_comp'] = None
     if spread <= 1e-9:
@@ -1958,7 +1958,7 @@ def cherished_dream_substrate(st: Dict[str, Any], rloc: np.ndarray, dt: float, t
         return None
     comp = max(comps, key=len)
     c = np.zeros(len(r)); c[comp] = np.clip((rb[comp] - med) / max(float(rb[comp].max() - med), 1e-9), 0.0, 1.0)
-    st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan')
+    st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan'); st['recall_appel'] = 3.0
     if dwell > 0:
         st['hold_comp'] = comp; st['hold_until'] = float(t) + float(dwell)
     return c

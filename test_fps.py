@@ -1273,9 +1273,11 @@ class TestCherishedMemory(unittest.TestCase):
         st['sig'][5:10] = [0.05, 0.3]; st['sig'][40:45] = [0.02, 0.3]; st['sig'][20:24] = [0.08, 0.3]; st['g'] = np.array([0.05, 0.3])   # le présent ressemble au 5–9
         seq = []
         for t, dt in ((0.0, 0.0), (5.0, 5.0), (12.0, 7.0), (25.0, 13.0), (35.0, 10.0), (45.0, 10.0)):
-            k, comps, c = dynamics.cherished_tour(st, t, dt, 10.0); seq.append((k, st['recall_center']))
-        self.assertEqual([k for k, _ in seq], [0, 0, 1, 2, 3, 0]); self.assertEqual(len(comps), 3)
-        self.assertEqual([c_ for _, c_ in seq][:4], [7, 7, 42, 22])                                 # présent (5–9), puis m 0.9 (40–44), puis 0.4 (20–23, milieu 22)
+            k, comps, c = dynamics.cherished_tour(st, t, dt, 10.0); seq.append((k, st['recall_center'], st['recall_appel']))
+        self.assertEqual([k for k, _, _ in seq], [0, 0, 1, 2, 3, 0]); self.assertEqual(len(comps), 3)
+        # (14/11, lecture de Codex) d'où vient ce qui est posé : 1 le présent appelle (k = 0), 2 une visite du tour (k > 0), NaN au substrat
+        self.assertEqual([a for _, _, a in seq[:4]], [1.0, 1.0, 2.0, 2.0]); self.assertTrue(np.isnan(seq[4][2])); self.assertEqual(seq[5][2], 1.0)
+        self.assertEqual([c_ for _, c_, _ in seq][:4], [7, 7, 42, 22])                                 # présent (5–9), puis m 0.9 (40–44), puis 0.4 (20–23, milieu 22)
         self.assertIsNone(seq[4][1])                                                                # k == 3 : le tour du substrat
         self.assertIsNotNone(c)                                                                     # et on recommence
         st2 = dynamics.init_cherished_state(N); self.assertEqual(dynamics.cherished_tour(st2, 0.0, 0.0, 10.0)[0], 0)   # rien de chéri : le substrat seul

@@ -174,9 +174,10 @@ if __name__ == '__main__':
         for (a, b, _tag) in WIN[key]:
             w = (t >= a) & (t < b) & np.isfinite(rc)
             if w.sum() == 0: continue
-            cs = rc[w].astype(int); ca = cs[ap[w] == 1.0]; cr = cs[ap[w] == 0.0]
+            cs = rc[w].astype(int); ca = cs[ap[w] == 1.0]; cr = cs[ap[w] == 0.0]; ct = cs[ap[w] == 2.0]
             fmt = lambda c_: ' '.join(f"{k}:{100 * np.mean(c_ == k):.0f}%" for k in sorted(set(c_.tolist()))) if len(c_) else '—'
-            print(f"[{nm} s{seed}] {a}-{b} | rappels : appelés par le présent {100 * np.mean(ap[w] == 1.0):.0f} % (centres {fmt(ca)}) · repli « le plus chéri » {100 * np.mean(ap[w] == 0.0):.0f} % (centres {fmt(cr)})")
+            tour = f" · visite du tour {100 * np.mean(ap[w] == 2.0):.0f} % (centres {fmt(ct)}) · substrat {100 * np.mean(ap[w] == 3.0):.0f} %" if np.any(ap[w] >= 2.0) else ''
+            print(f"[{nm} s{seed}] {a}-{b} | rappels : appelés par le présent {100 * np.mean(ap[w] == 1.0):.0f} % (centres {fmt(ca)}) · repli « le plus chéri » {100 * np.mean(ap[w] == 0.0):.0f} % (centres {fmt(cr)}){tour}")
         if nm.startswith('pont') or nm == 'retour_monde':                  # le soi s'installe-t-il entre deux souvenirs du monde ? / le monde revient-il ?
             t = d['t']; e = d['etat']; mm = d['m']; it = d['interne']; N = mm.shape[1]
             for (a, b, _tag) in WIN[key]:

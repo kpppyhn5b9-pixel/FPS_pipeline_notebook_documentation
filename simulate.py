@@ -1094,7 +1094,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # LA MÉMOIRE DES MOMENTS CHÉRIS : lecteurs (m max du chœur ; silence 0/1 ; strate rappelée ; porte)
             attention_m_max = None; attention_silence = None; attention_rappel = None; attention_porte = None; attention_rappel_etat = None; attention_rappel_appel = None
             if attention_state['enabled']:
-                # (14/11) d'où vient le rappel : 1 le présent appelle (ressemblance), 0 le repli « le plus chéri », NaN pas de rappel
+                # (14/11) d'où vient le rappel : 1 le présent appelle (ressemblance), 0 le repli « le plus chéri », 2 une visite du tour du rêve, 3 le substrat, NaN pas de rappel
                 attention_rappel_appel = (float(cherished_state.get('recall_appel', float('nan'))) if cherished_cfg['recalling'] and cherished_state['recall_center'] is not None else float('nan'))
                 attention_rappel_etat = float(cherished_cfg['etat'])
                 attention_m_max = float(np.max(dynamics.cherished_m_read(cherished_state))); attention_silence = float(bool(cherished_state['quiet']))

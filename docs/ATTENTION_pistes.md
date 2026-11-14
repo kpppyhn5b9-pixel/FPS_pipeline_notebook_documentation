@@ -99,7 +99,11 @@ un protocole où le 20 chéri devient lui-même épuisant. Rien n'est changé av
 *14/11, nuit : regarder d'abord si la montée seule fait un monopole (Andréa : « autant d'abord vérifier »).* Sa
 crainte, précise : un long qui ne descend jamais finirait toujours le plus haut, donc toujours rappelé. Pour la mesurer il
 fallait savoir d'où vient chaque rappel ; une colonne de plus, `attention_rappel_appel` (1 : le présent appelle, par
-ressemblance ; 0 : le repli « sinon le plus chéri » ; NaN : pas de rappel). Et la montée seule câblée comme une **option
+ressemblance ; 0 : le repli « sinon le plus chéri » ; 2 : une visite du tour du rêve ; 3 : le substrat ; NaN : pas de rappel. Les
+2 et 3 viennent d'une lecture de Codex sur la première version : le tour appelle `cherished_recall` pour ordonner ses
+candidats puis pose un autre lieu sans réécrire l'origine, le substrat non plus ; les visites du rêve étaient comptées
+« appelées par le présent ». Corrigé : chaque chemin qui pose un lieu pose son origine ; les parts de `pont` ci-dessous
+sont relues avec.) Et la montée seule câblée comme une **option
 éteinte** (`attachement.long_monte_seulement`, false ; `cherished_attach(long_monte=True)` : la trace lente n'apprend
 que si la cible la dépasse), pour la regarder sans rien changer au système tel qu'il est. Test ajouté au test de la trace
 lente (300 u.t. de mal ne la descendent pas ; un compagnon qui n'a jamais fait de bien ne s'y inscrit pas et son court
@@ -110,7 +114,7 @@ puis c'est lui qui fait mal : bruit localisé sur 20 pendant sa présence, 270�
 |---|---|---|
 | `present` (deux lieux du monde, m 0.91 / 0.70) | 0 % quand le silence ressemble au 80, 7 % quand il ressemble au 20, **94 % quand il ne ressemble à rien**, et alors 100 % pour le 20 | le monopole existe **déjà**, sans trace lente : c'est le repli qui le fait, et seulement quand rien ne ressemble |
 | `present_monte` | identique au centième | rien à user ici (pas de mauvaise histoire) : la montée seule ne change rien |
-| `pont` / `pont_monte` (rêve) | 0 % partout ; centres 19–22 et 65 se partagent 40 / 60 | le tour et la ressemblance ne laissent pas de place au repli ; identiques |
+| `pont` / `pont_monte` (rêve) | 0 % partout ; appelés par le présent 27–41 %, visites du tour 27–38 %, substrat 21–38 % ; les centres 20 et 65 se partagent | le tour et la ressemblance ne laissent pas de place au repli ; identiques |
 | `meme_lieu_long` → `_monte` | 0 % ; centre 27 (le bord) | le cœur passe de 0.46 à **0.69** (il ne descend plus) ; le centre reste le bord (m court 0.85), le cœur dans le souvenir à 0.81 au lieu de 0.52 |
 | `lassitude` → `_monte` | 0 % ; centre 26 → **24 et 20** (85 / 15 %) | symétrique : le cœur tombe à 0.48 et le rappel tient au bord ; montée : le cœur reste 0.69 et le rappel **revient au cœur** ; porte 0.96 dans les deux (y penser ne fait pas mal : le mal était pendant sa présence, pas en silence) |
 

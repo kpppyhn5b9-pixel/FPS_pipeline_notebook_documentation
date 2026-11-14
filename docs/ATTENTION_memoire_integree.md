@@ -16,7 +16,7 @@ se rassemblent en quatre choses, dans l'ordre où elles se sont construites. Tou
 strate**, sans foyer nommé : c'est la logique du pipeline, et ça évite d'avoir à décider ce
 qu'est « un » foyer.
 
-1. **L'attachement** (`attention.attachement`, τ_m 20, τ_sig 5 ; τ_long 100 depuis le 14/11 : une trace lente `m_long` de la même cible, lue avec m par `max` ; option `long_monte_seulement`, éteinte : elle ne ferait que monter ; colonne `attention_rappel_appel` : 1 le présent appelle, 0 le repli « le plus chéri » ; `ATTENTION_pistes.md` § 3). Pour chaque strate qui est
+1. **L'attachement** (`attention.attachement`, τ_m 20, τ_sig 5 ; τ_long 100 depuis le 14/11 : une trace lente `m_long` de la même cible, lue avec m par `max` ; option `long_monte_seulement`, éteinte : elle ne ferait que monter ; colonne `attention_rappel_appel` : 1 le présent appelle, 0 le repli « le plus chéri », 2 une visite du tour du rêve, 3 le substrat ; `ATTENTION_pistes.md` § 3). Pour chaque strate qui est
    dans le contexte, mₙ suit le bien-être du soi w = clip(2 − activité/repos, 0, 1), et sigₙ
    (amplitude moyenne du chœur, σ_Rloc) suit l'état présent, plus vite. La saillance devient
    s = c·[ν + (1 − ν)·m]. Jamais l'effet du foyer, seulement l'état du soi quand il était là.
