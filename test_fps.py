@@ -1223,6 +1223,34 @@ class TestCherishedMemory(unittest.TestCase):
         dynamics.cherished_attach(st, np.zeros(20, dtype=bool), 0.9, 0.1, 20.0, 5.0)  # sans contexte : rien ne bouge
         self.assertLess(st['m'][6], 0.15)
 
+    def test_slow_trace_keeps_what_accompanied_long(self):
+        # deux vitesses de m (14/11) : une longue compagnie puis une mauvaise histoire au même endroit ; m tombe, m_long tient,
+        # et le rappel (qui lit la plus haute) retrouve le lieu ; une compagnie brève ne s'inscrit pas en profondeur
+        def story(n_good):
+            st = dynamics.init_cherished_state(20); on = np.zeros(20, dtype=bool); on[8:13] = True
+            for _ in range(n_good): dynamics.cherished_attach(st, on, 1.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0)   # bien-être plein
+            m_after_good = float(st['m'][10])
+            for _ in range(600): dynamics.cherished_attach(st, on, 0.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0)      # 60 u.t. d'effort
+            return st, m_after_good
+        st_long, m_good = story(1800)                                                                         # 180 u.t. de compagnie
+        self.assertGreater(m_good, 0.9); self.assertLess(st_long['m'][10], 0.1); self.assertGreater(st_long['m_long'][10], 0.3)
+        self.assertIsNotNone(dynamics.cherished_recall(st_long, 0.0))                                           # rappelable par le long
+        st_short, _ = story(600)                                                                                # 60 u.t. seulement
+        self.assertLess(st_short['m_long'][10], 0.3); self.assertIsNone(dynamics.cherished_recall(st_short, 0.0))  # pas inscrit en profondeur
+        st_none = dynamics.init_cherished_state(20); on = np.zeros(20, dtype=bool); on[8:13] = True
+        dynamics.cherished_attach(st_none, on, 1.0, 0.1, 20.0, 5.0, mode='niveau'); self.assertEqual(float(st_none['m_long'][10]), 0.0)   # sans tau_long : rien
+        # (14/11, soir, à l'essai) la trace lente qui ne fait que monter : la mauvaise histoire n'écrit que sur le court ;
+        # un compagnon qui n'a jamais fait de bien ne s'inscrit pas en profondeur, et son court s'use
+        st_up = dynamics.init_cherished_state(20)
+        for _ in range(1800): dynamics.cherished_attach(st_up, on, 1.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=True)
+        top = float(st_up['m_long'][10])
+        for _ in range(3000): dynamics.cherished_attach(st_up, on, 0.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=True)   # 300 u.t. de mal
+        self.assertEqual(float(st_up['m_long'][10]), top); self.assertLess(st_up['m'][10], 0.01)                     # le Compagnon reste ; le court dit le mal
+        self.assertLess(st_long['m_long'][10], top)                                                                  # la version symétrique, elle, s'use
+        st_tox = dynamics.init_cherished_state(20)
+        for _ in range(1800): dynamics.cherished_attach(st_tox, on, 0.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=True)
+        self.assertEqual(float(st_tox['m_long'][10]), 0.0); self.assertIsNone(dynamics.cherished_recall(st_tox, 0.0))   # jamais chéri : rien à garder
+
     def test_relief_cherishes_what_was_there_when_it_got_better(self):
         # niveau : la cible est w ; soulagement : w + (w − habituel), bornée
         self.assertEqual(dynamics.cherished_target(0.5, 0.1, 'niveau'), 0.5)
@@ -1345,13 +1373,14 @@ class TestCherishedMemory(unittest.TestCase):
 
     def test_pipeline_inert_without_context_and_remembers_with_it(self):
         import simulate
-        def run(foyers, N=30, T=150):
+        def run(foyers, N=30, T=150, tau_long='keep'):
             with open('config.json') as f:
                 config = json.load(f)
             config['system']['N'] = N; config['system']['T'] = T; config['system']['seed'] = 12345
             config['system']['input']['perturbations'] = [{'type': 'none', 'amplitude': 0.0, 't0': 0.0, 'weight': 1.0}]
             config['analysis'] = {**config.get('analysis', {}), 'compare_kuramoto': False}
             config['context'] = {'foyers': foyers}
+            if tau_long != 'keep': config['attention']['attachement']['tau_long'] = tau_long
             tmp = tempfile.mkdtemp(); cwd = os.getcwd()
             try:
                 os.chdir(tmp)
@@ -1377,6 +1406,14 @@ class TestCherishedMemory(unittest.TestCase):
         self.assertTrue(all(x['attention_rappel_etat'] == 6.0 for x in rec))              # l'état dit « rappel en cours »
         self.assertTrue(all(x['attention_rappel_etat'] == 1.0 for x in during))           # pendant la présence : « l'extérieur parle »
         self.assertTrue(all(x['attention_rappel_etat'] in (2.0, 3.0) for x in h0 if x.get('attention_rappel_etat') is not None and x['t'] > 25))   # sans contexte : jamais 6
+        # (14/11) la trace lente passe bien par la config : τ_long 100 et 200 ne donnent pas la même m_long à la fin de la
+        # présence (une clé 'tau_long' du silence écrasait celle de l'attachement : les deux tournaient à 40), et null l'éteint
+        foy = [{'center': 8, 'width': 3.0, 'gain': 0.5, 't0': 50.0, 't1': 90.0}]
+        def ml_end(hh): return float(np.max([np.max(x['attention_m_long']) for x in hh if 85 <= x['t'] < 90 and x.get('attention_m_long') is not None]))
+        ml100 = ml_end(h); ml200 = ml_end(run(foy, N=30, T=95, tau_long=200.0))
+        self.assertGreater(ml100, 0.05); self.assertLess(ml200, 0.8 * ml100, (ml100, ml200))   # plus lente : moins inscrite au même instant
+        h_sans = run(foy, N=30, T=95, tau_long=None)
+        self.assertTrue(all(x.get('attention_m_long') is None or float(np.max(x['attention_m_long'])) == 0.0 for x in h_sans))
 
 
 class TestDispersionGuard(unittest.TestCase):

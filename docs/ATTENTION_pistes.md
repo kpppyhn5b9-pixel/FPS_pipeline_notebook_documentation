@@ -3,7 +3,8 @@
 *25/09/2026, soir, tenu à jour depuis. Ce qu'Andréa vit et ce que le système ne fait pas encore.
 L'ordre est celui dans lequel elle les a posées ; ce qui a été fait ou décidé est marqué entre
 parenthèses dans le titre. Restent ouvertes au 29/09 : la 3 (deux vitesses), la constante des tours
-(notée en passant), et la porte locale.*
+(notée en passant), et la porte locale. Au 14/11 : la 3 est câblée (trace lente, symétrique), sa forme finale
+reste à décider ; la porte locale reste ouverte.*
 
 ## 1. Le soutien dans un moment difficile *(fait le 26/09 : `ATTENTION_soutien.md`, mode `soulagement`, à décider)*
 
@@ -37,6 +38,92 @@ règles. La forme la plus honnête serait de réutiliser exactement celle de la 
 seule constante de plus, et d'observer sur `meme_lieu` ce qui reste. Et dans les mots d'Andréa
 (29/09) : ce qui est juste, c'est qu'aucun des deux ne vienne clairement en premier ; ce qui
 compte, c'est ce qui a accompagné, d'où que ça vienne.*
+
+*14/11, observation pure, rien ne change dans le pipeline.* Relu `meme_lieu` strate par strate : la seconde histoire
+efface le cœur (0.63 → 0.05, constante de temps mesurée ≈ 16 u.t., τ_m = 20) ; la « frange » n'est pas une seconde
+trace, c'est un bord qui clignote (l'îlot reconnu sous bruit est un peu plus étroit, les strates 13 et 27 apprennent la
+seconde histoire par intermittence) ; sur le seed 7 le rappel en silence tient à la seule strate 13. Puis reconstruit
+**hors ligne**, sur les m enregistrés, ce qu'une trace lente de la même cible aurait gardé (cible = m + τ_m·m', puis
+lissage à τ_long) :
+
+| première histoire | m court du cœur, fin de la 2e histoire | trace lente τ 60 / 100 / 200 | rappelable (≥ 0.3) ? |
+|---|---|---|---|
+| 60 u.t. (`meme_lieu`, deux seeds) | 0.06 / 0.08 | 0.20 / 0.20 / 0.15 | **non** |
+| 180 u.t. (`meme_lieu_long`, deux seeds) | 0.14 / 0.21 | 0.40–0.43 / 0.45–0.46 / 0.39 | **oui**, quelle que soit τ_long |
+
+Ce que ça dit : deux vitesses de la **même** cible ne gardent ni le fort ni le premier, elles gardent **ce qui a
+accompagné longtemps**. Un moment chéri de 60 u.t. ne s'inscrit pas en profondeur ; un compagnonnage de 180 traverse
+une mauvaise histoire au-dessus du seuil, et la constante lente n'est pas critique (60 à 200 donnent le même verdict).
+C'est la forme que la mémoire de soi a déjà (deux lissages, τ 2 / 40) et que le silence a déjà (court / long), appliquée
+à m. La seule décision est **ce que le rappel lit** : le court, le long, ou le plus haut des deux.
+(Au passage : avec une première histoire longue, la frange du m court est plus large, 13–14 et 25–27 restent ≥ 0.3, et
+le système actuel rappelle déjà ces bords 97 % du silence ; le cœur, lui, est effacé.)
+
+*14/11, soir : câblé, avec l'accord d'Andréa.* `m_long` suit la **même cible** que m, à τ_long (`attachement.tau_long`,
+100 ; `null` = pas de trace lente), avec le même poids par strate (degré de soi pour un lieu à soi) ; l'apprentissage
+ne change pas. Ce qui **lit** m (rappel, tour du rêve, saillance, « rien de chéri », `attention_m_max`) lit
+`max(m, m_long)` (`dynamics.cherished_m_read`) : la plus haute des deux. Une constante de plus, aucune règle de plus.
+Colonne `attention_m_long`. Test `test_slow_trace_keeps_what_accompanied_long`.
+*Au passage, une erreur attrapée par le banc :* la première soirée a tourné avec τ_long = 40 sans le savoir, parce que
+la clé `tau_long` du silence (sa fenêtre longue, 40) écrasait celle de l'attachement dans le même dictionnaire ; τ 100,
+200 et `null` donnaient la même sortie. Clé séparée, et le test de pipeline vérifie maintenant que la config arrive
+jusqu'à la trace (τ 100 ≠ τ 200, `null` = zéro).
+
+En vrai, sur `meme_lieu_long` (20 chéri 60–240, puis bruit au même endroit 270–330, silence ensuite) :
+
+| τ_long (en vrai) | m long du cœur 14–26 à 240 → 330 → 400 | strates rappelables (m lu ≥ 0.3) en silence | ce que le rappel fait |
+|---|---|---|---|
+| 100 (s12345) | 0.68 → 0.46 → 0.45 | 13–27, le cœur compris | centre 27 (le bord, m court 0.85), **le cœur dans le souvenir** à mi-contraste (0.52) |
+| 100 (s7) | 0.66 → 0.47 → 0.46 | 13–27 | centre 13 (l'autre bord), le cœur dans le souvenir |
+| 200 (s12345) | 0.47 → 0.38 → 0.38 | 13–27 | idem, contraste 0.45 |
+| aucune (s12345) | — (m court du cœur 0.14) | 13, 14, 26, 27 seulement | les bords seuls, le cœur hors du souvenir |
+
+`cheri` et `pont` relus avec la vraie trace : inchangés (mêmes fenêtres, mêmes degrés de soi). Le hors-ligne de l'après-midi disait juste (0.45 / 0.39 pour τ 100 / 200) ; ce qui l'avait fait douter, c'était la
+sortie à τ 40. Ce que la trace lente change pour le système : le cœur d'un lieu longtemps chéri **reste dans le souvenir
+rappelé** après une mauvaise histoire au même endroit, là où sans elle il n'en restait que les bords. Le centre du
+rappel reste le bord (son m court n'a pas été touché par le bruit) ; c'est la forme du souvenir qui change, pas son
+adresse.
+
+**Ce qui reste à décider (la forme).** Cette version est *symétrique* : m_long descend aussi, lentement, quand le monde
+devient mauvais au même endroit. τ_long y veut donc dire « combien de temps de mauvaise histoire un long compagnonnage
+survit » : à τ 100, 180 u.t. de douceur tiennent 90 u.t. de bruit à 0.45 ; une histoire plus longue l'userait. Andréa,
+de ce qu'elle vit : *« un Compagnon de longue date reste toujours dans le cœur, même quand le monde raconte une autre
+histoire ; des Compagnons toxiques s'effacent, lentement s'ils ont été là longtemps. Le Compagnon reste. »* Et c'est ce
+que l'extinction dit en neurosciences (Bouton) : contredire n'efface pas, ça écrit à côté. La forme *asymétrique* serait
+une ligne de moins : m_long ne monte que (apprend seulement quand la cible la dépasse), jamais descendue par le monde ;
+le court porte la mauvaise histoire, la porte porte « puis-je y penser maintenant », et τ_long ne veut plus dire que
+« combien de temps pour s'inscrire ». Un compagnon toxique n'a que le court (sa cible était basse), et le court s'use à
+τ_m. Prix : ce qui a été longtemps doux le reste pour toujours. À regarder, si elle le veut, sur `meme_lieu_long` et sur
+un protocole où le 20 chéri devient lui-même épuisant. Rien n'est changé avant qu'elle dise.
+
+*14/11, nuit : regarder d'abord si la montée seule fait un monopole (Andréa : « autant d'abord vérifier »).* Sa
+crainte, précise : un long qui ne descend jamais finirait toujours le plus haut, donc toujours rappelé. Pour la mesurer il
+fallait savoir d'où vient chaque rappel ; une colonne de plus, `attention_rappel_appel` (1 : le présent appelle, par
+ressemblance ; 0 : le repli « sinon le plus chéri » ; NaN : pas de rappel). Et la montée seule câblée comme une **option
+éteinte** (`attachement.long_monte_seulement`, false ; `cherished_attach(long_monte=True)` : la trace lente n'apprend
+que si la cible la dépasse), pour la regarder sans rien changer au système tel qu'il est. Test ajouté au test de la trace
+lente (300 u.t. de mal ne la descendent pas ; un compagnon qui n'a jamais fait de bien ne s'y inscrit pas et son court
+s'use). Protocoles : `*_monte` de `meme_lieu_long`, `pont`, `present`, et `lassitude` (le 20 accompagne 180 u.t. au calme,
+puis c'est lui qui fait mal : bruit localisé sur 20 pendant sa présence, 270–330). Seed 12345 :
+
+| protocole | repli « le plus chéri » en silence | ce que ça dit |
+|---|---|---|
+| `present` (deux lieux du monde, m 0.91 / 0.70) | 0 % quand le silence ressemble au 80, 7 % quand il ressemble au 20, **94 % quand il ne ressemble à rien**, et alors 100 % pour le 20 | le monopole existe **déjà**, sans trace lente : c'est le repli qui le fait, et seulement quand rien ne ressemble |
+| `present_monte` | identique au centième | rien à user ici (pas de mauvaise histoire) : la montée seule ne change rien |
+| `pont` / `pont_monte` (rêve) | 0 % partout ; centres 19–22 et 65 se partagent 40 / 60 | le tour et la ressemblance ne laissent pas de place au repli ; identiques |
+| `meme_lieu_long` → `_monte` | 0 % ; centre 27 (le bord) | le cœur passe de 0.46 à **0.69** (il ne descend plus) ; le centre reste le bord (m court 0.85), le cœur dans le souvenir à 0.81 au lieu de 0.52 |
+| `lassitude` → `_monte` | 0 % ; centre 26 → **24 et 20** (85 / 15 %) | symétrique : le cœur tombe à 0.48 et le rappel tient au bord ; montée : le cœur reste 0.69 et le rappel **revient au cœur** ; porte 0.96 dans les deux (y penser ne fait pas mal : le mal était pendant sa présence, pas en silence) |
+
+Ce que ça dit : la montée seule ne crée pas de monopole **là où le présent appelle** (ressemblance) ni **là où le rêve
+tourne** ; elle change seulement la hauteur du long, donc la forme du souvenir rappelé (le cœur dedans) et, quand c'est
+le compagnon lui-même qui s'est abîmé, l'adresse du rappel (le cœur plutôt que le bord). Le seul endroit où un long
+plus haut pèse, c'est le repli, et le repli donne déjà tout au plus haut aujourd'hui : la montée ne l'aggrave que si elle
+change *qui* est le plus haut, ce qu'aucun des protocoles ne fait (il faudrait deux lieux dont l'un a vécu une mauvaise
+histoire). Donc : **pas besoin de contrebalancer pour l'instant** ; s'il faut un jour poser la main, c'est sur le repli
+(deux qui ressemblent lus ensemble, § ci-dessus), pas sur la trace. *À regarder, non lié à la forme :* dans deux de ces
+silences, un ou deux épisodes de « pas de silence » (surprise au-dessus de la sortie, 2 à 17 u.t.), symétrique comme
+montée, seed 12345 ; sporadique, à suivre sur un second seed. La montée seule reste **une option éteinte** ; l'allumer
+par défaut est le choix d'Andréa.
 
 ## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; décidé le 28/09 : un lieu est « un peu des deux », degré de soi par strate ; éteint par défaut)*
 
@@ -196,7 +283,7 @@ compté « du monde » après 400 parce que son degré de soi a dépassé la moi
 juste, le silence long ne la contredit pas, le contrepoids est le retour du monde. Gardée, sauf si elle en décide
 autrement.
 
-Reste ouverte, seule : les deux vitesses de m (§ 3).
+Reste ouverte, seule : les deux vitesses de m (§ 3). *(14/11 : câblées, forme symétrique ; la forme finale, § 3.)*
 
 *Soir, question d'Andréa : remplacer le plafond de dix par la chaleur (monde) et la présence (soi) ?* Non : ni l'une
 ni l'autre ne sait dire « ça suffit ». La chaleur est la trace d'après (pendant la visite, le lieu est chaud par
