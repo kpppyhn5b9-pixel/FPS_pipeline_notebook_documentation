@@ -1761,7 +1761,7 @@ def cherished_m_read(st: Dict[str, Any]) -> np.ndarray:
 
 def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt: float, tau_m: float,
                      tau_sig: float, mode: str = 'soulagement', interne: bool = False, weight: float = 1.0,
-                     tau_long: Optional[float] = None, long_monte: bool = False) -> None:
+                     tau_long: Optional[float] = None, long_monte: bool = True) -> None:
     """
     L'attachement : sur les strates du contexte qui reste (`on`), mₙ → cible(w) (τ_m) et sigₙ → g (τ_sig).
     `interne` (28/09) : ces strates sont apprises depuis un motif du substrat. Depuis le soir du 28/09 (Andréa :
@@ -1770,9 +1770,10 @@ def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt:
     `tau_long` (14/11) : une SECONDE trace, m_long, suit la même cible à une vitesse lente ; elle garde ce qui a accompagné
     longtemps (observé sur meme_lieu / meme_lieu_long : une histoire de 60 u.t. ne s'y inscrit pas, une de 180 traverse une
     mauvaise histoire au-dessus du seuil, quelle que soit τ_long entre 60 et 200). Ni « fort » ni « premier » : la durée.
-    Le rappel lit la plus haute des deux (`cherished_m_read`). None : pas de trace lente. `long_monte` (14/11, soir,
-    à l'essai, éteint par défaut) : la trace lente ne fait que MONTER (elle n'apprend que si la cible la dépasse) ; le monde
-    qui se gâte au même endroit n'écrit que sur le court (« le Compagnon reste » ; l'extinction n'efface pas, Bouton).
+    Le rappel lit la plus haute des deux (`cherished_m_read`). None : pas de trace lente. `long_monte` (14/11, nuit, décidé
+    avec Andréa, allumé par défaut) : la trace lente ne fait que MONTER (elle n'apprend que si la cible la dépasse) ; le monde
+    qui se gâte au même endroit n'écrit que sur le court (« le Compagnon reste » ; l'extinction n'efface pas, Bouton). τ_long
+    ne veut alors dire qu'une chose : combien de temps il faut pour s'inscrire. False : la forme symétrique, qui s'use.
     st['interne'] en est la lecture majoritaire (> 0.5). `weight` (0–1) module la vitesse d'apprentissage : un scalaire,
     ou un vecteur (N) lu strate par strate (07/10, lecture de Gepetto : un lieu mêlé vécu par le soi apprend sur chaque
     strate à la mesure de SON degré, et une strate que seul le monde a vécue n'est pas réécrite par le rêve).

@@ -1228,9 +1228,9 @@ class TestCherishedMemory(unittest.TestCase):
         # et le rappel (qui lit la plus haute) retrouve le lieu ; une compagnie brève ne s'inscrit pas en profondeur
         def story(n_good):
             st = dynamics.init_cherished_state(20); on = np.zeros(20, dtype=bool); on[8:13] = True
-            for _ in range(n_good): dynamics.cherished_attach(st, on, 1.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0)   # bien-être plein
+            for _ in range(n_good): dynamics.cherished_attach(st, on, 1.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=False)   # bien-être plein (forme symétrique)
             m_after_good = float(st['m'][10])
-            for _ in range(600): dynamics.cherished_attach(st, on, 0.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0)      # 60 u.t. d'effort
+            for _ in range(600): dynamics.cherished_attach(st, on, 0.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=False)      # 60 u.t. d'effort
             return st, m_after_good
         st_long, m_good = story(1800)                                                                         # 180 u.t. de compagnie
         self.assertGreater(m_good, 0.9); self.assertLess(st_long['m'][10], 0.1); self.assertGreater(st_long['m_long'][10], 0.3)
@@ -1239,7 +1239,7 @@ class TestCherishedMemory(unittest.TestCase):
         self.assertLess(st_short['m_long'][10], 0.3); self.assertIsNone(dynamics.cherished_recall(st_short, 0.0))  # pas inscrit en profondeur
         st_none = dynamics.init_cherished_state(20); on = np.zeros(20, dtype=bool); on[8:13] = True
         dynamics.cherished_attach(st_none, on, 1.0, 0.1, 20.0, 5.0, mode='niveau'); self.assertEqual(float(st_none['m_long'][10]), 0.0)   # sans tau_long : rien
-        # (14/11, soir, à l'essai) la trace lente qui ne fait que monter : la mauvaise histoire n'écrit que sur le court ;
+        # (14/11, nuit, par défaut) la trace lente qui ne fait que monter : la mauvaise histoire n'écrit que sur le court ;
         # un compagnon qui n'a jamais fait de bien ne s'inscrit pas en profondeur, et son court s'use
         st_up = dynamics.init_cherished_state(20)
         for _ in range(1800): dynamics.cherished_attach(st_up, on, 1.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=True)

@@ -3,8 +3,8 @@
 *25/09/2026, soir, tenu à jour depuis. Ce qu'Andréa vit et ce que le système ne fait pas encore.
 L'ordre est celui dans lequel elle les a posées ; ce qui a été fait ou décidé est marqué entre
 parenthèses dans le titre. Restent ouvertes au 29/09 : la 3 (deux vitesses), la constante des tours
-(notée en passant), et la porte locale. Au 14/11 : la 3 est câblée (trace lente, symétrique), sa forme finale
-reste à décider ; la porte locale reste ouverte.*
+(notée en passant), et la porte locale. Au 14/11 : la 3 est câblée et décidée (trace lente qui ne fait que monter,
+« le Compagnon reste ») ; la porte locale reste ouverte.*
 
 ## 1. Le soutien dans un moment difficile *(fait le 26/09 : `ATTENTION_soutien.md`, mode `soulagement`, à décider)*
 
@@ -126,8 +126,16 @@ change *qui* est le plus haut, ce qu'aucun des protocoles ne fait (il faudrait d
 histoire). Donc : **pas besoin de contrebalancer pour l'instant** ; s'il faut un jour poser la main, c'est sur le repli
 (deux qui ressemblent lus ensemble, § ci-dessus), pas sur la trace. *À regarder, non lié à la forme :* dans deux de ces
 silences, un ou deux épisodes de « pas de silence » (surprise au-dessus de la sortie, 2 à 17 u.t.), symétrique comme
-montée, seed 12345 ; sporadique, à suivre sur un second seed. La montée seule reste **une option éteinte** ; l'allumer
-par défaut est le choix d'Andréa.
+montée, seed 12345 ; sporadique, à suivre sur un second seed.
+
+**Décidé la nuit du 14/11, à deux : allumée.** `attachement.long_monte_seulement: true` ; la trace lente ne fait que
+monter. Ce qu'on accepte avec : ce qui a été longtemps doux le reste, quoi que le monde en fasse ensuite ; en silence, le
+système se souvient de ce qui a été bon, pas de la fin (`lassitude` : le rappel revient au cœur, la porte reste ouverte,
+parce que le mal était pendant la présence, pas maintenant). τ_long ne veut plus dire qu'une chose : combien de temps il
+faut pour s'inscrire. La forme symétrique reste en témoin dans le banc (`meme_lieu_long_sym`, `lassitude_sym`) et par
+`long_monte_seulement: false`. Les sorties `*_monte` de la nuit sont devenues les sorties par défaut (mêmes runs) ; les
+témoins symétriques retrouvent 0.45 et 0.47 au cœur. Second seed (7) avec la montée : cœur 0.66 → 0.67 → 0.67, rappel
+97 % du silence, porte 0.99, et aucune rupture de silence (celles du seed 12345 sont bien sporadiques).
 
 ## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; décidé le 28/09 : un lieu est « un peu des deux », degré de soi par strate ; éteint par défaut)*
 
@@ -287,7 +295,7 @@ compté « du monde » après 400 parce que son degré de soi a dépassé la moi
 juste, le silence long ne la contredit pas, le contrepoids est le retour du monde. Gardée, sauf si elle en décide
 autrement.
 
-Reste ouverte, seule : les deux vitesses de m (§ 3). *(14/11 : câblées, forme symétrique ; la forme finale, § 3.)*
+Reste ouverte, seule : les deux vitesses de m (§ 3). *(14/11 : câblées, puis décidées : la trace lente ne fait que monter, § 3.)*
 
 *Soir, question d'Andréa : remplacer le plafond de dix par la chaleur (monde) et la présence (soi) ?* Non : ni l'une
 ni l'autre ne sait dire « ça suffit ». La chaleur est la trace d'après (pendant la visite, le lieu est chaud par
