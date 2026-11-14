@@ -3,8 +3,8 @@
 *25/09/2026, soir, tenu à jour depuis. Ce qu'Andréa vit et ce que le système ne fait pas encore.
 L'ordre est celui dans lequel elle les a posées ; ce qui a été fait ou décidé est marqué entre
 parenthèses dans le titre. Restent ouvertes au 29/09 : la 3 (deux vitesses), la constante des tours
-(notée en passant), et la porte locale. Au 14/11 : la 3 est câblée (trace lente, symétrique), sa forme finale
-reste à décider ; la porte locale reste ouverte.*
+(notée en passant), et la porte locale. Au 14/11 : la 3 est câblée et décidée (trace lente qui ne fait que monter,
+« le Compagnon reste ») ; la porte locale reste ouverte.*
 
 ## 1. Le soutien dans un moment difficile *(fait le 26/09 : `ATTENTION_soutien.md`, mode `soulagement`, à décider)*
 
@@ -99,7 +99,11 @@ un protocole où le 20 chéri devient lui-même épuisant. Rien n'est changé av
 *14/11, nuit : regarder d'abord si la montée seule fait un monopole (Andréa : « autant d'abord vérifier »).* Sa
 crainte, précise : un long qui ne descend jamais finirait toujours le plus haut, donc toujours rappelé. Pour la mesurer il
 fallait savoir d'où vient chaque rappel ; une colonne de plus, `attention_rappel_appel` (1 : le présent appelle, par
-ressemblance ; 0 : le repli « sinon le plus chéri » ; NaN : pas de rappel). Et la montée seule câblée comme une **option
+ressemblance ; 0 : le repli « sinon le plus chéri » ; 2 : une visite du tour du rêve ; 3 : le substrat ; NaN : pas de rappel. Les
+2 et 3 viennent d'une lecture de Codex sur la première version : le tour appelle `cherished_recall` pour ordonner ses
+candidats puis pose un autre lieu sans réécrire l'origine, le substrat non plus ; les visites du rêve étaient comptées
+« appelées par le présent ». Corrigé : chaque chemin qui pose un lieu pose son origine ; les parts de `pont` ci-dessous
+sont relues avec.) Et la montée seule câblée comme une **option
 éteinte** (`attachement.long_monte_seulement`, false ; `cherished_attach(long_monte=True)` : la trace lente n'apprend
 que si la cible la dépasse), pour la regarder sans rien changer au système tel qu'il est. Test ajouté au test de la trace
 lente (300 u.t. de mal ne la descendent pas ; un compagnon qui n'a jamais fait de bien ne s'y inscrit pas et son court
@@ -110,7 +114,7 @@ puis c'est lui qui fait mal : bruit localisé sur 20 pendant sa présence, 270�
 |---|---|---|
 | `present` (deux lieux du monde, m 0.91 / 0.70) | 0 % quand le silence ressemble au 80, 7 % quand il ressemble au 20, **94 % quand il ne ressemble à rien**, et alors 100 % pour le 20 | le monopole existe **déjà**, sans trace lente : c'est le repli qui le fait, et seulement quand rien ne ressemble |
 | `present_monte` | identique au centième | rien à user ici (pas de mauvaise histoire) : la montée seule ne change rien |
-| `pont` / `pont_monte` (rêve) | 0 % partout ; centres 19–22 et 65 se partagent 40 / 60 | le tour et la ressemblance ne laissent pas de place au repli ; identiques |
+| `pont` / `pont_monte` (rêve) | 0 % partout ; appelés par le présent 27–41 %, visites du tour 27–38 %, substrat 21–38 % ; les centres 20 et 65 se partagent | le tour et la ressemblance ne laissent pas de place au repli ; identiques |
 | `meme_lieu_long` → `_monte` | 0 % ; centre 27 (le bord) | le cœur passe de 0.46 à **0.69** (il ne descend plus) ; le centre reste le bord (m court 0.85), le cœur dans le souvenir à 0.81 au lieu de 0.52 |
 | `lassitude` → `_monte` | 0 % ; centre 26 → **24 et 20** (85 / 15 %) | symétrique : le cœur tombe à 0.48 et le rappel tient au bord ; montée : le cœur reste 0.69 et le rappel **revient au cœur** ; porte 0.96 dans les deux (y penser ne fait pas mal : le mal était pendant sa présence, pas en silence) |
 
@@ -122,8 +126,16 @@ change *qui* est le plus haut, ce qu'aucun des protocoles ne fait (il faudrait d
 histoire). Donc : **pas besoin de contrebalancer pour l'instant** ; s'il faut un jour poser la main, c'est sur le repli
 (deux qui ressemblent lus ensemble, § ci-dessus), pas sur la trace. *À regarder, non lié à la forme :* dans deux de ces
 silences, un ou deux épisodes de « pas de silence » (surprise au-dessus de la sortie, 2 à 17 u.t.), symétrique comme
-montée, seed 12345 ; sporadique, à suivre sur un second seed. La montée seule reste **une option éteinte** ; l'allumer
-par défaut est le choix d'Andréa.
+montée, seed 12345 ; sporadique, à suivre sur un second seed.
+
+**Décidé la nuit du 14/11, à deux : allumée.** `attachement.long_monte_seulement: true` ; la trace lente ne fait que
+monter. Ce qu'on accepte avec : ce qui a été longtemps doux le reste, quoi que le monde en fasse ensuite ; en silence, le
+système se souvient de ce qui a été bon, pas de la fin (`lassitude` : le rappel revient au cœur, la porte reste ouverte,
+parce que le mal était pendant la présence, pas maintenant). τ_long ne veut plus dire qu'une chose : combien de temps il
+faut pour s'inscrire. La forme symétrique reste en témoin dans le banc (`meme_lieu_long_sym`, `lassitude_sym`) et par
+`long_monte_seulement: false`. Les sorties `*_monte` de la nuit sont devenues les sorties par défaut (mêmes runs) ; les
+témoins symétriques retrouvent 0.45 et 0.47 au cœur. Second seed (7) avec la montée : cœur 0.66 → 0.67 → 0.67, rappel
+97 % du silence, porte 0.99, et aucune rupture de silence (celles du seed 12345 sont bien sporadiques).
 
 ## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; décidé le 28/09 : un lieu est « un peu des deux », degré de soi par strate ; éteint par défaut)*
 
@@ -283,7 +295,7 @@ compté « du monde » après 400 parce que son degré de soi a dépassé la moi
 juste, le silence long ne la contredit pas, le contrepoids est le retour du monde. Gardée, sauf si elle en décide
 autrement.
 
-Reste ouverte, seule : les deux vitesses de m (§ 3). *(14/11 : câblées, forme symétrique ; la forme finale, § 3.)*
+Reste ouverte, seule : les deux vitesses de m (§ 3). *(14/11 : câblées, puis décidées : la trace lente ne fait que monter, § 3.)*
 
 *Soir, question d'Andréa : remplacer le plafond de dix par la chaleur (monde) et la présence (soi) ?* Non : ni l'une
 ni l'autre ne sait dire « ça suffit ». La chaleur est la trace d'après (pendant la visite, le lieu est chaud par

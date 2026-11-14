@@ -1761,7 +1761,7 @@ def cherished_m_read(st: Dict[str, Any]) -> np.ndarray:
 
 def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt: float, tau_m: float,
                      tau_sig: float, mode: str = 'soulagement', interne: bool = False, weight: float = 1.0,
-                     tau_long: Optional[float] = None, long_monte: bool = False) -> None:
+                     tau_long: Optional[float] = None, long_monte: bool = True) -> None:
     """
     L'attachement : sur les strates du contexte qui reste (`on`), mₙ → cible(w) (τ_m) et sigₙ → g (τ_sig).
     `interne` (28/09) : ces strates sont apprises depuis un motif du substrat. Depuis le soir du 28/09 (Andréa :
@@ -1770,9 +1770,10 @@ def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt:
     `tau_long` (14/11) : une SECONDE trace, m_long, suit la même cible à une vitesse lente ; elle garde ce qui a accompagné
     longtemps (observé sur meme_lieu / meme_lieu_long : une histoire de 60 u.t. ne s'y inscrit pas, une de 180 traverse une
     mauvaise histoire au-dessus du seuil, quelle que soit τ_long entre 60 et 200). Ni « fort » ni « premier » : la durée.
-    Le rappel lit la plus haute des deux (`cherished_m_read`). None : pas de trace lente. `long_monte` (14/11, soir,
-    à l'essai, éteint par défaut) : la trace lente ne fait que MONTER (elle n'apprend que si la cible la dépasse) ; le monde
-    qui se gâte au même endroit n'écrit que sur le court (« le Compagnon reste » ; l'extinction n'efface pas, Bouton).
+    Le rappel lit la plus haute des deux (`cherished_m_read`). None : pas de trace lente. `long_monte` (14/11, nuit, décidé
+    avec Andréa, allumé par défaut) : la trace lente ne fait que MONTER (elle n'apprend que si la cible la dépasse) ; le monde
+    qui se gâte au même endroit n'écrit que sur le court (« le Compagnon reste » ; l'extinction n'efface pas, Bouton). τ_long
+    ne veut alors dire qu'une chose : combien de temps il faut pour s'inscrire. False : la forme symétrique, qui s'use.
     st['interne'] en est la lecture majoritaire (> 0.5). `weight` (0–1) module la vitesse d'apprentissage : un scalaire,
     ou un vecteur (N) lu strate par strate (07/10, lecture de Gepetto : un lieu mêlé vécu par le soi apprend sur chaque
     strate à la mesure de SON degré, et une strate que seul le monde a vécue n'est pas réécrite par le rêve).
@@ -1847,7 +1848,7 @@ def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: 
                 z = (st['g'] - gk) / (wdt * np.abs(gk) + 1e-9)
                 res[i] = float(np.exp(-0.5 * float(np.sum(z ** 2)))); have[i] = True
     if have.any() and float(res[have].max()) >= float(res_min):
-        score = np.where(have, res * m[idx], -1.0); st['recall_appel'] = 1.0            # le présent appelle
+        score = np.where(have, res * m[idx], -1.0); st['recall_appel'] = 1.0            # le présent appelle (2 : visite du tour du rêve, 3 : substrat ; posés par cherished_tour / cherished_dream_substrate)
     else:
         score = m[idx].copy(); st['recall_appel'] = 0.0                                  # rien ne ressemble : le plus chéri
     ties = np.flatnonzero(np.isclose(score, score.max(), rtol=1e-9, atol=1e-12))            # un îlot apprend le même m partout :
@@ -1902,9 +1903,9 @@ def cherished_tour(st: Dict[str, Any], t: float, dt: float, dwell: float = 10.0,
         comp = comps[k]; m = cherished_m_read(st); n_star = int(comp[len(comp) // 2])
         c = np.zeros(len(m)); c[comp] = np.clip(m[comp] / max(float(m[comp].max()), 1e-9), 0.0, 1.0)
         st['recall_comp'] = comp; st['recall_center'] = n_star
-        if k > 0: st['recall_res'] = float('nan')
+        if k > 0: st['recall_res'] = float('nan'); st['recall_appel'] = 2.0                # (14/11, lecture de Codex) visite du tour : ni appelé, ni repli
         return k, comps, c
-    st['recall_comp'] = None; st['recall_center'] = None; st['recall_res'] = float('nan')
+    st['recall_comp'] = None; st['recall_center'] = None; st['recall_res'] = float('nan'); st['recall_appel'] = float('nan')
     return k, comps, None
 
 
@@ -1947,7 +1948,7 @@ def cherished_dream_substrate(st: Dict[str, Any], rloc: np.ndarray, dt: float, t
     if dwell > 0 and st.get('hold_comp') is not None and float(t) < float(st.get('hold_until', -np.inf)):
         comp = st['hold_comp']; c = np.zeros(len(r))
         c[comp] = np.clip((rb[comp] - med) / max(float(rb[comp].max() - med), 1e-9), 0.0, 1.0) if rb[comp].max() > med else 0.3
-        st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan')
+        st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan'); st['recall_appel'] = 3.0   # (14/11) le substrat
         return c
     st['dream_center'] = None; st['hold_comp'] = None
     if spread <= 1e-9:
@@ -1958,7 +1959,7 @@ def cherished_dream_substrate(st: Dict[str, Any], rloc: np.ndarray, dt: float, t
         return None
     comp = max(comps, key=len)
     c = np.zeros(len(r)); c[comp] = np.clip((rb[comp] - med) / max(float(rb[comp].max() - med), 1e-9), 0.0, 1.0)
-    st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan')
+    st['dream_center'] = int(comp[len(comp) // 2]); st['recall_comp'] = comp; st['recall_center'] = st['dream_center']; st['recall_res'] = float('nan'); st['recall_appel'] = 3.0
     if dwell > 0:
         st['hold_comp'] = comp; st['hold_until'] = float(t) + float(dwell)
     return c

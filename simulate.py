@@ -295,7 +295,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
     cherished_cfg = {
         'attach': bool(_attach_cfg.get('enabled', True)), 'tau_m': float(_attach_cfg.get('tau_m', 20.0)), 'tau_sig': float(_attach_cfg.get('tau_sig', 5.0)),
         'tau_m_long': (None if _attach_cfg.get('tau_long') is None else float(_attach_cfg['tau_long'])),   # (14/11) la trace lente de m ; null = aucune (clé distincte du tau_long du silence)
-        'long_monte': bool(_attach_cfg.get('long_monte_seulement', False)),   # (14/11, soir, à l'essai) la trace lente ne fait que monter
+        'long_monte': bool(_attach_cfg.get('long_monte_seulement', True)),   # (14/11, nuit, décidé avec Andréa) la trace lente ne fait que monter : « le Compagnon reste »
         'tau_c': float(_attach_cfg.get('tau_c', 5.0)), 'seuil_contexte': float(_attach_cfg.get('seuil_contexte', 0.5)),
         'mode': str(_attach_cfg.get('mode', 'soulagement')), 'tau_ref': float(_attach_cfg.get('tau_ref', 40.0)),
         # RÊVER (26–28/09, rangé le 28/09) : en silence, par bribes entre tous les lieux chéris (monde et soi) et le substrat ;
@@ -1094,7 +1094,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             # LA MÉMOIRE DES MOMENTS CHÉRIS : lecteurs (m max du chœur ; silence 0/1 ; strate rappelée ; porte)
             attention_m_max = None; attention_silence = None; attention_rappel = None; attention_porte = None; attention_rappel_etat = None; attention_rappel_appel = None
             if attention_state['enabled']:
-                # (14/11) d'où vient le rappel : 1 le présent appelle (ressemblance), 0 le repli « le plus chéri », NaN pas de rappel
+                # (14/11) d'où vient le rappel : 1 le présent appelle (ressemblance), 0 le repli « le plus chéri », 2 une visite du tour du rêve, 3 le substrat, NaN pas de rappel
                 attention_rappel_appel = (float(cherished_state.get('recall_appel', float('nan'))) if cherished_cfg['recalling'] and cherished_state['recall_center'] is not None else float('nan'))
                 attention_rappel_etat = float(cherished_cfg['etat'])
                 attention_m_max = float(np.max(dynamics.cherished_m_read(cherished_state))); attention_silence = float(bool(cherished_state['quiet']))

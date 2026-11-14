@@ -39,13 +39,12 @@ MODES = {
     'meme_lieu_long': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)]),
     'meme_lieu_long_t200': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)], tau_long=200.0),
     'meme_lieu_long_sans': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)], tau_long=None),   # (14/11) la première histoire dure 180 u.t. : qu'en garderait une trace lente ?
-    # (14/11, soir) la trace lente qui ne fait que monter (« le Compagnon reste ») : monopolise-t-elle le rappel ?
-    'meme_lieu_long_monte': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)], long_monte=True),
+    # (14/11, soir) la trace lente qui ne fait que monter (« le Compagnon reste ») : monopolise-t-elle le rappel ? Non (pistes § 3) ;
+    # allumée par défaut la nuit du 14/11. Les modes *_sym gardent la forme symétrique en témoin.
+    'meme_lieu_long_sym': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)], long_monte=False),
     # lassitude : le 20 accompagne longtemps au calme (60–240), puis c'est LUI qui fait mal (270–330, bruit localisé sur 20 pendant sa présence) ; silence ensuite
-    'lassitude':       dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 1.5, 20)]),
-    'lassitude_monte': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 1.5, 20)], long_monte=True),
-    'pont_monte':      dict(T=460, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve=True, long_monte=True),
-    'present_monte':   dict(T=380, foyers=[foyer(20, 60, 120), foyer(80, 120, 145), ambiance(0, 120, 0.5), ambiance(120, 220, -0.3), ambiance(220, 300, 0.5), ambiance(300, 380, -1.0)], noise=[], long_monte=True),
+    'lassitude':     dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 1.5, 20)]),
+    'lassitude_sym': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 1.5, 20)], long_monte=False),
     # contigus : deux lieux chéris voisins, 20 (60–120) puis 32 (120–180), au calme ; silence 180–260 : rappelés ensemble ?
     'contigus': dict(T=300, foyers=[foyer(20, 60, 120), foyer(32, 120, 180)], noise=[]),
     # ---- la première piste d'Andréa (26/09) : le soutien dans un moment difficile ----
@@ -96,7 +95,7 @@ def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), m
     if mode is not None: cfg['attention']['attachement']['mode'] = mode
     if reve is not None: cfg['attention']['reve']['enabled'] = bool(reve)
     if tau_long != 'keep': cfg['attention']['attachement']['tau_long'] = tau_long          # (14/11) la trace lente : None pour l'éteindre, un nombre pour la varier
-    if long_monte is not None: cfg['attention']['attachement']['long_monte_seulement'] = bool(long_monte)   # (14/11, soir) la trace lente ne fait que monter
+    if long_monte is not None: cfg['attention']['attachement']['long_monte_seulement'] = bool(long_monte)   # (14/11) False : la forme symétrique, en témoin
     rng = np.random.default_rng(seed + 99); _in0 = perturbations.compute_In
     def patched(t, c, state=None, history=None, dt=0.05, _o=_in0):
         base = _o(t, c, state, history, dt); v = np.full(N, float(base))
@@ -174,9 +173,10 @@ if __name__ == '__main__':
         for (a, b, _tag) in WIN[key]:
             w = (t >= a) & (t < b) & np.isfinite(rc)
             if w.sum() == 0: continue
-            cs = rc[w].astype(int); ca = cs[ap[w] == 1.0]; cr = cs[ap[w] == 0.0]
+            cs = rc[w].astype(int); ca = cs[ap[w] == 1.0]; cr = cs[ap[w] == 0.0]; ct = cs[ap[w] == 2.0]
             fmt = lambda c_: ' '.join(f"{k}:{100 * np.mean(c_ == k):.0f}%" for k in sorted(set(c_.tolist()))) if len(c_) else '—'
-            print(f"[{nm} s{seed}] {a}-{b} | rappels : appelés par le présent {100 * np.mean(ap[w] == 1.0):.0f} % (centres {fmt(ca)}) · repli « le plus chéri » {100 * np.mean(ap[w] == 0.0):.0f} % (centres {fmt(cr)})")
+            tour = f" · visite du tour {100 * np.mean(ap[w] == 2.0):.0f} % (centres {fmt(ct)}) · substrat {100 * np.mean(ap[w] == 3.0):.0f} %" if np.any(ap[w] >= 2.0) else ''
+            print(f"[{nm} s{seed}] {a}-{b} | rappels : appelés par le présent {100 * np.mean(ap[w] == 1.0):.0f} % (centres {fmt(ca)}) · repli « le plus chéri » {100 * np.mean(ap[w] == 0.0):.0f} % (centres {fmt(cr)}){tour}")
         if nm.startswith('pont') or nm == 'retour_monde':                  # le soi s'installe-t-il entre deux souvenirs du monde ? / le monde revient-il ?
             t = d['t']; e = d['etat']; mm = d['m']; it = d['interne']; N = mm.shape[1]
             for (a, b, _tag) in WIN[key]:

@@ -33,8 +33,9 @@ qu'une exception) ; tout réversible (un interrupteur, éteint par défaut, jusq
 - **Saillance** s = c·[ν + (1 − ν)·m] : le contexte c désigne (l'entrée relative à sa médiane),
   la nouveauté ν module, la valeur m ramène le familier chéri.
 - **Attachement** : pour chaque strate dans le contexte qui reste, m suit le bien-être du soi
-  (mode `soulagement` : le mieux compte plus que le niveau) ; une trace lente `m_long` suit la même cible à τ_long
-  (ce qui a accompagné longtemps) et tout ce qui lit m lit la plus haute des deux ; la signature suit l'état du monde.
+  (mode `soulagement` : le mieux compte plus que le niveau) ; une trace lente `m_long` suit la même cible à τ_long et
+  ne fait que monter (ce qui a accompagné longtemps reste) ; tout ce qui lit m lit la plus haute des deux ; la
+  signature suit l'état du monde.
 - **Silence** : surprise du chœur sous son habituel, et rien dans l'entrée qui reste.
 - **Rappel** : en silence, le lieu chéri que le présent appelle (ressemblance × m), sinon le plus
   chéri ; le monde reprend la main dès qu'il parle ; la porte repose un souvenir qui fait mal, sans
@@ -46,13 +47,13 @@ qu'une exception) ; tout réversible (un interrupteur, éteint par défaut, jusq
 
 ## Les portes encore ouvertes (29/09)
 
-1. **Deux vitesses pour m** (`ATTENTION_pistes.md` § 3) : le dernier souvenir ne l'emporte pas
-   toujours. *Câblées le 14/11* avec la forme de la mémoire de soi : `m_long` suit la même cible à τ_long (100), le
-   rappel lit la plus haute des deux ; ce qui a accompagné longtemps reste dans le souvenir après une mauvaise
-   histoire. Reste à décider sa forme : symétrique (descend aussi, lentement) ou « le Compagnon reste » (ne monte que ;
-   option `long_monte_seulement`, éteinte). Regardé la nuit du 14/11 : la montée seule ne fait pas de monopole là où le
-   présent appelle ni où le rêve tourne ; le repli « le plus chéri » donne déjà tout au plus haut, avec ou sans elle.
-2. **La porte locale** : la porte lit un bien-être global ; un bien-être local n'existe pas.
+1. **La porte locale** : la porte lit un bien-être global ; un bien-être local n'existe pas.
+
+*Fermée le 14/11 (`ATTENTION_pistes.md` § 3) : les deux vitesses de m. `m_long` suit la même cible à τ_long (100) et ne
+fait que monter (« le Compagnon reste », décidé à deux) ; tout ce qui lit m lit la plus haute des deux ; ce qui a
+accompagné longtemps reste dans le souvenir après une mauvaise histoire, et le court porte la mauvaise histoire. Vérifié
+avant d'allumer : pas de monopole là où le présent appelle ni où le rêve tourne ; le repli « le plus chéri » donne déjà
+tout au plus haut, avec ou sans elle (colonne `attention_rappel_appel`).*
 
 *Fermées le 07/10 (`ATTENTION_pistes.md` § 8) : la constante des tours est devenue un plafond, la présence décide
 de la durée ; « seul le soi grandit en silence » gardée, après un silence de 900 u.t. où rien ne dégénère.*
