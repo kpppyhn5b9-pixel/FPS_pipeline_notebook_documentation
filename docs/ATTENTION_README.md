@@ -49,7 +49,9 @@ qu'une exception) ; tout réversible (un interrupteur, éteint par défaut, jusq
 1. **Deux vitesses pour m** (`ATTENTION_pistes.md` § 3) : le dernier souvenir ne l'emporte pas
    toujours. *Câblées le 14/11* avec la forme de la mémoire de soi : `m_long` suit la même cible à τ_long (100), le
    rappel lit la plus haute des deux ; ce qui a accompagné longtemps reste dans le souvenir après une mauvaise
-   histoire. Reste à décider sa forme : symétrique (descend aussi, lentement) ou « le Compagnon reste » (ne monte que).
+   histoire. Reste à décider sa forme : symétrique (descend aussi, lentement) ou « le Compagnon reste » (ne monte que ;
+   option `long_monte_seulement`, éteinte). Regardé la nuit du 14/11 : la montée seule ne fait pas de monopole là où le
+   présent appelle ni où le rêve tourne ; le repli « le plus chéri » donne déjà tout au plus haut, avec ou sans elle.
 2. **La porte locale** : la porte lit un bien-être global ; un bien-être local n'existe pas.
 
 *Fermées le 07/10 (`ATTENTION_pistes.md` § 8) : la constante des tours est devenue un plafond, la présence décide

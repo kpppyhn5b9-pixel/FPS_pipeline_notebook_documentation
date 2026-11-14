@@ -39,6 +39,13 @@ MODES = {
     'meme_lieu_long': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)]),
     'meme_lieu_long_t200': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)], tau_long=200.0),
     'meme_lieu_long_sans': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)], tau_long=None),   # (14/11) la première histoire dure 180 u.t. : qu'en garderait une trace lente ?
+    # (14/11, soir) la trace lente qui ne fait que monter (« le Compagnon reste ») : monopolise-t-elle le rappel ?
+    'meme_lieu_long_monte': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)], long_monte=True),
+    # lassitude : le 20 accompagne longtemps au calme (60–240), puis c'est LUI qui fait mal (270–330, bruit localisé sur 20 pendant sa présence) ; silence ensuite
+    'lassitude':       dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 1.5, 20)]),
+    'lassitude_monte': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 1.5, 20)], long_monte=True),
+    'pont_monte':      dict(T=460, foyers=[foyer(20, 60, 110), foyer(65, 110, 160)], noise=[], reve=True, long_monte=True),
+    'present_monte':   dict(T=380, foyers=[foyer(20, 60, 120), foyer(80, 120, 145), ambiance(0, 120, 0.5), ambiance(120, 220, -0.3), ambiance(220, 300, 0.5), ambiance(300, 380, -1.0)], noise=[], long_monte=True),
     # contigus : deux lieux chéris voisins, 20 (60–120) puis 32 (120–180), au calme ; silence 180–260 : rappelés ensemble ?
     'contigus': dict(T=300, foyers=[foyer(20, 60, 120), foyer(32, 120, 180)], noise=[]),
     # ---- la première piste d'Andréa (26/09) : le soutien dans un moment difficile ----
@@ -78,7 +85,7 @@ WIN = {
 }
 
 
-def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), mode=None, reve=None, noise_by_seed=None, tau_long='keep'):
+def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), mode=None, reve=None, noise_by_seed=None, tau_long='keep', long_monte=None):
     if noise_by_seed and seed in noise_by_seed: noise = list(noise) + list(noise_by_seed[seed])
     cfg = json.load(open(os.path.join(ROOT, 'config.json')))
     cfg['system']['N'] = N; cfg['system']['T'] = T; cfg['system']['seed'] = seed
@@ -89,6 +96,7 @@ def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), m
     if mode is not None: cfg['attention']['attachement']['mode'] = mode
     if reve is not None: cfg['attention']['reve']['enabled'] = bool(reve)
     if tau_long != 'keep': cfg['attention']['attachement']['tau_long'] = tau_long          # (14/11) la trace lente : None pour l'éteindre, un nombre pour la varier
+    if long_monte is not None: cfg['attention']['attachement']['long_monte_seulement'] = bool(long_monte)   # (14/11, soir) la trace lente ne fait que monter
     rng = np.random.default_rng(seed + 99); _in0 = perturbations.compute_In
     def patched(t, c, state=None, history=None, dt=0.05, _o=_in0):
         base = _o(t, c, state, history, dt); v = np.full(N, float(base))
@@ -120,6 +128,7 @@ def run(name, seed, N, T, foyers, noise, attach=True, porte=True, plateaus=(), m
                present=np.array([np.nan if x.get('attention_present') is None else float(x['attention_present']) for x in h]),
                m_max=np.array([x['attention_m_max'] for x in h], dtype=float), silence=np.array([x['attention_silence'] for x in h], dtype=float),
                rappel=np.array([x['attention_rappel'] for x in h], dtype=float), porte=np.array([x['attention_porte'] for x in h], dtype=float),
+               appel=np.array([x.get('attention_rappel_appel', np.nan) if x.get('attention_rappel_appel') is not None else np.nan for x in h], dtype=float),
                etat=np.array([x.get('attention_rappel_etat', np.nan) for x in h], dtype=float),
                audib=np.array([x['attention_audibility'] for x in h], dtype=float), act=np.array([x['activite_rel'] if x.get('activite_rel') is not None else np.nan for x in h], dtype=float),
                surprise=np.array([x['surprise_mean'] if x.get('surprise_mean') is not None else np.nan for x in h], dtype=float))
@@ -158,8 +167,16 @@ if __name__ == '__main__':
     which = sys.argv[1]; seed = int(sys.argv[2]) if len(sys.argv) > 2 else 12345; N = int(sys.argv[3]) if len(sys.argv) > 3 else 100
     for nm in (list(MODES) if which == 'all' else [which]):
         kw = dict(MODES[nm]); d = run(nm, seed, N, **kw)
-        key = nm if nm in WIN else ('meme_lieu_long' if nm.startswith('meme_lieu_long') else ('douleur' if nm.startswith('douleur') else ('soutien' if nm.startswith('soutien') else ('reve' if nm.startswith('reve') else ('pont' if nm.startswith('pont') else 'cheri')))))
+        key = nm if nm in WIN else ('meme_lieu_long' if nm.startswith('meme_lieu_long') or nm.startswith('lassitude') else ('present' if nm.startswith('present') else ('douleur' if nm.startswith('douleur') else ('soutien' if nm.startswith('soutien') else ('reve' if nm.startswith('reve') else ('pont' if nm.startswith('pont') else 'cheri'))))))
         read(d, f"{nm} s{seed}", WIN[key], zones=((20, 32) if nm == 'contigus' else (20, 80)))
+        # (14/11, soir) d'où viennent les rappels en silence : le présent appelle (ressemblance) ou le repli « le plus chéri » ?
+        t = d['t']; ap = d['appel']; rc = d['rappel']
+        for (a, b, _tag) in WIN[key]:
+            w = (t >= a) & (t < b) & np.isfinite(rc)
+            if w.sum() == 0: continue
+            cs = rc[w].astype(int); ca = cs[ap[w] == 1.0]; cr = cs[ap[w] == 0.0]
+            fmt = lambda c_: ' '.join(f"{k}:{100 * np.mean(c_ == k):.0f}%" for k in sorted(set(c_.tolist()))) if len(c_) else '—'
+            print(f"[{nm} s{seed}] {a}-{b} | rappels : appelés par le présent {100 * np.mean(ap[w] == 1.0):.0f} % (centres {fmt(ca)}) · repli « le plus chéri » {100 * np.mean(ap[w] == 0.0):.0f} % (centres {fmt(cr)})")
         if nm.startswith('pont') or nm == 'retour_monde':                  # le soi s'installe-t-il entre deux souvenirs du monde ? / le monde revient-il ?
             t = d['t']; e = d['etat']; mm = d['m']; it = d['interne']; N = mm.shape[1]
             for (a, b, _tag) in WIN[key]:

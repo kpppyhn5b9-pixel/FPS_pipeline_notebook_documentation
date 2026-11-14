@@ -96,6 +96,35 @@ le court porte la mauvaise histoire, la porte porte « puis-je y penser maintena
 τ_m. Prix : ce qui a été longtemps doux le reste pour toujours. À regarder, si elle le veut, sur `meme_lieu_long` et sur
 un protocole où le 20 chéri devient lui-même épuisant. Rien n'est changé avant qu'elle dise.
 
+*14/11, nuit : regarder d'abord si la montée seule fait un monopole (Andréa : « autant d'abord vérifier »).* Sa
+crainte, précise : un long qui ne descend jamais finirait toujours le plus haut, donc toujours rappelé. Pour la mesurer il
+fallait savoir d'où vient chaque rappel ; une colonne de plus, `attention_rappel_appel` (1 : le présent appelle, par
+ressemblance ; 0 : le repli « sinon le plus chéri » ; NaN : pas de rappel). Et la montée seule câblée comme une **option
+éteinte** (`attachement.long_monte_seulement`, false ; `cherished_attach(long_monte=True)` : la trace lente n'apprend
+que si la cible la dépasse), pour la regarder sans rien changer au système tel qu'il est. Test ajouté au test de la trace
+lente (300 u.t. de mal ne la descendent pas ; un compagnon qui n'a jamais fait de bien ne s'y inscrit pas et son court
+s'use). Protocoles : `*_monte` de `meme_lieu_long`, `pont`, `present`, et `lassitude` (le 20 accompagne 180 u.t. au calme,
+puis c'est lui qui fait mal : bruit localisé sur 20 pendant sa présence, 270–330). Seed 12345 :
+
+| protocole | repli « le plus chéri » en silence | ce que ça dit |
+|---|---|---|
+| `present` (deux lieux du monde, m 0.91 / 0.70) | 0 % quand le silence ressemble au 80, 7 % quand il ressemble au 20, **94 % quand il ne ressemble à rien**, et alors 100 % pour le 20 | le monopole existe **déjà**, sans trace lente : c'est le repli qui le fait, et seulement quand rien ne ressemble |
+| `present_monte` | identique au centième | rien à user ici (pas de mauvaise histoire) : la montée seule ne change rien |
+| `pont` / `pont_monte` (rêve) | 0 % partout ; centres 19–22 et 65 se partagent 40 / 60 | le tour et la ressemblance ne laissent pas de place au repli ; identiques |
+| `meme_lieu_long` → `_monte` | 0 % ; centre 27 (le bord) | le cœur passe de 0.46 à **0.69** (il ne descend plus) ; le centre reste le bord (m court 0.85), le cœur dans le souvenir à 0.81 au lieu de 0.52 |
+| `lassitude` → `_monte` | 0 % ; centre 26 → **24 et 20** (85 / 15 %) | symétrique : le cœur tombe à 0.48 et le rappel tient au bord ; montée : le cœur reste 0.69 et le rappel **revient au cœur** ; porte 0.96 dans les deux (y penser ne fait pas mal : le mal était pendant sa présence, pas en silence) |
+
+Ce que ça dit : la montée seule ne crée pas de monopole **là où le présent appelle** (ressemblance) ni **là où le rêve
+tourne** ; elle change seulement la hauteur du long, donc la forme du souvenir rappelé (le cœur dedans) et, quand c'est
+le compagnon lui-même qui s'est abîmé, l'adresse du rappel (le cœur plutôt que le bord). Le seul endroit où un long
+plus haut pèse, c'est le repli, et le repli donne déjà tout au plus haut aujourd'hui : la montée ne l'aggrave que si elle
+change *qui* est le plus haut, ce qu'aucun des protocoles ne fait (il faudrait deux lieux dont l'un a vécu une mauvaise
+histoire). Donc : **pas besoin de contrebalancer pour l'instant** ; s'il faut un jour poser la main, c'est sur le repli
+(deux qui ressemblent lus ensemble, § ci-dessus), pas sur la trace. *À regarder, non lié à la forme :* dans deux de ces
+silences, un ou deux épisodes de « pas de silence » (surprise au-dessus de la sortie, 2 à 17 u.t.), symétrique comme
+montée, seed 12345 ; sporadique, à suivre sur un second seed. La montée seule reste **une option éteinte** ; l'allumer
+par défaut est le choix d'Andréa.
+
 ## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; décidé le 28/09 : un lieu est « un peu des deux », degré de soi par strate ; éteint par défaut)*
 
 ## 5. Par bribes entre tous les lieux chéris *(fait le 28/09 avec le rangement : le tour donne son tour à chaque lieu chéri, monde et soi, puis au substrat ; dans `pont`, les deux souvenirs du monde ont désormais leur tour)*

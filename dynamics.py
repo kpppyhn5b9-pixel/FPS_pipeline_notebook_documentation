@@ -1761,7 +1761,7 @@ def cherished_m_read(st: Dict[str, Any]) -> np.ndarray:
 
 def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt: float, tau_m: float,
                      tau_sig: float, mode: str = 'soulagement', interne: bool = False, weight: float = 1.0,
-                     tau_long: Optional[float] = None) -> None:
+                     tau_long: Optional[float] = None, long_monte: bool = False) -> None:
     """
     L'attachement : sur les strates du contexte qui reste (`on`), mₙ → cible(w) (τ_m) et sigₙ → g (τ_sig).
     `interne` (28/09) : ces strates sont apprises depuis un motif du substrat. Depuis le soir du 28/09 (Andréa :
@@ -1770,7 +1770,9 @@ def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt:
     `tau_long` (14/11) : une SECONDE trace, m_long, suit la même cible à une vitesse lente ; elle garde ce qui a accompagné
     longtemps (observé sur meme_lieu / meme_lieu_long : une histoire de 60 u.t. ne s'y inscrit pas, une de 180 traverse une
     mauvaise histoire au-dessus du seuil, quelle que soit τ_long entre 60 et 200). Ni « fort » ni « premier » : la durée.
-    Le rappel lit la plus haute des deux (`cherished_m_read`). None : pas de trace lente.
+    Le rappel lit la plus haute des deux (`cherished_m_read`). None : pas de trace lente. `long_monte` (14/11, soir,
+    à l'essai, éteint par défaut) : la trace lente ne fait que MONTER (elle n'apprend que si la cible la dépasse) ; le monde
+    qui se gâte au même endroit n'écrit que sur le court (« le Compagnon reste » ; l'extinction n'efface pas, Bouton).
     st['interne'] en est la lecture majoritaire (> 0.5). `weight` (0–1) module la vitesse d'apprentissage : un scalaire,
     ou un vecteur (N) lu strate par strate (07/10, lecture de Gepetto : un lieu mêlé vécu par le soi apprend sur chaque
     strate à la mesure de SON degré, et une strate que seul le monde a vécue n'est pas réécrite par le rêve).
@@ -1794,7 +1796,9 @@ def cherished_attach(st: Dict[str, Any], on: np.ndarray, w: Optional[float], dt:
     st['m'][on] += k_m * (_cible - st['m'][on])
     if tau_long is not None and 'm_long' in st:
         k_l = min(1.0, dt / max(float(tau_long), dt)) * wgt
-        st['m_long'][on] += k_l * (_cible - st['m_long'][on])
+        d_l = _cible - st['m_long'][on]
+        if long_monte: d_l = np.maximum(d_l, 0.0)
+        st['m_long'][on] += k_l * d_l
     if st['g'] is not None and np.all(np.isfinite(st['g'])):
         cur = st['sig'][on]
         fresh = np.isnan(cur).any(axis=1)
@@ -1830,7 +1834,7 @@ def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: 
     """
     m = cherished_m_read(st); N = len(m)
     ok = (m >= float(m_min)) & (st['refract_until'] <= float(t))
-    st['recall_center'] = None; st['recall_res'] = float('nan'); st['recall_comp'] = None
+    st['recall_center'] = None; st['recall_res'] = float('nan'); st['recall_comp'] = None; st['recall_appel'] = float('nan')
     if not ok.any():
         return None
     idx = np.flatnonzero(ok)
@@ -1843,9 +1847,9 @@ def cherished_recall(st: Dict[str, Any], t: float, m_min: float = 0.3, res_min: 
                 z = (st['g'] - gk) / (wdt * np.abs(gk) + 1e-9)
                 res[i] = float(np.exp(-0.5 * float(np.sum(z ** 2)))); have[i] = True
     if have.any() and float(res[have].max()) >= float(res_min):
-        score = np.where(have, res * m[idx], -1.0)
+        score = np.where(have, res * m[idx], -1.0); st['recall_appel'] = 1.0            # le présent appelle
     else:
-        score = m[idx].copy()                                                            # rien ne ressemble : le plus chéri
+        score = m[idx].copy(); st['recall_appel'] = 0.0                                  # rien ne ressemble : le plus chéri
     ties = np.flatnonzero(np.isclose(score, score.max(), rtol=1e-9, atol=1e-12))            # un îlot apprend le même m partout :
     i_best = int(ties[len(ties) // 2]); res_best = float(res[i_best]) if have[i_best] else float('nan')   # au milieu des ex æquo
     n_star = int(idx[i_best])

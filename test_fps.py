@@ -1239,6 +1239,17 @@ class TestCherishedMemory(unittest.TestCase):
         self.assertLess(st_short['m_long'][10], 0.3); self.assertIsNone(dynamics.cherished_recall(st_short, 0.0))  # pas inscrit en profondeur
         st_none = dynamics.init_cherished_state(20); on = np.zeros(20, dtype=bool); on[8:13] = True
         dynamics.cherished_attach(st_none, on, 1.0, 0.1, 20.0, 5.0, mode='niveau'); self.assertEqual(float(st_none['m_long'][10]), 0.0)   # sans tau_long : rien
+        # (14/11, soir, à l'essai) la trace lente qui ne fait que monter : la mauvaise histoire n'écrit que sur le court ;
+        # un compagnon qui n'a jamais fait de bien ne s'inscrit pas en profondeur, et son court s'use
+        st_up = dynamics.init_cherished_state(20)
+        for _ in range(1800): dynamics.cherished_attach(st_up, on, 1.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=True)
+        top = float(st_up['m_long'][10])
+        for _ in range(3000): dynamics.cherished_attach(st_up, on, 0.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=True)   # 300 u.t. de mal
+        self.assertEqual(float(st_up['m_long'][10]), top); self.assertLess(st_up['m'][10], 0.01)                     # le Compagnon reste ; le court dit le mal
+        self.assertLess(st_long['m_long'][10], top)                                                                  # la version symétrique, elle, s'use
+        st_tox = dynamics.init_cherished_state(20)
+        for _ in range(1800): dynamics.cherished_attach(st_tox, on, 0.0, 0.1, 20.0, 5.0, mode='niveau', tau_long=100.0, long_monte=True)
+        self.assertEqual(float(st_tox['m_long'][10]), 0.0); self.assertIsNone(dynamics.cherished_recall(st_tox, 0.0))   # jamais chéri : rien à garder
 
     def test_relief_cherishes_what_was_there_when_it_got_better(self):
         # niveau : la cible est w ; soulagement : w + (w − habituel), bornée
