@@ -36,6 +36,7 @@ MODES = {
     'forme':    dict(T=300, foyers=[foyer(80, 120, 180), foyer(20, 260, 300), foyer(80, 260, 300)], noise=NOISE_CHERI, plateaus=[(60.0, 120.0, 20, 7, 0.5)]),
     # meme_lieu : deux histoires au même endroit : 20 au calme (60–120), puis 20 sous bruit global (150–210) ; silence 210–290
     'meme_lieu': dict(T=300, foyers=[foyer(20, 60, 120), foyer(20, 150, 210)], noise=[(150.0, 210.0, 0.6, None)]),
+    'meme_lieu_long': dict(T=480, foyers=[foyer(20, 60, 240), foyer(20, 270, 330)], noise=[(270.0, 330.0, 0.6, None)]),   # (14/11) la première histoire dure 180 u.t. : qu'en garderait une trace lente ?
     # contigus : deux lieux chéris voisins, 20 (60–120) puis 32 (120–180), au calme ; silence 180–260 : rappelés ensemble ?
     'contigus': dict(T=300, foyers=[foyer(20, 60, 120), foyer(32, 120, 180)], noise=[]),
     # ---- la première piste d'Andréa (26/09) : le soutien dans un moment difficile ----
@@ -61,6 +62,7 @@ ETATS = {0: 'désactivé', 1: 'extérieur', 2: 'pas de silence', 3: 'rien de ch�
 WIN = {
     'bref':      [(230, 240, 'rappel du 20'), (240, 242, 'foyer BREF sur 80'), (242, 250, 'après'), (250, 260, ''), (270, 300, 'les deux reviennent')],
     'forme':     [(100, 120, '20 présent en PLATEAU'), (200, 230, 'silence'), (230, 260, 'silence'), (260, 300, 'les deux reviennent')],
+    'meme_lieu_long': [(220, 240, '20 présent, calme (180 u.t.)'), (270, 300, '20 présent, bruit'), (300, 330, ''), (360, 420, 'silence'), (420, 480, 'silence')],
     'meme_lieu': [(100, 120, '20 présent, calme'), (150, 170, '20 présent, bruit'), (190, 210, ''), (210, 240, 'silence'), (240, 290, 'silence')],
     'contigus':  [(100, 120, '20 présent'), (160, 180, '32 présent'), (180, 220, 'silence'), (220, 260, 'silence')],
     'reve_long': [(120, 200, 'silence'), (200, 300, ''), (300, 400, ''), (400, 500, ''), (500, 600, ''), (600, 700, ''), (700, 800, ''), (800, 900, '')],
