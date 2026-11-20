@@ -16,7 +16,8 @@ Sources :
   vierge : un transformer de la forme de GPT-2 small, poids aléatoires : l'architecture sans l'apprentissage. Son attention
            mélange déjà le passé ; si quelque chose reste ici, ce n'est pas le sens, c'est la forme.
   modele : l'état caché d'un petit modèle ouvert (transformers, `--model`, `--layer`), token par token.
-  --shuffle : le même texte, mots mélangés : la persistance (ce qui reste) dépend-elle de l'ordre ?
+  --shuffle : le même texte, mots mélangés AVANT toute lecture (le modèle lit le texte mélangé) : la persistance (ce qui
+           reste) dépend-elle de l'ordre ?
 
 Usage :
   python calib/run_ecoute_texte.py docs/ATTENTION_souvenir_present.md --source temoin [--k 4] [--N 100] [--seed 12345]
@@ -202,15 +203,15 @@ if __name__ == '__main__':
     ap.add_argument('--reve', type=int, default=None); ap.add_argument('--echelle', type=float, default=0.25)
     a = ap.parse_args()
     text = open(a.texte, encoding='utf-8').read()
+    # (lecture de Codex, 20/11) le mélange se fait sur les MOTS, AVANT toute lecture : pour les trois sources, c'est le texte
+    # mélangé qui est lu. Mélanger les vecteurs après coup laisserait au modèle le contexte de l'ordre d'origine.
+    mots = tokens_mots(text)
+    if a.shuffle: np.random.default_rng(a.seed).shuffle(mots)
     if a.source in ('temoin', 'vierge'):
-        mots = tokens_mots(text)
         if a.max_tokens: mots = mots[:a.max_tokens]
-        if a.shuffle: np.random.default_rng(a.seed).shuffle(mots)
         E = plongement_temoin(mots) if a.source == 'temoin' else plongement_modele_vierge(mots, seed=a.dirs_seed, layer=a.layer)
     else:
-        mots, E = plongement_modele(text, a.model, a.layer, a.max_tokens)
-        if a.shuffle:
-            perm = np.random.default_rng(a.seed).permutation(len(mots)); mots = [mots[i] for i in perm]; E = E[perm]
+        mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
     I_tok = projeter(E, a.N, a.dirs_seed, a.echelle)
     nom = f"{a.source}{'_melange' if a.shuffle else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
