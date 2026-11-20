@@ -84,10 +84,16 @@ def plongement_modele_vierge(mots, seed=0, n_layer=12, n_embd=768, layer=None):
             outs.append(hs[L][0].numpy())
     return np.concatenate(outs, 0)
 
-def projeter(E, N, dirs_seed, echelle=0.25):
+def projeter(E, N, dirs_seed, echelle=0.25, dims_relatives=True):
     """N directions fixes (graine `dirs_seed`), projection, puis chaque strate centrée-réduite sur le texte et × échelle :
-    une excursion de 2 σ vaut 0.5, le gain des foyers de tous les bancs. Une seule constante, nommée."""
+    une excursion de 2 σ vaut 0.5, le gain des foyers de tous les bancs. Une seule constante, nommée.
+    `dims_relatives` (20/11, observé sur Qwen2.5-0.5B) : chaque dimension du modèle est d'abord lue relative à son habitude
+    sur le texte (centrée-réduite). Sans ça, une seule dimension (la 62, σ 76 contre 0.3 pour les autres : une « activation
+    massive », connue des transformers) et un token-puits (« est », norme 1736 contre 16) font 83 % de ce que les strates
+    reçoivent : toutes voient le même nombre, au signe près, et rien ne se détache du chœur. C'est le même principe que la
+    FPS applique à son entrée, relative à sa médiane, appliqué une fois en amont ; `--brut` pour voir sans."""
     rng = np.random.default_rng(dirs_seed); d = E.shape[1]
+    if dims_relatives: E = (E - E.mean(0)) / (E.std(0) + 1e-9)
     D = rng.normal(0.0, 1.0 / np.sqrt(d), (d, N))
     P = E @ D
     mu = P.mean(0); sd = P.std(0) + 1e-9
@@ -201,6 +207,7 @@ if __name__ == '__main__':
     ap.add_argument('--k', type=int, default=4); ap.add_argument('--N', type=int, default=100); ap.add_argument('--seed', type=int, default=12345)
     ap.add_argument('--dirs-seed', type=int, default=0); ap.add_argument('--shuffle', action='store_true'); ap.add_argument('--silence', type=float, default=200.0)
     ap.add_argument('--reve', type=int, default=None); ap.add_argument('--echelle', type=float, default=0.25)
+    ap.add_argument('--brut', action='store_true', help='sans lire chaque dimension du modèle relative à son habitude')
     a = ap.parse_args()
     text = open(a.texte, encoding='utf-8').read()
     # (lecture de Codex, 20/11) le mélange se fait sur les MOTS, AVANT toute lecture : pour les trois sources, c'est le texte
@@ -212,7 +219,7 @@ if __name__ == '__main__':
         E = plongement_temoin(mots) if a.source == 'temoin' else plongement_modele_vierge(mots, seed=a.dirs_seed, layer=a.layer)
     else:
         mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
-    I_tok = projeter(E, a.N, a.dirs_seed, a.echelle)
-    nom = f"{a.source}{'_melange' if a.shuffle else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut)
+    nom = f"{a.source}{'_melange' if a.shuffle else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
     lire(d, mots, nom)
