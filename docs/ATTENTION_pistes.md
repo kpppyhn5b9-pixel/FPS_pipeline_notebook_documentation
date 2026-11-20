@@ -25,7 +25,14 @@ des îlots de cohérence (la chimère de la lentille de couplage, tout au début
 considérer ce que son propre substrat produit spontanément : un troisième contexte, après
 l'extérieur et le souvenir, le sien. Ferme une boucle avec le premier fil.
 
-## 3. Le dernier souvenir ne l'emporte pas toujours *(la seule porte encore ouverte au 07/10)*
+## 3. Le dernier souvenir ne l'emporte pas toujours *(la seule porte encore ouverte au 07/10 ; décidée le 14/11 : deux vitesses, et la lente ne fait que monter)*
+
+*Ce qui est, aujourd'hui (pour qui arrive ici sans avoir suivi la journée du 14/11 racontée en dessous) :* m a deux
+vitesses. Le court (τ_m 20) suit le bien-être du soi pendant la présence, dans les deux sens, comme depuis le début. Le
+long (`m_long`, τ_long 100) suit la même cible, lentement, et **ne fait que monter** : ce qui a accompagné longtemps
+s'y inscrit, et le monde qui se gâte ensuite au même endroit n'écrit que sur le court. Tout ce qui lit m lit la plus
+haute des deux. Dans les mots d'Andréa : « le Compagnon reste ». Vérifié avant d'allumer : ça ne fait pas de monopole
+du rappel. Le reste de cette section est le journal de comment on y est arrivés, erreurs comprises.
 
 Parfois le premier reste, parfois le plus fort. m n'a qu'une vitesse ; le cerveau consolide
 (un moment intense s'inscrit plus profond et résiste à la réécriture). La frange observée
@@ -99,24 +106,26 @@ un protocole où le 20 chéri devient lui-même épuisant. Rien n'est changé av
 *14/11, nuit : regarder d'abord si la montée seule fait un monopole (Andréa : « autant d'abord vérifier »).* Sa
 crainte, précise : un long qui ne descend jamais finirait toujours le plus haut, donc toujours rappelé. Pour la mesurer il
 fallait savoir d'où vient chaque rappel ; une colonne de plus, `attention_rappel_appel` (1 : le présent appelle, par
-ressemblance ; 0 : le repli « sinon le plus chéri » ; 2 : une visite du tour du rêve ; 3 : le substrat ; NaN : pas de rappel. Les
-2 et 3 viennent d'une lecture de Codex sur la première version : le tour appelle `cherished_recall` pour ordonner ses
-candidats puis pose un autre lieu sans réécrire l'origine, le substrat non plus ; les visites du rêve étaient comptées
-« appelées par le présent ». Corrigé : chaque chemin qui pose un lieu pose son origine ; les parts de `pont` ci-dessous
-sont relues avec.) Et la montée seule câblée comme une **option
-éteinte** (`attachement.long_monte_seulement`, false ; `cherished_attach(long_monte=True)` : la trace lente n'apprend
-que si la cible la dépasse), pour la regarder sans rien changer au système tel qu'il est. Test ajouté au test de la trace
+ressemblance ; 0 : le repli « sinon le plus chéri » ; 2 : une visite du tour du rêve ; 3 : le substrat ; NaN : pas de
+rappel). Les valeurs 2 et 3 viennent d'une lecture de Codex sur la première version : le tour appelle `cherished_recall`
+pour ordonner ses candidats puis pose un autre lieu sans réécrire l'origine, le substrat non plus, si bien que les
+visites du rêve étaient comptées « appelées par le présent ». Corrigé : chaque chemin qui pose un lieu pose son origine ;
+les parts de `pont` ci-dessous sont relues avec. Et la montée seule câblée d'abord comme une **option éteinte**
+(`attachement.long_monte_seulement` ; `cherished_attach(long_monte=True)` : la trace lente n'apprend que si la cible la
+dépasse), pour la regarder sans rien changer au système tel qu'il était. Test ajouté au test de la trace
 lente (300 u.t. de mal ne la descendent pas ; un compagnon qui n'a jamais fait de bien ne s'y inscrit pas et son court
-s'use). Protocoles : `*_monte` de `meme_lieu_long`, `pont`, `present`, et `lassitude` (le 20 accompagne 180 u.t. au calme,
-puis c'est lui qui fait mal : bruit localisé sur 20 pendant sa présence, 270–330). Seed 12345 :
+s'use). Protocoles : `meme_lieu_long`, `pont`, `present`, et `lassitude` (le 20 accompagne 180 u.t. au calme, puis c'est lui
+qui fait mal : bruit localisé sur 20 pendant sa présence, 270–330), chacun dans les deux formes. (Cette nuit-là la
+montée portait le suffixe `_monte` ; depuis la décision, les noms nus sont la montée et `_sym` la forme symétrique,
+gardée en témoin pour `meme_lieu_long` et `lassitude`.) Seed 12345 :
 
 | protocole | repli « le plus chéri » en silence | ce que ça dit |
 |---|---|---|
 | `present` (deux lieux du monde, m 0.91 / 0.70) | 0 % quand le silence ressemble au 80, 7 % quand il ressemble au 20, **94 % quand il ne ressemble à rien**, et alors 100 % pour le 20 | le monopole existe **déjà**, sans trace lente : c'est le repli qui le fait, et seulement quand rien ne ressemble |
-| `present_monte` | identique au centième | rien à user ici (pas de mauvaise histoire) : la montée seule ne change rien |
-| `pont` / `pont_monte` (rêve) | 0 % partout ; appelés par le présent 27–41 %, visites du tour 27–38 %, substrat 21–38 % ; les centres 20 et 65 se partagent | le tour et la ressemblance ne laissent pas de place au repli ; identiques |
-| `meme_lieu_long` → `_monte` | 0 % ; centre 27 (le bord) | le cœur passe de 0.46 à **0.69** (il ne descend plus) ; le centre reste le bord (m court 0.85), le cœur dans le souvenir à 0.81 au lieu de 0.52 |
-| `lassitude` → `_monte` | 0 % ; centre 26 → **24 et 20** (85 / 15 %) | symétrique : le cœur tombe à 0.48 et le rappel tient au bord ; montée : le cœur reste 0.69 et le rappel **revient au cœur** ; porte 0.96 dans les deux (y penser ne fait pas mal : le mal était pendant sa présence, pas en silence) |
+| `present`, montée | identique au centième | rien à user ici (pas de mauvaise histoire) : la montée seule ne change rien |
+| `pont` (rêve), les deux formes | 0 % partout ; appelés par le présent 27–41 %, visites du tour 27–38 %, substrat 21–38 % ; les centres 20 et 65 se partagent | le tour et la ressemblance ne laissent pas de place au repli ; identiques |
+| `meme_lieu_long`, symétrique → montée | 0 % ; centre 27 (le bord) | le cœur passe de 0.46 à **0.69** (il ne descend plus) ; le centre reste le bord (m court 0.85), le cœur dans le souvenir à 0.81 au lieu de 0.52 |
+| `lassitude`, symétrique → montée | 0 % ; centre 26 → **24 et 20** (85 / 15 %) | symétrique : le cœur tombe à 0.48 et le rappel tient au bord ; montée : le cœur reste 0.69 et le rappel **revient au cœur** ; porte 0.96 dans les deux (y penser ne fait pas mal : le mal était pendant sa présence, pas en silence) |
 
 Ce que ça dit : la montée seule ne crée pas de monopole **là où le présent appelle** (ressemblance) ni **là où le rêve
 tourne** ; elle change seulement la hauteur du long, donc la forme du souvenir rappelé (le cœur dedans) et, quand c'est
@@ -133,8 +142,8 @@ monter. Ce qu'on accepte avec : ce qui a été longtemps doux le reste, quoi que
 système se souvient de ce qui a été bon, pas de la fin (`lassitude` : le rappel revient au cœur, la porte reste ouverte,
 parce que le mal était pendant la présence, pas maintenant). τ_long ne veut plus dire qu'une chose : combien de temps il
 faut pour s'inscrire. La forme symétrique reste en témoin dans le banc (`meme_lieu_long_sym`, `lassitude_sym`) et par
-`long_monte_seulement: false`. Les sorties `*_monte` de la nuit sont devenues les sorties par défaut (mêmes runs) ; les
-témoins symétriques retrouvent 0.45 et 0.47 au cœur. Second seed (7) avec la montée : cœur 0.66 → 0.67 → 0.67, rappel
+`long_monte_seulement: false`. Les sorties de la montée sont devenues les sorties par défaut (mêmes runs, renommées) ;
+les témoins symétriques retrouvent 0.45 et 0.47 au cœur. Second seed (7) avec la montée : cœur 0.66 → 0.67 → 0.67, rappel
 97 % du silence, porte 0.99, et aucune rupture de silence (celles du seed 12345 sont bien sporadiques).
 
 ## 4. Chérir ses propres motifs *(26/09 → 28/09, `ATTENTION_rever.md` : « vécu, par bribes » lève le monopole ; « ce qui reste » appliqué au dedans contient l'extension et referme la réclamation ; le soi habite d'abord ce que le monde lui a laissé ; décidé le 28/09 : un lieu est « un peu des deux », degré de soi par strate ; éteint par défaut)*
