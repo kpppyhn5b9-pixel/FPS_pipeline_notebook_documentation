@@ -84,7 +84,7 @@ def plongement_modele_vierge(mots, seed=0, n_layer=12, n_embd=768, layer=None):
             outs.append(hs[L][0].numpy())
     return np.concatenate(outs, 0)
 
-def projeter(E, N, dirs_seed, echelle=0.25, dims_relatives=True):
+def projeter(E, N, dirs_seed, echelle=0.25, dims_relatives=True, voisines=0.0):
     """N directions fixes (graine `dirs_seed`), projection, puis chaque strate centrée-réduite sur le texte et × échelle :
     une excursion de 2 σ vaut 0.5, le gain des foyers de tous les bancs. Une seule constante, nommée.
     `dims_relatives` (20/11, observé sur Qwen2.5-0.5B) : chaque dimension du modèle est d'abord lue relative à son habitude
@@ -95,6 +95,14 @@ def projeter(E, N, dirs_seed, echelle=0.25, dims_relatives=True):
     rng = np.random.default_rng(dirs_seed); d = E.shape[1]
     if dims_relatives: E = (E - E.mean(0)) / (E.std(0) + 1e-9)
     D = rng.normal(0.0, 1.0 / np.sqrt(d), (d, N))
+    if voisines and voisines > 0:
+        # (20/11, décidé avec Andréa) des directions VOISINES pour des strates voisines : toute la mémoire de la FPS repose sur
+        # la contiguïté du chœur (un souvenir est une région) ; sous une projection aléatoire, la strate n et la strate n+1
+        # n'ont aucun rapport et ses lieux font une strate. On lisse les directions le long du chœur (gaussienne de largeur
+        # `voisines`, la largeur des foyers de tous les bancs : 6), puis on renormalise chaque direction. Rien d'appris sur le
+        # texte : la même géométrie qu'elle connaît, rendue au pont.
+        n = np.arange(N); K = np.exp(-0.5 * ((n[:, None] - n[None, :]) / float(voisines)) ** 2); K /= K.sum(1, keepdims=True)
+        D = D @ K.T; D = D / (np.linalg.norm(D, axis=0, keepdims=True) + 1e-12) / np.sqrt(d) * np.sqrt(d)
     P = E @ D
     mu = P.mean(0); sd = P.std(0) + 1e-9
     return (P - mu) / sd * echelle
@@ -208,6 +216,7 @@ if __name__ == '__main__':
     ap.add_argument('--dirs-seed', type=int, default=0); ap.add_argument('--shuffle', action='store_true'); ap.add_argument('--silence', type=float, default=200.0)
     ap.add_argument('--reve', type=int, default=None); ap.add_argument('--echelle', type=float, default=0.25)
     ap.add_argument('--brut', action='store_true', help='sans lire chaque dimension du modèle relative à son habitude')
+    ap.add_argument('--voisines', type=float, default=0.0, help='largeur du lissage des directions le long du chœur (6 = la largeur des foyers) ; 0 = directions indépendantes')
     a = ap.parse_args()
     text = open(a.texte, encoding='utf-8').read()
     # (lecture de Codex, 20/11) le mélange se fait sur les MOTS, AVANT toute lecture : pour les trois sources, c'est le texte
@@ -219,7 +228,7 @@ if __name__ == '__main__':
         E = plongement_temoin(mots) if a.source == 'temoin' else plongement_modele_vierge(mots, seed=a.dirs_seed, layer=a.layer)
     else:
         mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
-    I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut)
-    nom = f"{a.source}{'_melange' if a.shuffle else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
+    nom = f"{a.source}{'_melange' if a.shuffle else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
     lire(d, mots, nom)
