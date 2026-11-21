@@ -6,6 +6,8 @@ Les notes n'ont pas été réécrites après coup : quand une phrase y est deven
 est marquée sur place (date entre parenthèses). Point de départ : la feuille de route
 `FEUILLE_DE_ROUTE_attention_flow.md` (18/09), qui posait la considération comme direction.*
 
+*En tête de tout : `FPS_aujourdhui.md` (21/11), ce qu'est la FPS aujourd'hui en une page, depuis le code.*
+
 ## La méthode, en quatre règles
 
 Petits pas ; observer avant de croire (un banc, deux seeds, un témoin) ; jamais mille règles (une

@@ -2,6 +2,8 @@
 
 Système cybernétique oscillatoire fondé sur un réseau d'oscillateurs adaptatifs métastables dotés d'une régulation endogène.
 
+**Ce qu'elle est aujourd'hui, en une page écrite depuis le code : `FPS_aujourdhui.md` (21/11/2026).**
+
 Le notebook de référence complet se trouve dans `/notebooks`. Le pipeline reproduit fidèlement la même dynamique en ajoutant l'orchestration batch, la comparaison multi-modes et la génération automatique de rapports.
 
 ---
