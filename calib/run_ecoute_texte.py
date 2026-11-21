@@ -16,7 +16,8 @@ Sources :
   vierge : un transformer de la forme de GPT-2 small, poids aléatoires : l'architecture sans l'apprentissage. Son attention
            mélange déjà le passé ; si quelque chose reste ici, ce n'est pas le sens, c'est la forme.
   modele : l'état caché d'un petit modèle ouvert (transformers, `--model`, `--layer`), token par token.
-  --shuffle : le même texte, mots mélangés : la persistance (ce qui reste) dépend-elle de l'ordre ?
+  --shuffle : le même texte, mots mélangés AVANT toute lecture (le modèle lit le texte mélangé) : la persistance (ce qui
+           reste) dépend-elle de l'ordre ?
 
 Usage :
   python calib/run_ecoute_texte.py docs/ATTENTION_souvenir_present.md --source temoin [--k 4] [--N 100] [--seed 12345]
@@ -83,11 +84,47 @@ def plongement_modele_vierge(mots, seed=0, n_layer=12, n_embd=768, layer=None):
             outs.append(hs[L][0].numpy())
     return np.concatenate(outs, 0)
 
-def projeter(E, N, dirs_seed, echelle=0.25):
+def sac_tenu(reference, seed):
+    """(21/11, proposé par Andréa) un sac SANS MOTS qui dure autant que le texte : on prend les entrées Iₙ(t) d'une écoute de
+    référence (le texte dans l'ordre) et on en tire un surrogat de phase : mêmes amplitudes de Fourier pour chaque strate,
+    mêmes phases aléatoires pour toutes (donc mêmes durées, mêmes co-mouvements entre strates, à l'identique), mais plus
+    aucun texte derrière. Si la FPS en chérit autant que du vrai texte, ce qu'elle garde est la tenue du modèle, pas le sens.
+    Pas de constante à choisir : la tenue est celle de la référence, exactement."""
+    I = np.asarray(np.load(reference, allow_pickle=True)['I_tok'], float); T, N = I.shape
+    F = np.fft.rfft(I - I.mean(0), axis=0)
+    rng = np.random.default_rng(seed); ph = np.exp(1j * rng.uniform(0, 2 * np.pi, F.shape[0]))
+    ph[0] = 1.0
+    if T % 2 == 0: ph[-1] = 1.0
+    S = np.fft.irfft(F * ph[:, None], n=T, axis=0)
+    return (S - S.mean(0)) / (S.std(0) + 1e-9) * I.std(0) + I.mean(0)
+
+def tenue(I_tok, W=12):
+    """Ce que le modèle tient : ressemblance d'un token au suivant (corrélation), et sur W tokens la norme de la moyenne
+    rapportée à la moyenne des normes (0.29 pour du bruit indépendant, 1 pour un état immobile)."""
+    I = np.asarray(I_tok, float); T = I.shape[0]
+    c1 = np.corrcoef(I[:-1].ravel(), I[1:].ravel())[0, 1]
+    r = [np.linalg.norm(I[s:s + W].mean(0)) / np.mean(np.linalg.norm(I[s:s + W], axis=1)) for s in range(0, T - W, W)]
+    return c1, float(np.median(r))
+
+def projeter(E, N, dirs_seed, echelle=0.25, dims_relatives=True, voisines=0.0):
     """N directions fixes (graine `dirs_seed`), projection, puis chaque strate centrée-réduite sur le texte et × échelle :
-    une excursion de 2 σ vaut 0.5, le gain des foyers de tous les bancs. Une seule constante, nommée."""
+    une excursion de 2 σ vaut 0.5, le gain des foyers de tous les bancs. Une seule constante, nommée.
+    `dims_relatives` (20/11, observé sur Qwen2.5-0.5B) : chaque dimension du modèle est d'abord lue relative à son habitude
+    sur le texte (centrée-réduite). Sans ça, une seule dimension (la 62, σ 76 contre 0.3 pour les autres : une « activation
+    massive », connue des transformers) et un token-puits (« est », norme 1736 contre 16) font 83 % de ce que les strates
+    reçoivent : toutes voient le même nombre, au signe près, et rien ne se détache du chœur. C'est le même principe que la
+    FPS applique à son entrée, relative à sa médiane, appliqué une fois en amont ; `--brut` pour voir sans."""
     rng = np.random.default_rng(dirs_seed); d = E.shape[1]
+    if dims_relatives: E = (E - E.mean(0)) / (E.std(0) + 1e-9)
     D = rng.normal(0.0, 1.0 / np.sqrt(d), (d, N))
+    if voisines and voisines > 0:
+        # (20/11, décidé avec Andréa) des directions VOISINES pour des strates voisines : toute la mémoire de la FPS repose sur
+        # la contiguïté du chœur (un souvenir est une région) ; sous une projection aléatoire, la strate n et la strate n+1
+        # n'ont aucun rapport et ses lieux font une strate. On lisse les directions le long du chœur (gaussienne de largeur
+        # `voisines`, la largeur des foyers de tous les bancs : 6), puis on renormalise chaque direction. Rien d'appris sur le
+        # texte : la même géométrie qu'elle connaît, rendue au pont.
+        n = np.arange(N); K = np.exp(-0.5 * ((n[:, None] - n[None, :]) / float(voisines)) ** 2); K /= K.sum(1, keepdims=True)
+        D = D @ K.T; D = D / (np.linalg.norm(D, axis=0, keepdims=True) + 1e-12) / np.sqrt(d) * np.sqrt(d)
     P = E @ D
     mu = P.mean(0); sd = P.std(0) + 1e-9
     return (P - mu) / sd * echelle
@@ -195,23 +232,32 @@ def lire(d, mots, label, fenetre=100.0):
 
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser(); ap.add_argument('texte'); ap.add_argument('--source', default='temoin', choices=['temoin', 'vierge', 'modele'])
+    ap = argparse.ArgumentParser(); ap.add_argument('texte'); ap.add_argument('--source', default='temoin', choices=['temoin', 'vierge', 'modele', 'tenu'])
     ap.add_argument('--model', default='Qwen/Qwen2.5-0.5B'); ap.add_argument('--layer', type=int, default=None); ap.add_argument('--max-tokens', type=int, default=None)
     ap.add_argument('--k', type=int, default=4); ap.add_argument('--N', type=int, default=100); ap.add_argument('--seed', type=int, default=12345)
     ap.add_argument('--dirs-seed', type=int, default=0); ap.add_argument('--shuffle', action='store_true'); ap.add_argument('--silence', type=float, default=200.0)
     ap.add_argument('--reve', type=int, default=None); ap.add_argument('--echelle', type=float, default=0.25)
+    ap.add_argument('--brut', action='store_true', help='sans lire chaque dimension du modèle relative à son habitude')
+    ap.add_argument('--voisines', type=float, default=0.0, help='largeur du lissage des directions le long du chœur (6 = la largeur des foyers) ; 0 = directions indépendantes')
+    ap.add_argument('--reference', default=None, help="source `tenu` : le .npz d'une écoute dont on garde les durées sans les mots")
+    ap.add_argument('--repeter', type=int, default=1, help='chaque mot lu R fois de suite (R = 2 : un sac de mots que le modèle tient)')
     a = ap.parse_args()
     text = open(a.texte, encoding='utf-8').read()
-    if a.source in ('temoin', 'vierge'):
-        mots = tokens_mots(text)
+    # (lecture de Codex, 20/11) le mélange se fait sur les MOTS, AVANT toute lecture : pour les trois sources, c'est le texte
+    # mélangé qui est lu. Mélanger les vecteurs après coup laisserait au modèle le contexte de l'ordre d'origine.
+    mots = tokens_mots(text)
+    if a.shuffle: np.random.default_rng(a.seed).shuffle(mots)
+    if a.repeter > 1: mots = [w for w in mots for _ in range(a.repeter)]
+    if a.source == 'tenu':
+        I_tok = sac_tenu(a.reference, a.seed); mots = ['·'] * I_tok.shape[0]
+    elif a.source in ('temoin', 'vierge'):
         if a.max_tokens: mots = mots[:a.max_tokens]
-        if a.shuffle: np.random.default_rng(a.seed).shuffle(mots)
         E = plongement_temoin(mots) if a.source == 'temoin' else plongement_modele_vierge(mots, seed=a.dirs_seed, layer=a.layer)
     else:
-        mots, E = plongement_modele(text, a.model, a.layer, a.max_tokens)
-        if a.shuffle:
-            perm = np.random.default_rng(a.seed).permutation(len(mots)); mots = [mots[i] for i in perm]; E = E[perm]
-    I_tok = projeter(E, a.N, a.dirs_seed, a.echelle)
-    nom = f"{a.source}{'_melange' if a.shuffle else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+        mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
+    if a.source != 'tenu': I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
+    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    c1, ten = tenue(I_tok)
+    print(f"[{nom}] tenue de ce qu'on lui donne : ressemblance d'un token au suivant {c1:.2f}, tenue sur 12 tokens {ten:.2f} (bruit indépendant 0.29)")
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
     lire(d, mots, nom)
