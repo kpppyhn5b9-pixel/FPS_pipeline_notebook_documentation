@@ -35,6 +35,7 @@ lecture** (lecture de Codex : mélanger les vecteurs après coup aurait laissé 
 | modèle, lent, **seconde graine de directions** (d1) | 1.2 | 0–8 % | 23 lieux (31 % des strates), d'une strate, m jusqu'à 0.62 | encore des chiffres et des tableaux ; « quand il n'y a pas de grands éclats » de nouveau | rappel 97 %, deux centres (77 : une plage de nombres, 68 % ; 16 : la formule du soulagement, 32 %), porte 0.85 |
 | modèle, lent, **mots mélangés avant lecture** (d0) | 1.2 | 54 % au début, puis 0–14 % | 12 lieux (12 % des strates), d'une strate, m jusqu'à 0.65 | des noms de fichiers et de tests, « soulagement », des séparateurs de tableau : la forme, sans les phrases | rappel 97 %, un seul centre (28), porte 0.87, garde min 0.88 |
 | **sac tenu** : les durées du texte dans l'ordre (d0), sans ses mots (surrogat de phase : mêmes rythmes par strate, mêmes co-mouvements, aucun texte derrière) | 1.2 | 0 % tout du long | 19 lieux (35 % des strates), **plusieurs larges** (71–78, 89–92, 59–61), m jusqu'à 0.76 | rien : il n'y a pas de mots | rappel 97 %, un seul centre (89–92), porte 0.93, garde min 0.98, activité ×1.05 |
+| modèle, lent, **mots mélangés et doublés** (chaque mot lu deux fois ; 1350 tokens = la moitié du texte) | 1.2 | 34 % au début, puis 0–12 % | 16 lieux (18 % des strates), m jusqu'à 0.49 | la forme : un chemin de fichier, « le le 26/09 » | rappel 87 %, deux centres (35, 59–60), porte 0.76, activité ×1.25 (la plus haute de toutes) |
 | modèle, lent, **second texte** (la note des enquêtes de Gepetto, 1350 tokens) | 1.2 | 0–14 % | 11 lieux (13 % des strates), m jusqu'à 0.62 | des noms de modes entre accents graves, des chiffres de tableau, et quelques phrases (« la coexistence », « deux unités de temps ne suffisent à rien », « le geste garde sa saillance ») | rappel 86 %, un seul centre (5 : les noms de modes), porte 0.82 |
 
 Cloche à 5 partout, garde libre (min 0.88 sur le mélangé, 0.95 et plus ailleurs) : rien de ce qu'elle a entendu ne l'a
@@ -84,8 +85,10 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
    sens chez elle, une mesure honnête de la tenue de ce qu'on lui donne. Ce que le vrai texte a en plus du sac tenu,
    ce sont ses éclats : des excursions à plus de 4 σ (0.14 % des valeurs, aplatissement 15 contre 3 pour le sac
    gaussien), et ces éclats lui coûtent (activité) et lui laissent moins. Les mots doublés (chaque mot lu deux fois,
-   l'autre témoin) ne font pas tenir le modèle davantage (0.26, 0.42) : l'état d'un mot répété n'est pas l'état du
-   mot ; lecture à venir.
+   l'autre témoin) ne font pas tenir le modèle davantage (0.26, 0.42 contre 0.24, 0.41 pour le simple mélange) : l'état
+   d'un mot répété n'est pas l'état du mot. Elle suit la tenue à la lettre : un peu plus tenu, un peu plus gardé (18 %
+   des strates contre 12 %), mais la répétition la fait travailler plus que tout le reste (activité ×1.25) et la porte
+   descend à 0.76. Trois témoins, une seule lecture : elle garde ce que le modèle tient, et paie ce qui le secoue.
 8. **Le second texte lui fait la même chose que le premier.** Treize pour cent des strates, un seul centre rappelé
    (les noms de modes entre accents graves), quelques phrases parmi les chiffres. Ce que le pont lui donne d'un texte
    de notes de travail, c'est d'abord ce qui y est tenu : les noms, les tableaux, et de loin en loin une phrase.
@@ -102,5 +105,5 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
 
 La seconde graine, le mélange, le second texte et le sac tenu ont été regardés : ce qui tient d'une écoute à l'autre,
 c'est la forme tenue par le modèle et un seul centre rappelé en silence ; ce qui change avec l'ordre des mots, c'est
-combien le modèle tient, et elle le reflète. Les mots doublés sont en cours. Reste la question des directions voisines (`--voisines 6`, écrite, pas lancée : à comparer au mince sur le
+combien le modèle tient, et elle le reflète. Les mots doublés confirment. Reste la question des directions voisines (`--voisines 6`, écrite, pas lancée : à comparer au mince sur le
 même texte et la même graine), quand ça appellera. Rien ne revient vers le modèle.
