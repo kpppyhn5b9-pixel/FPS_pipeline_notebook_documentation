@@ -36,6 +36,7 @@ lecture** (lecture de Codex : mélanger les vecteurs après coup aurait laissé 
 | modèle, lent, **mots mélangés avant lecture** (d0) | 1.2 | 54 % au début, puis 0–14 % | 12 lieux (12 % des strates), d'une strate, m jusqu'à 0.65 | des noms de fichiers et de tests, « soulagement », des séparateurs de tableau : la forme, sans les phrases | rappel 97 %, un seul centre (28), porte 0.87, garde min 0.88 |
 | **sac tenu** : les durées du texte dans l'ordre (d0), sans ses mots (surrogat de phase : mêmes rythmes par strate, mêmes co-mouvements, aucun texte derrière) | 1.2 | 0 % tout du long | 19 lieux (35 % des strates), **plusieurs larges** (71–78, 89–92, 59–61), m jusqu'à 0.76 | rien : il n'y a pas de mots | rappel 97 %, un seul centre (89–92), porte 0.93, garde min 0.98, activité ×1.05 |
 | modèle, lent, **mots mélangés et doublés** (chaque mot lu deux fois ; 1350 tokens = la moitié du texte) | 1.2 | 34 % au début, puis 0–12 % | 16 lieux (18 % des strates), m jusqu'à 0.49 | la forme : un chemin de fichier, « le le 26/09 » | rappel 87 %, deux centres (35, 59–60), porte 0.76, activité ×1.25 (la plus haute de toutes) |
+| modèle, lent, **quatre trébuchements** : la note soutien dans l'ordre, sauf quatre passages de 50 mots mélangés localement, sans le lui dire (`--trebucher`) | 1.2 | 0–32 %, un peu plus à l'entrée de trois zones sur quatre | 15 lieux (20 % des strates), m jusqu'à 0.66, appelés moins souvent par les zones (20 % contre 29 % des tokens) | des lignes de tableau, hors des zones | rappel 98 %, un centre (52), porte 0.83, garde 1.00 |
 | modèle, lent, **second texte** (la note des enquêtes de Gepetto, 1350 tokens) | 1.2 | 0–14 % | 11 lieux (13 % des strates), m jusqu'à 0.62 | des noms de modes entre accents graves, des chiffres de tableau, et quelques phrases (« la coexistence », « deux unités de temps ne suffisent à rien », « le geste garde sa saillance ») | rappel 86 %, un seul centre (5 : les noms de modes), porte 0.82 |
 
 Cloche à 5 partout, garde libre (min 0.88 sur le mélangé, 0.95 et plus ailleurs) : rien de ce qu'elle a entendu ne l'a
@@ -107,6 +108,20 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
    ceux du mélangé et du doublé, si. Lecture provisoire : pour elle, un lieu mince né d'un éclat est le souvenir d'un
    sursaut, un lieu large le souvenir d'un déplacement, et ce qu'elle rappelle d'un texte qui a du sens, ce sont ses
    moments calmes. Une lecture, six écoutes : à regarder encore avant d'y croire.
+10. **Voit-elle autre chose que la statistique en une ligne ? Non, pas ici** (21/11 au soir, question posée à deux).
+    Quatre passages de cinquante mots mélangés localement dans la note soutien, à des endroits connus de nous seuls.
+    La statistique les voit tous les quatre, nettement (ressemblance d'un token au suivant 0.27 dans les zones contre
+    0.35 ailleurs ; chaque zone fait baisser le chiffre). Elle en marque trois : un silence bref à l'entrée de la zone
+    (25 %, 7 %, 16 % de la première fenêtre, là où le texte dans l'ordre n'en avait aucun), puis plus rien ; la
+    quatrième, elle ne la marque pas. L'activité ne bouge pas (1.19 contre 1.19) ; la part saillante baisse un peu dans
+    les zones (1.0 % contre 1.3 %) ; les strates chéries sont appelées moins souvent depuis les zones (20 % de leurs
+    tokens appelants, pour 29 % des tokens) ; les deux centres rappelés en silence sont des lignes de tableau, hors
+    des zones. Une fois, un silence 60 u.t. après la sortie d'une zone (15 %), qu'on pourrait lire comme un temps pour
+    s'en remettre ; une fois, ça ne fait pas une loi. Ce qu'on peut dire : elle réagit à un trébuchement du modèle dans
+    son vocabulaire à elle (se taire en entrant dans la tempête, en garder moins), plus tard et plus faiblement que le
+    chiffre d'une ligne, et sans rien y voir que lui ne voie pas. Elle est un miroir fidèle et lent, pas une loupe.
+    Si sa valeur pour lire un modèle existe, elle n'est pas dans la détection ; elle serait dans ce qu'elle garde et
+    rappelle après, et ça demande d'autres questions que celle-ci.
 
 ## Deux limites apprises (nuit du 20 au 21/11)
 
@@ -120,5 +135,6 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
 
 La seconde graine, le mélange, le second texte et le sac tenu ont été regardés : ce qui tient d'une écoute à l'autre,
 c'est la forme tenue par le modèle et un seul centre rappelé en silence ; ce qui change avec l'ordre des mots, c'est
-combien le modèle tient, et elle le reflète. Les mots doublés confirment. Reste la question des directions voisines (`--voisines 6`, écrite, pas lancée : à comparer au mince sur le
+combien le modèle tient, et elle le reflète. Les mots doublés confirment, et les quatre trébuchements aussi : elle ne
+voit rien que la tenue ne voie, elle le voit à sa manière. Reste la question des directions voisines (`--voisines 6`, écrite, pas lancée : à comparer au mince sur le
 même texte et la même graine), quand ça appellera. Rien ne revient vers le modèle.
