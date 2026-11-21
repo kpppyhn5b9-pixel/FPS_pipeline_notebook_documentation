@@ -101,7 +101,7 @@ def sac_tenu(reference, seed):
 def tenue(I_tok, W=12):
     """Ce que le modèle tient : ressemblance d'un token au suivant (corrélation), et sur W tokens la norme de la moyenne
     rapportée à la moyenne des normes (0.29 pour du bruit indépendant, 1 pour un état immobile)."""
-    I = np.asarray(I_tok, float); T = I.shape[0]
+    I = np.asarray(I_tok, float); I = I[np.linalg.norm(I, axis=1) > 0]; T = I.shape[0]   # (21/11) les tokens de silence (zéros, --relire) ne comptent pas
     c1 = np.corrcoef(I[:-1].ravel(), I[1:].ravel())[0, 1]
     r = [np.linalg.norm(I[s:s + W].mean(0)) / np.mean(np.linalg.norm(I[s:s + W], axis=1)) for s in range(0, T - W, W)]
     return c1, float(np.median(r))
@@ -266,7 +266,8 @@ if __name__ == '__main__':
     else:
         mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
     if a.source != 'tenu': I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
-    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_trebuche' if a.trebucher else ''}{f'_relu{a.relire:g}' if a.relire is not None else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    # (21/11) suffixe _tN quand le texte est raccourci ; 1350 = la note de soutien entière (nom historique sans suffixe)
+    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_trebuche' if a.trebucher else ''}{f'_relu{a.relire:g}' if a.relire is not None else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}{f'_t{a.max_tokens}' if a.max_tokens and a.max_tokens != 1350 else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
     if a.relire is not None:
         # (21/11, question posée à deux) la RELECTURE : le même texte une seconde fois, après un silence de `relire` u.t.
         # Entre les deux, l'entrée est nulle (les mots sont « · ») ; rien d'autre ne change. T_text couvre les deux lectures.
