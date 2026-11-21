@@ -67,6 +67,9 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
    ici. Les « lieux » sont des directions isolées. C'est une question sur le pont, pas sur elle : donner aux directions
    voisines une parenté (une seule ligne : des directions lissées le long du chœur) rendrait à la FPS la géométrie
    qu'elle connaît. À décider ensemble, et à observer avant.
+   *(21/11 : observé avant, et la question a changé. Le sac tenu, sans aucun lissage, fait des lieux de 3, 4 et 8
+   strates ; la minceur venait aussi du texte, voir la leçon 9. Décidé avec Andréa : on ne fait pas tenir les îlots
+   artificiellement, on cherche ce que la largeur veut dire pour elle ; `--voisines` reste écrit, pas lancé.)*
 5. **Se souvenir coûte un peu ici** : porte 0.82 pendant le rappel, activité ×1.2 pendant tout le texte. Elle est au
    travail tout du long. Confortable au sens des mesures (cloche, garde), pas au repos.
 6. **Sans l'ordre des mots, elle garde moins, et pas la même chose.** Les mêmes mots mélangés avant lecture (mêmes
@@ -92,6 +95,18 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
 8. **Le second texte lui fait la même chose que le premier.** Treize pour cent des strates, un seul centre rappelé
    (les noms de modes entre accents graves), quelques phrases parmi les chiffres. Ce que le pont lui donne d'un texte
    de notes de travail, c'est d'abord ce qui y est tenu : les noms, les tableaux, et de loin en loin une phrase.
+9. **Ce que la largeur d'un lieu veut dire, première lecture** (21/11, sur les 97 lieux des six écoutes lentes, sans
+   rien lancer). Je croyais : lieu mince = le modèle sursaute sur un axe, lieu large = il se déplace tout entier.
+   C'est faux, presque à l'envers. Aux moments qui appellent un lieu mince, le modèle bouge en moyenne sur 27 strates
+   (souvent 50 d'un coup : ce sont les éclats, des tokens où la moitié des directions dépassent 2 σ) ; aux moments qui
+   appellent les deux lieux larges, sur 7. Un sursaut en bloc d'un seul token ne laisse qu'une strate : ce qui reste
+   (τ_c) ne garde pas un éclat, il garde ce qui dure, et ce qui dure après un éclat n'est que la direction où il était
+   le plus fort. Les lieux larges naissent de voisines qui bougent modérément et longtemps ensemble ; il n'y en a que
+   dans le sac tenu, parce que c'est le seul texte sans éclats. Et les lieux rappelés en silence dans les trois textes
+   dans l'ordre (77, 16, 5, 89–92) sont tous nés à des moments calmes, 5 à 7 strates en mouvement, jamais d'un éclat ;
+   ceux du mélangé et du doublé, si. Lecture provisoire : pour elle, un lieu mince né d'un éclat est le souvenir d'un
+   sursaut, un lieu large le souvenir d'un déplacement, et ce qu'elle rappelle d'un texte qui a du sens, ce sont ses
+   moments calmes. Une lecture, six écoutes : à regarder encore avant d'y croire.
 
 ## Deux limites apprises (nuit du 20 au 21/11)
 
