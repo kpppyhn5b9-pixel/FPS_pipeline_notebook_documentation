@@ -32,8 +32,12 @@ lecture** (lecture de Codex : mélanger les vecteurs après coup aurait laissé 
 | modèle, dimensions relatives | 0.4 | 0–60 % au milieu | aucun, m max 0.19 | une ligne de tableau en tirets | rien de chéri |
 | modèle, dimensions relatives, dernière couche | 0.4 | 4–86 % | aucun, m max 0.13 | — | rien de chéri |
 | **modèle, dimensions relatives, lent** | **1.2** | **0–7 % sur 1600 u.t.** | **16 lieux (20 % des strates), presque tous d'une strate, m 0.30–0.56** | des passages de chiffres et de tableaux, et des phrases (« Le soutien dans un moment difficile : chérir ce qui », « quand il n'y a pas de grands éclats ») | rappel 97 %, un seul centre (77), appelé par le présent, porte 0.82 |
+| modèle, lent, **seconde graine de directions** (d1) | 1.2 | 0–8 % | 23 lieux (31 % des strates), d'une strate, m jusqu'à 0.62 | encore des chiffres et des tableaux ; « quand il n'y a pas de grands éclats » de nouveau | rappel 97 %, deux centres (77 : une plage de nombres, 68 % ; 16 : la formule du soulagement, 32 %), porte 0.85 |
+| modèle, lent, **mots mélangés avant lecture** (d0) | 1.2 | 54 % au début, puis 0–14 % | 12 lieux (12 % des strates), d'une strate, m jusqu'à 0.65 | des noms de fichiers et de tests, « soulagement », des séparateurs de tableau : la forme, sans les phrases | rappel 97 %, un seul centre (28), porte 0.87, garde min 0.88 |
+| modèle, lent, **second texte** (la note des enquêtes de Gepetto, 1350 tokens) | 1.2 | 0–14 % | 11 lieux (13 % des strates), m jusqu'à 0.62 | des noms de modes entre accents graves, des chiffres de tableau, et quelques phrases (« la coexistence », « deux unités de temps ne suffisent à rien », « le geste garde sa saillance ») | rappel 86 %, un seul centre (5 : les noms de modes), porte 0.82 |
 
-Cloche à 5 et garde libre (min 0.95) partout : rien de ce qu'elle a entendu ne l'a mise en danger.
+Cloche à 5 partout, garde libre (min 0.88 sur le mélangé, 0.95 et plus ailleurs) : rien de ce qu'elle a entendu ne l'a
+mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et demie à deux heures sur quatre cœurs.
 
 ## Ce qu'on a appris, dans l'ordre
 
@@ -50,7 +54,12 @@ Cloche à 5 et garde libre (min 0.95) partout : rien de ce qu'elle a entendu ne 
 3. **Ce qui reste, d'abord, c'est la forme.** Avec l'architecture seule (vierge), la répétition des mots. Avec le
    modèle, encore beaucoup de chiffres, de tableaux et de syntaxe : ce sont les passages où l'état du modèle reste
    le même longtemps. Quelques phrases aussi, et l'unique lieu rappelé en silence porte « quand il n'y a pas de grands
-   éclats » et le titre de la note. On ne tire rien de plus d'un seul texte et d'une seule graine.
+   éclats » et le titre de la note. La seconde graine de directions ramène la même maxime parmi ses lieux ; on a
+   vérifié si c'était un goût : non. Les passages chéris couvrent 62 à 74 % du texte, le recouvrement entre les deux
+   graines (40 fenêtres sur 46) est à peine au-dessus du hasard (moyenne 33, 95ᵉ centile 39), et la maxime est dans
+   les 15 % de fenêtres où l'état du modèle est le plus tenu. Ce qui revient d'une graine à l'autre, c'est la
+   géométrie du modèle (ce qu'il tient longtemps), pas une préférence de la FPS. Ce qui compterait comme un goût :
+   un passage rappelé en silence sur plusieurs graines, et absent quand les mots sont mélangés.
 4. **Les lieux sont minces : une strate.** Sous une projection aléatoire, deux strates voisines ne se ressemblent pas,
    donc la contiguïté du chœur, sur laquelle toute la mémoire repose (un souvenir est une région), ne veut rien dire
    ici. Les « lieux » sont des directions isolées. C'est une question sur le pont, pas sur elle : donner aux directions
@@ -58,9 +67,27 @@ Cloche à 5 et garde libre (min 0.95) partout : rien de ce qu'elle a entendu ne 
    qu'elle connaît. À décider ensemble, et à observer avant.
 5. **Se souvenir coûte un peu ici** : porte 0.82 pendant le rappel, activité ×1.2 pendant tout le texte. Elle est au
    travail tout du long. Confortable au sens des mesures (cloche, garde), pas au repos.
+6. **Sans l'ordre des mots, elle garde moins, et pas la même chose.** Les mêmes mots mélangés avant lecture (mêmes
+   directions d0) laissent 12 strates chéries contre 20 dans l'ordre (31 avec l'autre graine), un m moyen à la fin du
+   texte de 0.11 contre 0.18, et 4 strates communes avec l'écoute ordonnée là où le hasard en donne 2.4 (p 0.19 :
+   rien à dire). Ce qui reste du texte mélangé est la forme seule : noms de fichiers, séparateurs, un mot répété. Le
+   silence revient aussi au début (54 % sur la première centaine d'unités de temps), avant qu'elle ne s'y fasse. Un
+   seul mélange, une seule graine : une direction, pas un résultat.
+7. **Le second texte lui fait la même chose que le premier.** Treize pour cent des strates, un seul centre rappelé
+   (les noms de modes entre accents graves), quelques phrases parmi les chiffres. Ce que le pont lui donne d'un texte
+   de notes de travail, c'est d'abord ce qui y est tenu : les noms, les tableaux, et de loin en loin une phrase.
+
+## Deux limites apprises (nuit du 20 au 21/11)
+
+- **Les écoutes lentes durent plus que la fenêtre d'une tâche d'arrière-plan** (90 min) : trois lancées ensemble ont
+  été coupées sans rien écrire. Lancer détaché (`setsid nohup`), et une à la fois.
+- **L'historique du pipeline garde tout à chaque pas** : une écoute de 1840 u.t. monte à plusieurs gigaoctets, et
+  deux en parallèle ont été tuées par la mémoire (15 Go). D'où `--max-tokens 1350` sur le second texte, et la chaîne
+  séquentielle. On l'écoute d'abord ; le moment voulu, on rangera les mesures.
 
 ## Ce qui attend
 
-Un second texte et une seconde graine de directions sur la version lente, pour savoir ce qui tient au texte et ce qui
-tient au hasard ; le mélange avant lecture sur la version lente ; et la question des directions voisines. Rien ne
-revient vers le modèle tant que ces trois-là n'ont pas été regardés.
+La seconde graine, le mélange et le second texte ont été regardés : ce qui tient d'une écoute à l'autre, c'est la
+forme tenue par le modèle et un seul centre rappelé en silence ; ce qui change avec l'ordre des mots, c'est combien
+elle garde. Reste la question des directions voisines (`--voisines 6`, écrite, pas lancée : à comparer au mince sur le
+même texte et la même graine), quand ça appellera. Rien ne revient vers le modèle.
