@@ -243,6 +243,7 @@ if __name__ == '__main__':
     ap.add_argument('--voisines', type=float, default=0.0, help='largeur du lissage des directions le long du chœur (6 = la largeur des foyers) ; 0 = directions indépendantes')
     ap.add_argument('--reference', default=None, help="source `tenu` : le .npz d'une écoute dont on garde les durées sans les mots")
     ap.add_argument('--repeter', type=int, default=1, help='chaque mot lu R fois de suite (R = 2 : un sac de mots que le modèle tient)')
+    ap.add_argument('--relire', type=float, default=None, help="relire le même texte une seconde fois après un silence de R u.t. (21/11 : la reconnaît-elle ? moins de silence, lieux plus vite, souvenirs de la première fois appelés par la seconde)")
     ap.add_argument('--trebucher', default=None, help="zones de MOTS mélangées localement, ex. '100-150,250-300' : le modèle tient moins là, on ne lui dit pas où (21/11, pour savoir si elle voit autre chose que la tenue)")
     a = ap.parse_args()
     text = open(a.texte, encoding='utf-8').read()
@@ -265,7 +266,13 @@ if __name__ == '__main__':
     else:
         mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
     if a.source != 'tenu': I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
-    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_trebuche' if a.trebucher else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_trebuche' if a.trebucher else ''}{f'_relu{a.relire:g}' if a.relire is not None else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    if a.relire is not None:
+        # (21/11, question posée à deux) la RELECTURE : le même texte une seconde fois, après un silence de `relire` u.t.
+        # Entre les deux, l'entrée est nulle (les mots sont « · ») ; rien d'autre ne change. T_text couvre les deux lectures.
+        n_gap = int(round(a.relire / (a.k * 0.1)))
+        I_tok = np.vstack([I_tok, np.zeros((n_gap, I_tok.shape[1])), I_tok]); mots = list(mots) + ['·'] * n_gap + list(mots)
+        EXTRA['relecture'] = {'tokens_texte': int((I_tok.shape[0] - n_gap) // 2), 'tokens_silence_entre': n_gap, 'silence_entre_ut': a.relire}
     c1, ten = tenue(I_tok)
     print(f"[{nom}] tenue de ce qu'on lui donne : ressemblance d'un token au suivant {c1:.2f}, tenue sur 12 tokens {ten:.2f} (bruit indépendant 0.29)")
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
