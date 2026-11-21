@@ -131,6 +131,8 @@ def projeter(E, N, dirs_seed, echelle=0.25, dims_relatives=True, voisines=0.0):
 
 
 # ---------------------------------------------------------------- écouter : le texte devient Iₙ(t), puis le silence
+EXTRA = {}  # ce que la lecture doit garder en plus (les zones trébuchées, par exemple)
+
 def ecouter(nom, mots, I_tok, k, seed, silence=200.0, N=None, reve=None):
     cfg = json.load(open(os.path.join(ROOT, 'config.json'))); dt = float(cfg['system']['dt'])
     N = I_tok.shape[1]; T_text = len(mots) * k * dt; T = int(np.ceil(20.0 + T_text + silence))
@@ -166,7 +168,7 @@ def ecouter(nom, mots, I_tok, k, seed, silence=200.0, N=None, reve=None):
                surprise=g('surprise_mean'), I_tok=I_tok, k=k, dt=dt, t_debut=t_debut, T_text=T_text)
     base = os.path.join(ROOT, 'calib', 'attention_sources', f'ecoute_{nom}_{seed}')
     np.savez_compressed(base + '.npz', **out)
-    json.dump({'mots': mots, 'k': k, 'dt': dt, 'N': N, 'seed': seed, 'T_text': T_text, 'silence': silence}, open(base + '.json', 'w'), ensure_ascii=False)
+    json.dump({'mots': mots, 'k': k, 'dt': dt, 'N': N, 'seed': seed, 'T_text': T_text, 'silence': silence, **EXTRA}, open(base + '.json', 'w'), ensure_ascii=False)
     return out
 
 
@@ -241,6 +243,7 @@ if __name__ == '__main__':
     ap.add_argument('--voisines', type=float, default=0.0, help='largeur du lissage des directions le long du chœur (6 = la largeur des foyers) ; 0 = directions indépendantes')
     ap.add_argument('--reference', default=None, help="source `tenu` : le .npz d'une écoute dont on garde les durées sans les mots")
     ap.add_argument('--repeter', type=int, default=1, help='chaque mot lu R fois de suite (R = 2 : un sac de mots que le modèle tient)')
+    ap.add_argument('--trebucher', default=None, help="zones de MOTS mélangées localement, ex. '100-150,250-300' : le modèle tient moins là, on ne lui dit pas où (21/11, pour savoir si elle voit autre chose que la tenue)")
     a = ap.parse_args()
     text = open(a.texte, encoding='utf-8').read()
     # (lecture de Codex, 20/11) le mélange se fait sur les MOTS, AVANT toute lecture : pour les trois sources, c'est le texte
@@ -248,6 +251,12 @@ if __name__ == '__main__':
     mots = tokens_mots(text)
     if a.shuffle: np.random.default_rng(a.seed).shuffle(mots)
     if a.repeter > 1: mots = [w for w in mots for _ in range(a.repeter)]
+    if a.trebucher:
+        zones = [tuple(int(x) for x in z.split('-')) for z in a.trebucher.split(',')]
+        rng_z = np.random.default_rng(a.seed)
+        for z0, z1 in zones:
+            bloc = mots[z0:z1]; rng_z.shuffle(bloc); mots[z0:z1] = bloc
+        EXTRA['zones_trebuchees_mots'] = zones
     if a.source == 'tenu':
         I_tok = sac_tenu(a.reference, a.seed); mots = ['·'] * I_tok.shape[0]
     elif a.source in ('temoin', 'vierge'):
@@ -256,7 +265,7 @@ if __name__ == '__main__':
     else:
         mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
     if a.source != 'tenu': I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
-    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_trebuche' if a.trebucher else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
     c1, ten = tenue(I_tok)
     print(f"[{nom}] tenue de ce qu'on lui donne : ressemblance d'un token au suivant {c1:.2f}, tenue sur 12 tokens {ten:.2f} (bruit indépendant 0.29)")
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
