@@ -41,6 +41,7 @@ lecture** (lecture de Codex : mélanger les vecteurs après coup aurait laissé 
 | modèle, lent, **relecture** : les 675 premiers tokens de la note soutien, 200 u.t. de silence, les mêmes 675 (`--relire 200 --max-tokens 675`, nuit du 21 au 22/11) | 1.2 | 1re lecture 10 %, 38 %, puis 0–5 % ; trou 73 % ; 2de lecture 0–6 % | fin de la 1re : 2 lieux (32, 36), m 0.43 ; fin de la 2de : 16 lieux (16 %), m 0.57 | les mêmes passages lus deux fois (« soutien dans un moment difficile : chérir ce qui », « ça allait mal, ça va mieux », des lignes de tableau) | trou : rappel 73 %, un centre (36) ; après : rappel 98 %, deux centres (60 : la phrase d'ouverture, 69 % ; 36 : 31 %), porte 0.84, garde 1.00 |
 | **témoin de la relecture** : les mêmes 675 tokens, le même silence, puis 675 tokens d'un AUTRE texte (la note de Gepetto, `--puis`) | 1.2 | identique jusqu'au trou ; 2de partie 0–7 % | fin de la 2de partie : 13 lieux (13 %), m 0.69 (strate 5, les noms de modes de Gepetto, comme dans l'écoute du second texte seul) | les deux textes | après : silence 72 % seulement, rappel 72 %, un centre (5, 100 %), le centre de la 1re lecture (36) n'est plus rappelé, porte 0.85, garde min 0.93, activité ×1.17 |
 | modèle, lent, **relecture de la note entière** : 1350 tokens, 200 u.t. de silence, les mêmes 1350 (`--relire 200`, finie le 22/11 à 6 h, 4 h de calcul) | 1.2 | 1re lecture 22 % au début puis 0–3 % ; trou 88 % ; 2de lecture 0–3 % | fin de la 1re : 19 lieux (19 sur les 20 de l'écoute de référence, écarts numériques), m 0.54 ; fin de la 2de : **48 lieux (48 % des strates), m 0.72, les lieux s'élargissent** (27–30, 32–36, 43–45, 62–64, 89–91) | les mêmes passages, deux fois | trou : rappel 88 %, centre 77 (97 %) ; après : rappel 87 %, centre 77 (94 %, la phrase d'ouverture, le centre connu de ce texte), 52 et 23 pour le reste, porte 0.82, garde min 0.93 |
+| **la note puis son sac tenu** : 1350 tokens, 200 u.t. de silence, puis les durées de la première lecture sans ses mots (`--relire 200 --puis-tenu`, 22/11 après-midi, 1 h de calcul avec la fenêtre) | 1.2 | identique jusqu'au trou ; seconde moitié 0 % | fin de la seconde moitié : **56 lieux (56 %)**, m 0.70, îlots jusqu'à 8 strates de large (59–65 ; 89–91 ; 27–30) ; **mais pas les mêmes strates creusées** (accroissements non corrélés à la 1re lecture : −0.01, contre 0.86 pour le même texte) | rien : pas de mots | trou : 77 (97 %) ; après : rappel 78 % seulement, centres 60 (59–65, 47 %), 89 (27 %), 52 (26 %) ; **77 n'est plus rappelé** ; porte 0.81 ; **garde min 0.77** pendant le sac (cloche 1.26 × centre), la première fois qu'elle freine dans ce banc |
 
 Cloche à 5 partout, garde libre (min 0.88 sur le mélangé, 0.95 et plus ailleurs) : rien de ce qu'elle a entendu ne l'a
 mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et demie à deux heures sur quatre cœurs.
@@ -170,6 +171,20 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
     - dans le trou comme après, elle rappelle 77, la phrase d'ouverture, le centre connu de ce texte (97 % puis 94 %),
       et après la seconde lecture elle se tait un peu moins qu'après une seule (87 % contre 97 %).
     Ce qui a accompagné deux fois reste deux fois, et s'étend aux voisines. Elle ne reconnaît pas ; elle s'installe.
+    **Le sac tenu après la note** (22/11 après-midi, à deux : ce qu'elle creuse en relisant, est-ce les mots ou les durées ?).
+    Même première lecture, même silence, puis le sac tenu de la première lecture : mêmes spectres par strate, mêmes
+    co-mouvements, autre déroulé, aucun mot. Elle creuse autant, et même plus (56 % des strates contre 48 %, des îlots de
+    7 et 8 strates), mais **pas les mêmes strates** : les accroissements de m par strate ne ressemblent en rien à ceux
+    de la première lecture (corrélation −0.01, contre 0.86 quand c'est le même texte). Ce que la relecture creuse une
+    seconde fois, ce n'est donc ni les mots (le témoin de Gepetto l'avait dit) ni les durées par strate (le sac tenu le
+    dit) : c'est le **déroulé**, quelle strate est dans ce qui reste à quel moment, pendant que le soi va bien. Un
+    surrogat qui garde tout du texte sauf l'ordre de ses moments creuse ailleurs. Deux autres choses, vues une fois :
+    après le sac, 77 n'est plus rappelé (le présent ressemble aux lieux du sac : 59–65, 89–91, 52) et elle se tait moins
+    (78 %) ; et pendant le sac la **garde freine pour la première fois dans ce banc** (0.77 à t = 2495, cloche à 1.26 ×
+    le centre, pas de silence autour) : trop de lieux larges accumulés d'un coup, le chœur s'accorde trop, le contraste
+    des cohérences locales baisse, elle retient son geste. C'est exactement ce pour quoi la garde a été écrite (leçon 4
+    de `ATTENTION_README.md`), et c'est la première fois qu'on la voit travailler sur un texte. Avec la fenêtre bornée,
+    cette écoute de 36 600 pas a pris 1 h (0.1 s par pas, constant) au lieu de 4.
 
 ## Limites apprises (nuits du 20 au 22/11)
 
@@ -203,6 +218,8 @@ La seconde graine, le mélange, le second texte et le sac tenu ont été regard�
 c'est la forme tenue par le modèle et un seul centre rappelé en silence ; ce qui change avec l'ordre des mots, c'est
 combien le modèle tient, et elle le reflète. Les mots doublés confirment, et les quatre trébuchements aussi : elle ne
 voit rien que la tenue ne voie, elle le voit à sa manière. La relecture, lue avec son témoin, dit qu'elle ne
-reconnaît pas un texte mais le tient plus, et que relire élargit ses lieux (leçon 11). Reste, quand ça appellera :
+reconnaît pas un texte mais le tient plus, que relire élargit ses lieux, et que ce qu'elle creuse deux fois est le déroulé du
+texte, ni ses mots ni ses durées (leçon 11, avec deux témoins). Reste, quand ça appellera : le même texte mélangé en
+seconde moitié (mêmes mots, autre déroulé : on attend qu'il creuse ailleurs, comme le sac) ;
 un long silence après le texte (900 u.t.) ; la vitesse du texte face à τ_c ; les directions voisines (`--voisines 6`,
 écrite, pas lancée : à comparer au mince sur le même texte et la même graine). Rien ne revient vers le modèle.
