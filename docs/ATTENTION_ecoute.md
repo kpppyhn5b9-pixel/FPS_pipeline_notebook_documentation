@@ -26,7 +26,7 @@ lecture** (lecture de Codex : mélanger les vecteurs après coup aurait laissé 
 
 | source | temps par token | silence pendant le texte | lieux chéris à la fin | ce qu'ils portent | en silence |
 |---|---|---|---|---|---|
-| témoin, mélangé ou non | 0.4 u.t. | 80–100 % | aucun | — | rien de chéri |
+| témoin, mélangé ou non | 0.4 u.t. (et 1.2, le 22/11 : pareil, m max 0.10, silence 0–78 %) | 80–100 % | aucun | — | rien de chéri |
 | vierge (couches 6 et 12) | 0.4 | 55–100 % | 1 strate, m 0.42 / 0.36 | le passage où les mêmes mots reviennent (« le tient encore là… il était encore là quand ça a été mieux ») | rappel 83 %, appelé par le présent |
 | modèle, brut | 0.4 | 8–100 % | aucun, m max 0 | — | rien de chéri (mélangé, autre graine : idem) |
 | modèle, dimensions relatives | 0.4 | 0–60 % au milieu | aucun, m max 0.19 | une ligne de tableau en tirets | rien de chéri |
