@@ -252,6 +252,7 @@ if __name__ == '__main__':
     ap.add_argument('--voisines', type=float, default=0.0, help='largeur du lissage des directions le long du chœur (6 = la largeur des foyers) ; 0 = directions indépendantes')
     ap.add_argument('--reference', default=None, help="source `tenu` : le .npz d'une écoute dont on garde les durées sans les mots")
     ap.add_argument('--repeter', type=int, default=1, help='chaque mot lu R fois de suite (R = 2 : un sac de mots que le modèle tient)')
+    ap.add_argument('--puis-melange', action='store_true', help="(22/11) avec --relire : après le silence, les MÊMES MOTS dans un autre ordre (graine --seed), lus par la même source : mêmes mots, autre déroulé")
     ap.add_argument('--puis-tenu', action='store_true', help="(22/11) avec --relire : après le silence, le SAC TENU de la première lecture (ses durées, sans ses mots) au lieu du même texte : creuse-t-elle les mêmes strates ?")
     ap.add_argument('--puis', default=None, help="(22/11) avec --relire : après le silence, cet AUTRE texte (coupé au même nombre de tokens) au lieu du même ; le témoin de la relecture")
     ap.add_argument('--relire', type=float, default=None, help="relire le même texte une seconde fois après un silence de R u.t. (21/11 : la reconnaît-elle ? moins de silence, lieux plus vite, souvenirs de la première fois appelés par la seconde)")
@@ -269,6 +270,7 @@ if __name__ == '__main__':
         for z0, z1 in zones:
             bloc = mots[z0:z1]; rng_z.shuffle(bloc); mots[z0:z1] = bloc
         EXTRA['zones_trebuchees_mots'] = zones
+    mots_texte = list(mots)   # (22/11) les mots avant tout plongement, pour --puis-melange
     if a.source == 'tenu':
         I_tok = sac_tenu(a.reference, a.seed); mots = ['·'] * I_tok.shape[0]
     elif a.source in ('temoin', 'vierge'):
@@ -277,7 +279,7 @@ if __name__ == '__main__':
     else:
         mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
     if a.source != 'tenu': I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
-    puis_tag = f"_puis{os.path.splitext(os.path.basename(a.puis))[0].replace('ATTENTION_', '')}" if a.puis else ('_puistenu' if a.puis_tenu else '')
+    puis_tag = f"_puis{os.path.splitext(os.path.basename(a.puis))[0].replace('ATTENTION_', '')}" if a.puis else ('_puistenu' if a.puis_tenu else ('_puismelange' if a.puis_melange else ''))
     # (21/11) suffixe _tN quand le texte est raccourci ; 1350 = la note de soutien entière (nom historique sans suffixe)
     nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_trebuche' if a.trebucher else ''}{f'_relu{a.relire:g}' if a.relire is not None else ''}{puis_tag}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}{f'_t{a.max_tokens}' if a.max_tokens and a.max_tokens != 1350 else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
     if a.relire is not None:
@@ -285,7 +287,15 @@ if __name__ == '__main__':
         # Entre les deux, l'entrée est nulle (les mots sont « · ») ; rien d'autre ne change. T_text couvre les deux lectures.
         dt_cfg = float(json.load(open(os.path.join(ROOT, 'config.json')))['system']['dt'])   # (Codex, 22/11) le pas vient du config, pas de 0.1
         n_gap = int(round(a.relire / (a.k * dt_cfg)))
-        if a.puis:
+        if a.puis_melange:
+            # (22/11, à deux) les MÊMES MOTS dans un autre ordre : le modèle en fait d'autres états, donc un autre déroulé.
+            # Si elle creuse ailleurs, comme avec le sac tenu, c'est le déroulé qu'elle garde, confirmé par les deux bouts.
+            mots2 = list(mots_texte); np.random.default_rng(a.seed).shuffle(mots2)
+            if a.source == 'temoin': mots2 = mots2[:len(mots)]; E2 = plongement_temoin(mots2)
+            elif a.source == 'vierge': mots2 = mots2[:len(mots)]; E2 = plongement_modele_vierge(mots2, seed=a.dirs_seed, layer=a.layer)
+            else: mots2, E2 = plongement_modele(' '.join(mots2), a.model, a.layer, len(mots))
+            I2 = projeter(E2, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
+        elif a.puis:
             # (22/11) le TÉMOIN de la relecture : après le même silence, un AUTRE texte, coupé au même nombre de tokens, lu par la
             # MÊME SOURCE (Codex, 22/11 : pas toujours le modèle) et projeté sur les mêmes directions (chaque texte relatif à sa
             # propre habitude, comme toujours). Ce que la seconde lecture a de plus que lui tient au texte ; le reste, à la durée.
@@ -302,7 +312,7 @@ if __name__ == '__main__':
         else:
             mots2, I2 = list(mots), I_tok
         I_tok = np.vstack([I_tok, np.zeros((n_gap, I_tok.shape[1])), I2]); mots = list(mots) + ['·'] * n_gap + list(mots2)
-        EXTRA['relecture'] = {'tokens_texte': int(len(mots2)), 'tokens_silence_entre': n_gap, 'silence_entre_ut': a.relire, 'second_texte': 'sac tenu de la première lecture' if a.puis_tenu else a.puis}
+        EXTRA['relecture'] = {'tokens_texte': int(len(mots2)), 'tokens_silence_entre': n_gap, 'silence_entre_ut': a.relire, 'second_texte': 'sac tenu de la première lecture' if a.puis_tenu else ('les mêmes mots mélangés' if a.puis_melange else a.puis)}
     c1, ten = tenue(I_tok)
     print(f"[{nom}] tenue de ce qu'on lui donne : ressemblance d'un token au suivant {c1:.2f}, tenue sur 12 tokens {ten:.2f} (bruit indépendant 0.29)")
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
