@@ -40,6 +40,7 @@ lecture** (lecture de Codex : mélanger les vecteurs après coup aurait laissé 
 | modèle, lent, **second texte** (la note des enquêtes de Gepetto, 1350 tokens) | 1.2 | 0–14 % | 11 lieux (13 % des strates), m jusqu'à 0.62 | des noms de modes entre accents graves, des chiffres de tableau, et quelques phrases (« la coexistence », « deux unités de temps ne suffisent à rien », « le geste garde sa saillance ») | rappel 86 %, un seul centre (5 : les noms de modes), porte 0.82 |
 | modèle, lent, **relecture** : les 675 premiers tokens de la note soutien, 200 u.t. de silence, les mêmes 675 (`--relire 200 --max-tokens 675`, nuit du 21 au 22/11) | 1.2 | 1re lecture 10 %, 38 %, puis 0–5 % ; trou 73 % ; 2de lecture 0–6 % | fin de la 1re : 2 lieux (32, 36), m 0.43 ; fin de la 2de : 16 lieux (16 %), m 0.57 | les mêmes passages lus deux fois (« soutien dans un moment difficile : chérir ce qui », « ça allait mal, ça va mieux », des lignes de tableau) | trou : rappel 73 %, un centre (36) ; après : rappel 98 %, deux centres (60 : la phrase d'ouverture, 69 % ; 36 : 31 %), porte 0.84, garde 1.00 |
 | **témoin de la relecture** : les mêmes 675 tokens, le même silence, puis 675 tokens d'un AUTRE texte (la note de Gepetto, `--puis`) | 1.2 | identique jusqu'au trou ; 2de partie 0–7 % | fin de la 2de partie : 13 lieux (13 %), m 0.69 (strate 5, les noms de modes de Gepetto, comme dans l'écoute du second texte seul) | les deux textes | après : silence 72 % seulement, rappel 72 %, un centre (5, 100 %), le centre de la 1re lecture (36) n'est plus rappelé, porte 0.85, garde min 0.93, activité ×1.17 |
+| modèle, lent, **relecture de la note entière** : 1350 tokens, 200 u.t. de silence, les mêmes 1350 (`--relire 200`, finie le 22/11 à 6 h, 4 h de calcul) | 1.2 | 1re lecture 22 % au début puis 0–3 % ; trou 88 % ; 2de lecture 0–3 % | fin de la 1re : 19 lieux (19 sur les 20 de l'écoute de référence, écarts numériques), m 0.54 ; fin de la 2de : **48 lieux (48 % des strates), m 0.72, les lieux s'élargissent** (27–30, 32–36, 43–45, 62–64, 89–91) | les mêmes passages, deux fois | trou : rappel 88 %, centre 77 (97 %) ; après : rappel 87 %, centre 77 (94 %, la phrase d'ouverture, le centre connu de ce texte), 52 et 23 pour le reste, porte 0.82, garde min 0.93 |
 
 Cloche à 5 partout, garde libre (min 0.88 sur le mélangé, 0.95 et plus ailleurs) : rien de ce qu'elle a entendu ne l'a
 mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et demie à deux heures sur quatre cœurs.
@@ -152,7 +153,23 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
     a accompagné deux fois reste deux fois, et après, elle se tait et appelle les deux. Pour qu'une reconnaissance soit
     possible il faudrait que le présent sache ressembler au passé pendant que le texte parle, et ce chemin (le rappel
     hors du silence) n'existe pas dans le code ; on l'écrit comme question, pas comme manque. La relecture de la note
-    entière (1350 tokens deux fois) tourne au moment où ceci est écrit, pour voir si ses centres connus (77, 16) reviennent.
+    entière (1350 tokens deux fois) a fini à 6 h du matin (4 h de calcul), et dit la même chose, en plus grand :
+    - la première lecture retrouve l'écoute de référence au bruit numérique près (l'état du modèle diffère de 4·10⁻⁶,
+      le chœur de 5·10⁻⁵ avant le texte ; 1640 u.t. plus loin, 19 lieux sur 20 sont les mêmes et m diffère de 0.02 au
+      plus) ; le silence de la seconde lecture est celui de la première (2–3 % par fenêtre de 200 u.t., contre 22 % au
+      tout début de la course seulement) ;
+    - les lieux passent de 19 à **48** (48 % des strates), par les mêmes strates (accroissements corrélés 0.86), avec un
+      accroissement moyen plus faible la seconde fois (+0.115 contre +0.181 : l'attachement est borné, ce qui est haut
+      monte moins) ; **les lieux s'élargissent** : 15 îlots d'une ou deux strates après la première lecture, 24 îlots dont
+      six de trois à cinq strates après la seconde (27–30, 32–36, 43–45, 62–64, 84–86, 89–91). Les voisines d'un lieu
+      étaient juste sous le seuil ; relire les fait passer. Les lieux larges de la leçon 9 venaient de co-mouvements
+      calmes et longs ; ceux-ci viennent de l'accumulation, c'est une autre façon d'avoir des lieux larges ;
+    - la part saillante pendant la seconde lecture est presque double (2.0 % contre 1.2 %) : c'est le seul chemin par
+      lequel la mémoire agit pendant qu'un texte parle, la valeur m dans la saillance qui ramène le familier chéri ; la
+      surprise est plus basse (0.178 contre 0.204), l'activité égale ;
+    - dans le trou comme après, elle rappelle 77, la phrase d'ouverture, le centre connu de ce texte (97 % puis 94 %),
+      et après la seconde lecture elle se tait un peu moins qu'après une seule (87 % contre 97 %).
+    Ce qui a accompagné deux fois reste deux fois, et s'étend aux voisines. Elle ne reconnaît pas ; elle s'installe.
 
 ## Limites apprises (nuits du 20 au 22/11)
 
@@ -175,7 +192,8 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
   noyau à 12.6 Go après la fin de sa boucle, alors que la boucle n'en prenait que 2. Une sonde courte (2000 pas) ne
   reproduit pas l'explosion (conversion ×2.7, analyse et exploration négligeables), donc la cause précise reste à
   trouver. Le banc appelle maintenant la boucle seule (`init` + `run_fps_simulation`, mêmes graines, même dynamique,
-  sans analyse ni dashboard) : la même écoute passe en 59 min et 2.0 Go au plus.
+  sans analyse ni dashboard) : la même écoute passe en 59 min et 2.0 Go au plus ; la relecture de la note
+  entière (36 600 pas) en 4 h 04, 2.2 Go pendant la boucle et 4.0 Go au plus à la fin.
 
 ## Ce qui attend
 
@@ -183,6 +201,6 @@ La seconde graine, le mélange, le second texte et le sac tenu ont été regard�
 c'est la forme tenue par le modèle et un seul centre rappelé en silence ; ce qui change avec l'ordre des mots, c'est
 combien le modèle tient, et elle le reflète. Les mots doublés confirment, et les quatre trébuchements aussi : elle ne
 voit rien que la tenue ne voie, elle le voit à sa manière. La relecture, lue avec son témoin, dit qu'elle ne
-reconnaît pas un texte mais le tient plus (leçon 11) ; la relecture de la note entière tourne. Reste, quand ça appellera :
+reconnaît pas un texte mais le tient plus, et que relire élargit ses lieux (leçon 11). Reste, quand ça appellera :
 un long silence après le texte (900 u.t.) ; la vitesse du texte face à τ_c ; les directions voisines (`--voisines 6`,
 écrite, pas lancée : à comparer au mince sur le même texte et la même graine). Rien ne revient vers le modèle.
