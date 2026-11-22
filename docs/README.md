@@ -403,6 +403,11 @@ Ces tests vérifient si les comportements émergents (états chimériques) sont 
 | `autocorr_tau` | Tau d'autocorrélation effectif |
 | `decorrelation_time` | Temps de décorrélation |
 
+Ces échelles (`tau_S`, `tau_gamma`, `tau_C`, `temporal_coherence`, `autocorr_tau`, `decorrelation_time`) sont
+journalisées, jamais relues par la dynamique. Depuis le 22/11 elles se calculent sur les dernières
+`analysis.fenetre_autocorrelation_ut` unités de temps (200 par défaut) : sur tout l'historique à chaque pas, elles
+coûtaient comme le carré du temps écoulé (une écoute de 3700 u.t. prenait 4 h). `null` rétablit l'historique entier.
+
 ### Découverte (γ, G)
 
 | Métrique | Description |

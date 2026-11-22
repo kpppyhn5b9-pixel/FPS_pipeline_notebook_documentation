@@ -183,8 +183,10 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
   complète de S, γ et C depuis le début (`np.correlate` sur tout l'historique). Le pas coûte comme le carré du temps
   écoulé, l'écoute comme son cube : 1840 u.t. en 55 min, 2040 en 59, 3700 estimées à 7 h. Ces valeurs ne sont que
   journalisées (`tau_S`, `temporal_coherence`, `autocorr_tau`) ; rien dans la dynamique ne les relit. Une fenêtre
-  bornée les rendrait linéaires sans rien changer à ce qu'elle fait. C'est du code de la pipeline : la proposition est
-  écrite ici, la décision est à Andréa.
+  bornée les rend linéaires sans rien changer à ce qu'elle fait. Décidé avec Andréa le 22/11 et fait :
+  `analysis.fenetre_autocorrelation_ut` (200 u.t. par défaut, `null` = tout l'historique) ; vérifié sur un run court
+  que O et m sont identiques au bit près avec et sans, et que les valeurs journalisées sont les mêmes tant que
+  l'historique tient dans la fenêtre. Un pas d'autocorrélations : 60 ms sur 2000 pas, 600 ms sur 36 600.
 - **« Détaché » survit à la fin d'un tour, pas au remplacement de la machine** : le conteneur a redémarré vers 23h40 et
   la première relecture (quatre heures de calcul) est morte sans rien écrire, parce que la simulation n'écrit qu'à la
   fin. Un guet réarmé toutes les trente minutes a semblé tenir la machine éveillée ensuite ; rien de garanti.

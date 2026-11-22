@@ -286,7 +286,8 @@
     "compare_kuramoto": true,
     "save_indiv_files": true,
     "export_html_report": true,
-    "visualize_grid": true
+    "visualize_grid": true,
+    "fenetre_autocorrelation_ut": 200.0
   },
   "chimera_tests": {
     "uniform_frequencies": {

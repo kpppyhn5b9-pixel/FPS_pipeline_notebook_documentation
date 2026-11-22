@@ -967,13 +967,20 @@ def run_fps_simulation(config, state, loggers, strict=False):
                 innovation_H = None
 
             # === TAU MULTI-ÉCHELLES D'ABORD (tau_S requis par decorrelation après) ===
+            # (22/11, décidé avec Andréa) FENÊTRE BORNÉE : ces autocorrélations (tau_S, tau_gamma, tau_C,
+            # temporal_coherence, autocorr_tau) ne sont que journalisées, rien dans la dynamique ne les relit ; calculées
+            # sur tout l'historique à chaque pas, elles coûtaient comme le carré du temps écoulé (une écoute de 3700 u.t.
+            # prenait 4 h). analysis.fenetre_autocorrelation_ut : les dernières W u.t. seulement ; null = tout l'historique.
+            _W_ac = config.get('analysis', {}).get('fenetre_autocorrelation_ut', None)
+            _n_ac = int(round(float(_W_ac) / dt)) if _W_ac else None
+            _S_ac = S_history[-_n_ac:] if _n_ac else S_history
             if len(S_history) >= 20 and len(history) >= 20:
                 try:
                     # Signaux alignés notebook : S, gamma, C
                     signals_for_tau = {
-                        'S': S_history,
-                        'gamma': [h.get('gamma', gamma_t) for h in history][-len(S_history):],
-                        'C': C_history
+                        'S': _S_ac,
+                        'gamma': [h.get('gamma', gamma_t) for h in history[-len(_S_ac):]],
+                        'C': C_history[-len(_S_ac):]
                     }
                     if hasattr(metrics, 'compute_multiple_tau') and len(signals_for_tau) > 1:
                         multi_tau = metrics.compute_multiple_tau(signals_for_tau, dt)
@@ -994,7 +1001,7 @@ def run_fps_simulation(config, state, loggers, strict=False):
             
             # === COHÉRENCE TEMPORELLE + DÉCORRÉLATION (utilise tau_S calculé au-dessus) ===
             if len(S_history) >= 20:
-                temporal_coherence = metrics.compute_temporal_coherence(S_history, dt) if hasattr(metrics, 'compute_temporal_coherence') else 0.5
+                temporal_coherence = metrics.compute_temporal_coherence(_S_ac, dt) if hasattr(metrics, 'compute_temporal_coherence') else 0.5
                 if hasattr(metrics, 'extract_decorrelation_metrics'):
                     decorrelation_time, autocorr_tau = metrics.extract_decorrelation_metrics(temporal_coherence, tau_S)
                 else:
