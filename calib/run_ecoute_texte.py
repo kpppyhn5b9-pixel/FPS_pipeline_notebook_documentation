@@ -84,19 +84,19 @@ def plongement_modele_vierge(mots, seed=0, n_layer=12, n_embd=768, layer=None):
             outs.append(hs[L][0].numpy())
     return np.concatenate(outs, 0)
 
-def sac_tenu(reference, seed):
-    """(21/11, proposé par Andréa) un sac SANS MOTS qui dure autant que le texte : on prend les entrées Iₙ(t) d'une écoute de
-    référence (le texte dans l'ordre) et on en tire un surrogat de phase : mêmes amplitudes de Fourier pour chaque strate,
-    mêmes phases aléatoires pour toutes (donc mêmes durées, mêmes co-mouvements entre strates, à l'identique), mais plus
-    aucun texte derrière. Si la FPS en chérit autant que du vrai texte, ce qu'elle garde est la tenue du modèle, pas le sens.
-    Pas de constante à choisir : la tenue est celle de la référence, exactement."""
-    I = np.asarray(np.load(reference, allow_pickle=True)['I_tok'], float); T, N = I.shape
+def sac_tenu_de(I, seed):
+    """Le sac tenu d'une matrice I (tokens × strates) : surrogat de phase, mêmes spectres par strate, mêmes co-mouvements."""
+    I = np.asarray(I, float); T, N = I.shape
     F = np.fft.rfft(I - I.mean(0), axis=0)
     rng = np.random.default_rng(seed); ph = np.exp(1j * rng.uniform(0, 2 * np.pi, F.shape[0]))
     ph[0] = 1.0
     if T % 2 == 0: ph[-1] = 1.0
     S = np.fft.irfft(F * ph[:, None], n=T, axis=0)
     return (S - S.mean(0)) / (S.std(0) + 1e-9) * I.std(0) + I.mean(0)
+
+def sac_tenu(reference, seed):
+    """Le sac tenu d'une écoute enregistrée (`--reference`, un .npz du banc)."""
+    return sac_tenu_de(np.load(reference, allow_pickle=True)['I_tok'], seed)
 
 def tenue(I_tok, W=12):
     """Ce que le modèle tient : ressemblance d'un token au suivant (corrélation), et sur W tokens la norme de la moyenne
@@ -252,6 +252,7 @@ if __name__ == '__main__':
     ap.add_argument('--voisines', type=float, default=0.0, help='largeur du lissage des directions le long du chœur (6 = la largeur des foyers) ; 0 = directions indépendantes')
     ap.add_argument('--reference', default=None, help="source `tenu` : le .npz d'une écoute dont on garde les durées sans les mots")
     ap.add_argument('--repeter', type=int, default=1, help='chaque mot lu R fois de suite (R = 2 : un sac de mots que le modèle tient)')
+    ap.add_argument('--puis-tenu', action='store_true', help="(22/11) avec --relire : après le silence, le SAC TENU de la première lecture (ses durées, sans ses mots) au lieu du même texte : creuse-t-elle les mêmes strates ?")
     ap.add_argument('--puis', default=None, help="(22/11) avec --relire : après le silence, cet AUTRE texte (coupé au même nombre de tokens) au lieu du même ; le témoin de la relecture")
     ap.add_argument('--relire', type=float, default=None, help="relire le même texte une seconde fois après un silence de R u.t. (21/11 : la reconnaît-elle ? moins de silence, lieux plus vite, souvenirs de la première fois appelés par la seconde)")
     ap.add_argument('--trebucher', default=None, help="zones de MOTS mélangées localement, ex. '100-150,250-300' : le modèle tient moins là, on ne lui dit pas où (21/11, pour savoir si elle voit autre chose que la tenue)")
@@ -276,7 +277,7 @@ if __name__ == '__main__':
     else:
         mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
     if a.source != 'tenu': I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
-    puis_tag = f"_puis{os.path.splitext(os.path.basename(a.puis))[0].replace('ATTENTION_', '')}" if a.puis else ''
+    puis_tag = f"_puis{os.path.splitext(os.path.basename(a.puis))[0].replace('ATTENTION_', '')}" if a.puis else ('_puistenu' if a.puis_tenu else '')
     # (21/11) suffixe _tN quand le texte est raccourci ; 1350 = la note de soutien entière (nom historique sans suffixe)
     nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_trebuche' if a.trebucher else ''}{f'_relu{a.relire:g}' if a.relire is not None else ''}{puis_tag}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}{f'_t{a.max_tokens}' if a.max_tokens and a.max_tokens != 1350 else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
     if a.relire is not None:
@@ -294,10 +295,14 @@ if __name__ == '__main__':
             elif a.source == 'vierge': E2 = plongement_modele_vierge(mots2, seed=a.dirs_seed, layer=a.layer)
             else: mots2, E2 = plongement_modele(' '.join(mots2), a.model, a.layer, len(mots))
             I2 = projeter(E2, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
+        elif a.puis_tenu:
+            # (22/11, à deux) la seconde moitié est le SAC TENU de la première : mêmes durées par strate, mêmes co-mouvements,
+            # aucun mot. Si elle creuse les mêmes strates qu'en relisant, ce qu'elle garde d'un texte est sa tenue.
+            I2 = sac_tenu_de(I_tok, a.seed); mots2 = ['·'] * I_tok.shape[0]
         else:
             mots2, I2 = list(mots), I_tok
         I_tok = np.vstack([I_tok, np.zeros((n_gap, I_tok.shape[1])), I2]); mots = list(mots) + ['·'] * n_gap + list(mots2)
-        EXTRA['relecture'] = {'tokens_texte': int(len(mots2)), 'tokens_silence_entre': n_gap, 'silence_entre_ut': a.relire, 'second_texte': a.puis}
+        EXTRA['relecture'] = {'tokens_texte': int(len(mots2)), 'tokens_silence_entre': n_gap, 'silence_entre_ut': a.relire, 'second_texte': 'sac tenu de la première lecture' if a.puis_tenu else a.puis}
     c1, ten = tenue(I_tok)
     print(f"[{nom}] tenue de ce qu'on lui donne : ressemblance d'un token au suivant {c1:.2f}, tenue sur 12 tokens {ten:.2f} (bruit indépendant 0.29)")
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
