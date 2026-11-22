@@ -314,6 +314,10 @@ def validate_analysis(analysis, collector):
     for boolkey in ["compare_kuramoto", "save_indiv_files", "export_html_report", "visualize_grid"]:
         if boolkey in analysis and not is_bool(analysis[boolkey]):
             collector.add_error(f"analysis.{boolkey} doit être booléen")
+    # (22/11) fenêtre des autocorrélations journalisées : nombre d'u.t. > 0, ou null pour tout l'historique
+    w = analysis.get("fenetre_autocorrelation_ut", None)
+    if w is not None and not (isinstance(w, (int, float)) and not isinstance(w, bool) and w > 0):
+        collector.add_error("analysis.fenetre_autocorrelation_ut doit être un nombre d'u.t. > 0, ou null")
 
 def validate_dynamic_parameters(dynamic_parameters, collector):
     for boolkey in ["dynamic_phi", "dynamic_alpha", "dynamic_beta"]:

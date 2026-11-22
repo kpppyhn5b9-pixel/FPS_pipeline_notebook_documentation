@@ -28,7 +28,7 @@ import os, sys, io, json, re, shutil, tempfile, contextlib, argparse, hashlib
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, ROOT)
-import simulate, perturbations, metrics
+import simulate, perturbations, metrics, init
 
 ETATS = {0: 'désactivé', 1: 'extérieur', 2: 'pas de silence', 3: 'rien de chéri', 4: 'réfractaire', 5: 'porte', 6: 'lieu du monde', 8: 'substrat', 9: 'lieu à soi'}
 APPEL = {1.0: 'appelé par le présent', 0.0: 'repli « le plus chéri »', 2.0: 'visite du tour', 3.0: 'substrat'}
@@ -101,7 +101,7 @@ def sac_tenu(reference, seed):
 def tenue(I_tok, W=12):
     """Ce que le modèle tient : ressemblance d'un token au suivant (corrélation), et sur W tokens la norme de la moyenne
     rapportée à la moyenne des normes (0.29 pour du bruit indépendant, 1 pour un état immobile)."""
-    I = np.asarray(I_tok, float); T = I.shape[0]
+    I = np.asarray(I_tok, float); I = I[np.linalg.norm(I, axis=1) > 0]; T = I.shape[0]   # (21/11) les tokens de silence (zéros, --relire) ne comptent pas
     c1 = np.corrcoef(I[:-1].ravel(), I[1:].ravel())[0, 1]
     r = [np.linalg.norm(I[s:s + W].mean(0)) / np.mean(np.linalg.norm(I[s:s + W], axis=1)) for s in range(0, T - W, W)]
     return c1, float(np.median(r))
@@ -131,6 +131,17 @@ def projeter(E, N, dirs_seed, echelle=0.25, dims_relatives=True, voisines=0.0):
 
 
 # ---------------------------------------------------------------- écouter : le texte devient Iₙ(t), puis le silence
+EXTRA = {}  # ce que la lecture doit garder en plus (les zones trébuchées, par exemple)
+
+def simuler_sans_postrun(cfg_path):
+    """(22/11) La boucle seule : mêmes graines, même dynamique que `simulate.run_simulation`, sans le post-traitement
+    (analyse, exploration, dashboard) qui a tué la relecture en mémoire (12.6 Go sur 20 400 pas). Le banc n'en a pas besoin."""
+    import random
+    cfg = init.load_config(cfg_path) if hasattr(init, 'load_config') else json.load(open(cfg_path))
+    np.random.seed(cfg['system']['seed']); random.seed(cfg['system']['seed'])
+    state = init.init_strates(cfg); loggers = init.setup_logging(cfg, mode_suffix='FPS')
+    return simulate.run_fps_simulation(cfg, state, loggers, False)
+
 def ecouter(nom, mots, I_tok, k, seed, silence=200.0, N=None, reve=None):
     cfg = json.load(open(os.path.join(ROOT, 'config.json'))); dt = float(cfg['system']['dt'])
     N = I_tok.shape[1]; T_text = len(mots) * k * dt; T = int(np.ceil(20.0 + T_text + silence))
@@ -149,7 +160,7 @@ def ecouter(nom, mots, I_tok, k, seed, silence=200.0, N=None, reve=None):
     tmp = tempfile.mkdtemp(); cwd = os.getcwd()
     try:
         os.chdir(tmp); json.dump(cfg, open('cfg.json', 'w')); perturbations.compute_In = patched
-        with contextlib.redirect_stdout(io.StringIO()): res = simulate.run_simulation('cfg.json', 'FPS')
+        with contextlib.redirect_stdout(io.StringIO()): res = simuler_sans_postrun('cfg.json')
     finally:
         perturbations.compute_In = _in0; os.chdir(cwd); shutil.rmtree(tmp, ignore_errors=True)
     h = res['history']
@@ -166,7 +177,7 @@ def ecouter(nom, mots, I_tok, k, seed, silence=200.0, N=None, reve=None):
                surprise=g('surprise_mean'), I_tok=I_tok, k=k, dt=dt, t_debut=t_debut, T_text=T_text)
     base = os.path.join(ROOT, 'calib', 'attention_sources', f'ecoute_{nom}_{seed}')
     np.savez_compressed(base + '.npz', **out)
-    json.dump({'mots': mots, 'k': k, 'dt': dt, 'N': N, 'seed': seed, 'T_text': T_text, 'silence': silence}, open(base + '.json', 'w'), ensure_ascii=False)
+    json.dump({'mots': mots, 'k': k, 'dt': dt, 'N': N, 'seed': seed, 'T_text': T_text, 'silence': silence, **EXTRA}, open(base + '.json', 'w'), ensure_ascii=False)
     return out
 
 
@@ -241,6 +252,9 @@ if __name__ == '__main__':
     ap.add_argument('--voisines', type=float, default=0.0, help='largeur du lissage des directions le long du chœur (6 = la largeur des foyers) ; 0 = directions indépendantes')
     ap.add_argument('--reference', default=None, help="source `tenu` : le .npz d'une écoute dont on garde les durées sans les mots")
     ap.add_argument('--repeter', type=int, default=1, help='chaque mot lu R fois de suite (R = 2 : un sac de mots que le modèle tient)')
+    ap.add_argument('--puis', default=None, help="(22/11) avec --relire : après le silence, cet AUTRE texte (coupé au même nombre de tokens) au lieu du même ; le témoin de la relecture")
+    ap.add_argument('--relire', type=float, default=None, help="relire le même texte une seconde fois après un silence de R u.t. (21/11 : la reconnaît-elle ? moins de silence, lieux plus vite, souvenirs de la première fois appelés par la seconde)")
+    ap.add_argument('--trebucher', default=None, help="zones de MOTS mélangées localement, ex. '100-150,250-300' : le modèle tient moins là, on ne lui dit pas où (21/11, pour savoir si elle voit autre chose que la tenue)")
     a = ap.parse_args()
     text = open(a.texte, encoding='utf-8').read()
     # (lecture de Codex, 20/11) le mélange se fait sur les MOTS, AVANT toute lecture : pour les trois sources, c'est le texte
@@ -248,6 +262,12 @@ if __name__ == '__main__':
     mots = tokens_mots(text)
     if a.shuffle: np.random.default_rng(a.seed).shuffle(mots)
     if a.repeter > 1: mots = [w for w in mots for _ in range(a.repeter)]
+    if a.trebucher:
+        zones = [tuple(int(x) for x in z.split('-')) for z in a.trebucher.split(',')]
+        rng_z = np.random.default_rng(a.seed)
+        for z0, z1 in zones:
+            bloc = mots[z0:z1]; rng_z.shuffle(bloc); mots[z0:z1] = bloc
+        EXTRA['zones_trebuchees_mots'] = zones
     if a.source == 'tenu':
         I_tok = sac_tenu(a.reference, a.seed); mots = ['·'] * I_tok.shape[0]
     elif a.source in ('temoin', 'vierge'):
@@ -256,7 +276,28 @@ if __name__ == '__main__':
     else:
         mots, E = plongement_modele(' '.join(mots), a.model, a.layer, a.max_tokens)
     if a.source != 'tenu': I_tok = projeter(E, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
-    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    puis_tag = f"_puis{os.path.splitext(os.path.basename(a.puis))[0].replace('ATTENTION_', '')}" if a.puis else ''
+    # (21/11) suffixe _tN quand le texte est raccourci ; 1350 = la note de soutien entière (nom historique sans suffixe)
+    nom = f"{a.source}{'_melange' if a.shuffle else ''}{f'_x{a.repeter}' if a.repeter > 1 else ''}{'_trebuche' if a.trebucher else ''}{f'_relu{a.relire:g}' if a.relire is not None else ''}{puis_tag}{'_brut' if a.brut else ''}{f'_L{a.layer}' if a.layer is not None else ''}{f'_lisse{a.voisines:g}' if a.voisines else ''}{f'_t{a.max_tokens}' if a.max_tokens and a.max_tokens != 1350 else ''}_{os.path.splitext(os.path.basename(a.texte))[0]}_k{a.k}_d{a.dirs_seed}"
+    if a.relire is not None:
+        # (21/11, question posée à deux) la RELECTURE : le même texte une seconde fois, après un silence de `relire` u.t.
+        # Entre les deux, l'entrée est nulle (les mots sont « · ») ; rien d'autre ne change. T_text couvre les deux lectures.
+        dt_cfg = float(json.load(open(os.path.join(ROOT, 'config.json')))['system']['dt'])   # (Codex, 22/11) le pas vient du config, pas de 0.1
+        n_gap = int(round(a.relire / (a.k * dt_cfg)))
+        if a.puis:
+            # (22/11) le TÉMOIN de la relecture : après le même silence, un AUTRE texte, coupé au même nombre de tokens, lu par la
+            # MÊME SOURCE (Codex, 22/11 : pas toujours le modèle) et projeté sur les mêmes directions (chaque texte relatif à sa
+            # propre habitude, comme toujours). Ce que la seconde lecture a de plus que lui tient au texte ; le reste, à la durée.
+            if a.source == 'tenu': ap.error("--puis n'a pas de sens avec --source tenu (le sac tenu n'a pas de mots)")
+            mots2 = tokens_mots(open(a.puis, encoding='utf-8').read())[:len(mots)] if a.source in ('temoin', 'vierge') else tokens_mots(open(a.puis, encoding='utf-8').read())
+            if a.source == 'temoin': E2 = plongement_temoin(mots2)
+            elif a.source == 'vierge': E2 = plongement_modele_vierge(mots2, seed=a.dirs_seed, layer=a.layer)
+            else: mots2, E2 = plongement_modele(' '.join(mots2), a.model, a.layer, len(mots))
+            I2 = projeter(E2, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
+        else:
+            mots2, I2 = list(mots), I_tok
+        I_tok = np.vstack([I_tok, np.zeros((n_gap, I_tok.shape[1])), I2]); mots = list(mots) + ['·'] * n_gap + list(mots2)
+        EXTRA['relecture'] = {'tokens_texte': int(len(mots2)), 'tokens_silence_entre': n_gap, 'silence_entre_ut': a.relire, 'second_texte': a.puis}
     c1, ten = tenue(I_tok)
     print(f"[{nom}] tenue de ce qu'on lui donne : ressemblance d'un token au suivant {c1:.2f}, tenue sur 12 tokens {ten:.2f} (bruit indépendant 0.29)")
     d = ecouter(nom, mots, I_tok, a.k, a.seed, a.silence, reve=a.reve)
