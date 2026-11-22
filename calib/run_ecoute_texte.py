@@ -282,13 +282,17 @@ if __name__ == '__main__':
     if a.relire is not None:
         # (21/11, question posée à deux) la RELECTURE : le même texte une seconde fois, après un silence de `relire` u.t.
         # Entre les deux, l'entrée est nulle (les mots sont « · ») ; rien d'autre ne change. T_text couvre les deux lectures.
-        n_gap = int(round(a.relire / (a.k * 0.1)))
+        dt_cfg = float(json.load(open(os.path.join(ROOT, 'config.json')))['system']['dt'])   # (Codex, 22/11) le pas vient du config, pas de 0.1
+        n_gap = int(round(a.relire / (a.k * dt_cfg)))
         if a.puis:
-            # (22/11) le TÉMOIN de la relecture : après le même silence, un AUTRE texte, coupé au même nombre de tokens, lu par le
-            # même modèle et projeté sur les mêmes directions (chaque texte relatif à sa propre habitude, comme toujours).
-            # Ce que la seconde lecture a de plus que lui est ce qui tient au texte ; le reste tient à la durée.
-            mots2 = tokens_mots(open(a.puis, encoding='utf-8').read())
-            mots2, E2 = plongement_modele(' '.join(mots2), a.model, a.layer, len(mots))
+            # (22/11) le TÉMOIN de la relecture : après le même silence, un AUTRE texte, coupé au même nombre de tokens, lu par la
+            # MÊME SOURCE (Codex, 22/11 : pas toujours le modèle) et projeté sur les mêmes directions (chaque texte relatif à sa
+            # propre habitude, comme toujours). Ce que la seconde lecture a de plus que lui tient au texte ; le reste, à la durée.
+            if a.source == 'tenu': ap.error("--puis n'a pas de sens avec --source tenu (le sac tenu n'a pas de mots)")
+            mots2 = tokens_mots(open(a.puis, encoding='utf-8').read())[:len(mots)] if a.source in ('temoin', 'vierge') else tokens_mots(open(a.puis, encoding='utf-8').read())
+            if a.source == 'temoin': E2 = plongement_temoin(mots2)
+            elif a.source == 'vierge': E2 = plongement_modele_vierge(mots2, seed=a.dirs_seed, layer=a.layer)
+            else: mots2, E2 = plongement_modele(' '.join(mots2), a.model, a.layer, len(mots))
             I2 = projeter(E2, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
         else:
             mots2, I2 = list(mots), I_tok
