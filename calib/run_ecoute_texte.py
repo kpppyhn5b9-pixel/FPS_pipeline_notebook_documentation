@@ -28,7 +28,7 @@ import os, sys, io, json, re, shutil, tempfile, contextlib, argparse, hashlib
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, ROOT)
-import simulate, perturbations, metrics
+import simulate, perturbations, metrics, init
 
 ETATS = {0: 'désactivé', 1: 'extérieur', 2: 'pas de silence', 3: 'rien de chéri', 4: 'réfractaire', 5: 'porte', 6: 'lieu du monde', 8: 'substrat', 9: 'lieu à soi'}
 APPEL = {1.0: 'appelé par le présent', 0.0: 'repli « le plus chéri »', 2.0: 'visite du tour', 3.0: 'substrat'}
@@ -133,6 +133,15 @@ def projeter(E, N, dirs_seed, echelle=0.25, dims_relatives=True, voisines=0.0):
 # ---------------------------------------------------------------- écouter : le texte devient Iₙ(t), puis le silence
 EXTRA = {}  # ce que la lecture doit garder en plus (les zones trébuchées, par exemple)
 
+def simuler_sans_postrun(cfg_path):
+    """(22/11) La boucle seule : mêmes graines, même dynamique que `simulate.run_simulation`, sans le post-traitement
+    (analyse, exploration, dashboard) qui a tué la relecture en mémoire (12.6 Go sur 20 400 pas). Le banc n'en a pas besoin."""
+    import random
+    cfg = init.load_config(cfg_path) if hasattr(init, 'load_config') else json.load(open(cfg_path))
+    np.random.seed(cfg['system']['seed']); random.seed(cfg['system']['seed'])
+    state = init.init_strates(cfg); loggers = init.setup_logging(cfg, mode_suffix='FPS')
+    return simulate.run_fps_simulation(cfg, state, loggers, False)
+
 def ecouter(nom, mots, I_tok, k, seed, silence=200.0, N=None, reve=None):
     cfg = json.load(open(os.path.join(ROOT, 'config.json'))); dt = float(cfg['system']['dt'])
     N = I_tok.shape[1]; T_text = len(mots) * k * dt; T = int(np.ceil(20.0 + T_text + silence))
@@ -151,7 +160,7 @@ def ecouter(nom, mots, I_tok, k, seed, silence=200.0, N=None, reve=None):
     tmp = tempfile.mkdtemp(); cwd = os.getcwd()
     try:
         os.chdir(tmp); json.dump(cfg, open('cfg.json', 'w')); perturbations.compute_In = patched
-        with contextlib.redirect_stdout(io.StringIO()): res = simulate.run_simulation('cfg.json', 'FPS')
+        with contextlib.redirect_stdout(io.StringIO()): res = simuler_sans_postrun('cfg.json')
     finally:
         perturbations.compute_In = _in0; os.chdir(cwd); shutil.rmtree(tmp, ignore_errors=True)
     h = res['history']
