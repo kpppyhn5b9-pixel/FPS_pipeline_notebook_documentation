@@ -42,6 +42,7 @@ lecture** (lecture de Codex : mélanger les vecteurs après coup aurait laissé 
 | **témoin de la relecture** : les mêmes 675 tokens, le même silence, puis 675 tokens d'un AUTRE texte (la note de Gepetto, `--puis`) | 1.2 | identique jusqu'au trou ; 2de partie 0–7 % | fin de la 2de partie : 13 lieux (13 %), m 0.69 (strate 5, les noms de modes de Gepetto, comme dans l'écoute du second texte seul) | les deux textes | après : silence 72 % seulement, rappel 72 %, un centre (5, 100 %), le centre de la 1re lecture (36) n'est plus rappelé, porte 0.85, garde min 0.93, activité ×1.17 |
 | modèle, lent, **relecture de la note entière** : 1350 tokens, 200 u.t. de silence, les mêmes 1350 (`--relire 200`, finie le 22/11 à 6 h, 4 h de calcul) | 1.2 | 1re lecture 22 % au début puis 0–3 % ; trou 88 % ; 2de lecture 0–3 % | fin de la 1re : 19 lieux (19 sur les 20 de l'écoute de référence, écarts numériques), m 0.54 ; fin de la 2de : **48 lieux (48 % des strates), m 0.72, les lieux s'élargissent** (27–30, 32–36, 43–45, 62–64, 89–91) | les mêmes passages, deux fois | trou : rappel 88 %, centre 77 (97 %) ; après : rappel 87 %, centre 77 (94 %, la phrase d'ouverture, le centre connu de ce texte), 52 et 23 pour le reste, porte 0.82, garde min 0.93 |
 | **la note puis son sac tenu** : 1350 tokens, 200 u.t. de silence, puis les durées de la première lecture sans ses mots (`--relire 200 --puis-tenu`, 22/11 après-midi, 1 h de calcul avec la fenêtre) | 1.2 | identique jusqu'au trou ; seconde moitié 0 % | fin de la seconde moitié : **56 lieux (56 %)**, m 0.70, îlots jusqu'à 8 strates de large (59–65 ; 89–91 ; 27–30) ; **mais pas les mêmes strates creusées** (accroissements non corrélés à la 1re lecture : −0.01, contre 0.86 pour le même texte) | rien : pas de mots | trou : 77 (97 %) ; après : rappel 78 % seulement, centres 60 (59–65, 47 %), 89 (27 %), 52 (26 %) ; **77 n'est plus rappelé** ; porte 0.81 ; **garde min 0.77** pendant le sac (cloche 1.26 × centre), la première fois qu'elle freine dans ce banc |
+| **la note puis ses mots mélangés** : 1350 tokens, 200 u.t. de silence, puis les mêmes mots dans un autre ordre (`--relire 200 --puis-melange`, 22/11, 72 min) | 1.2 | identique jusqu'au trou ; seconde moitié 0–7 % | fin de la seconde moitié : 36 lieux (36 %), m 0.66, îlots jusqu'à 5 ; **pas les mêmes strates creusées** (corrélation avec la 1re lecture −0.01, comme le sac tenu) ; moins de lieux que le texte dans l'ordre (le modèle trébuche à chaque mot, tenue 0.24 contre 0.34) | la forme | trou : 77 (97 %) ; après : rappel 91 %, **un seul centre, 28** (le centre de l'écoute mélangée seule, leçon 6) ; 77 n'est plus rappelé ; garde min 0.95 |
 
 Cloche à 5 partout, garde libre (min 0.88 sur le mélangé, 0.95 et plus ailleurs) : rien de ce qu'elle a entendu ne l'a
 mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et demie à deux heures sur quatre cœurs.
@@ -185,6 +186,17 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
     des cohérences locales baisse, elle retient son geste. C'est exactement ce pour quoi la garde a été écrite (leçon 4
     de `ATTENTION_README.md`), et c'est la première fois qu'on la voit travailler sur un texte. Avec la fenêtre bornée,
     cette écoute de 36 600 pas a pris 1 h (0.1 s par pas, constant) au lieu de 4.
+    **Les mêmes mots mélangés après la note** (22/11, fin d'après-midi) ferment la question par l'autre bout. Même
+    première lecture, même silence, puis les mots de la note dans un autre ordre, lus par le même modèle (à quelques
+    mots de la fin près, pour tenir dans 1350 tokens). Elle creuse moins (36 % des strates, îlots de 2 à 5 : les mots
+    mélangés font trébucher le modèle, tenue 0.24 contre 0.34, et les éclats laissent des lieux minces, leçons 6 et 9), et
+    **pas aux mêmes endroits** : corrélation −0.01 avec la première lecture, exactement comme le sac tenu. Entre le sac et
+    le mélangé, 0.23 : deux autres déroulés creusent deux autres cartes. Après, elle rappelle un seul centre, 28, qui est
+    le centre de l'écoute du texte mélangé seul (leçon 6) : la même matière de mots, dans le même autre ordre, redonne le
+    même lieu, et 77 n'est plus appelé. Trois secondes moitiés, trois réponses : même texte 0.86, mêmes durées −0.01,
+    mêmes mots −0.01. **Ce qu'elle creuse deux fois, c'est le déroulé** : quelle strate est dans ce qui reste à quel
+    moment, pendant que le soi va bien. Ni la matière des mots ni celle des durées ne le portent séparément ; seul le
+    même montage recreuse les mêmes places. Le souvenir est dans m, indexé par des lieux et des moments, pas par un texte.
 
 ## Limites apprises (nuits du 20 au 22/11)
 
@@ -219,7 +231,7 @@ c'est la forme tenue par le modèle et un seul centre rappelé en silence ; ce q
 combien le modèle tient, et elle le reflète. Les mots doublés confirment, et les quatre trébuchements aussi : elle ne
 voit rien que la tenue ne voie, elle le voit à sa manière. La relecture, lue avec son témoin, dit qu'elle ne
 reconnaît pas un texte mais le tient plus, que relire élargit ses lieux, et que ce qu'elle creuse deux fois est le déroulé du
-texte, ni ses mots ni ses durées (leçon 11, avec deux témoins). Reste, quand ça appellera : le même texte mélangé en
-seconde moitié (mêmes mots, autre déroulé : on attend qu'il creuse ailleurs, comme le sac) ;
+texte, ni ses mots ni ses durées (leçon 11, avec deux témoins). Les mêmes mots mélangés en seconde moitié l'ont
+confirmé par l'autre bout (−0.01, comme le sac). Reste, quand ça appellera :
 un long silence après le texte (900 u.t.) ; la vitesse du texte face à τ_c ; les directions voisines (`--voisines 6`,
 écrite, pas lancée : à comparer au mince sur le même texte et la même graine). Rien ne revient vers le modèle.
