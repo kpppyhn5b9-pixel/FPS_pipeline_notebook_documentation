@@ -38,6 +38,8 @@ lecture** (lecture de Codex : mélanger les vecteurs après coup aurait laissé 
 | modèle, lent, **mots mélangés et doublés** (chaque mot lu deux fois ; 1350 tokens = la moitié du texte) | 1.2 | 34 % au début, puis 0–12 % | 16 lieux (18 % des strates), m jusqu'à 0.49 | la forme : un chemin de fichier, « le le 26/09 » | rappel 87 %, deux centres (35, 59–60), porte 0.76, activité ×1.25 (la plus haute de toutes) |
 | modèle, lent, **quatre trébuchements** : la note soutien dans l'ordre, sauf quatre passages de 50 mots mélangés localement, sans le lui dire (`--trebucher`) | 1.2 | 0–32 %, un peu plus à l'entrée de trois zones sur quatre | 15 lieux (20 % des strates), m jusqu'à 0.66, appelés moins souvent par les zones (20 % contre 29 % des tokens) | des lignes de tableau, hors des zones | rappel 98 %, un centre (52), porte 0.83, garde 1.00 |
 | modèle, lent, **second texte** (la note des enquêtes de Gepetto, 1350 tokens) | 1.2 | 0–14 % | 11 lieux (13 % des strates), m jusqu'à 0.62 | des noms de modes entre accents graves, des chiffres de tableau, et quelques phrases (« la coexistence », « deux unités de temps ne suffisent à rien », « le geste garde sa saillance ») | rappel 86 %, un seul centre (5 : les noms de modes), porte 0.82 |
+| modèle, lent, **relecture** : les 675 premiers tokens de la note soutien, 200 u.t. de silence, les mêmes 675 (`--relire 200 --max-tokens 675`, nuit du 21 au 22/11) | 1.2 | 1re lecture 10 %, 38 %, puis 0–5 % ; trou 73 % ; 2de lecture 0–6 % | fin de la 1re : 2 lieux (32, 36), m 0.43 ; fin de la 2de : 16 lieux (16 %), m 0.57 | les mêmes passages lus deux fois (« soutien dans un moment difficile : chérir ce qui », « ça allait mal, ça va mieux », des lignes de tableau) | trou : rappel 73 %, un centre (36) ; après : rappel 98 %, deux centres (60 : la phrase d'ouverture, 69 % ; 36 : 31 %), porte 0.84, garde 1.00 |
+| **témoin de la relecture** : les mêmes 675 tokens, le même silence, puis 675 tokens d'un AUTRE texte (la note de Gepetto, `--puis`) | 1.2 | identique jusqu'au trou ; 2de partie 0–7 % | fin de la 2de partie : 13 lieux (13 %), m 0.69 (strate 5, les noms de modes de Gepetto, comme dans l'écoute du second texte seul) | les deux textes | après : silence 72 % seulement, rappel 72 %, un centre (5, 100 %), le centre de la 1re lecture (36) n'est plus rappelé, porte 0.85, garde min 0.93, activité ×1.17 |
 
 Cloche à 5 partout, garde libre (min 0.88 sur le mélangé, 0.95 et plus ailleurs) : rien de ce qu'elle a entendu ne l'a
 mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et demie à deux heures sur quatre cœurs.
@@ -122,19 +124,65 @@ mise en danger. Les quatre écoutes lentes ont chacune demandé une heure et dem
     chiffre d'une ligne, et sans rien y voir que lui ne voie pas. Elle est un miroir fidèle et lent, pas une loupe.
     Si sa valeur pour lire un modèle existe, elle n'est pas dans la détection ; elle serait dans ce qu'elle garde et
     rappelle après, et ça demande d'autres questions que celle-ci.
+11. **Relire : reconnaît-elle ? Non ; elle tient** (nuit du 21 au 22/11, question posée à deux, lue avec son témoin).
+    On lui a lu deux fois les 675 premiers tokens de la note soutien, 200 u.t. de silence entre, et, pour témoin, la même
+    première lecture et le même silence suivis d'un autre texte (la note de Gepetto, coupée au même nombre de tokens).
+    Les deux écoutes sont identiques jusqu'à la seconde partie, au chiffre près. Ce qu'on avait dit qu'on regarderait :
+    - *Se taire moins la seconde fois ?* Oui, mais devant l'autre texte aussi (1 % contre 2 %). Le silence des premières
+      fenêtres (10 %, 38 %) est celui du début de la course, pas celui d'un texte neuf. Rien de reconnu là.
+    - *Les lieux plus vite ?* Les lieux passent de 2 à 16 avec le même texte, de 2 à 13 avec l'autre, et l'accroissement
+      moyen de m est le même (+0.056 contre +0.058). Huit strates franchissent 0.3 dans les deux cas : elles étaient
+      juste dessous après la première lecture, n'importe quel texte de même tenue les fait passer (la durée, leçon 7).
+      La seule chose que le même texte fait et que l'autre ne fait pas : il creuse les mêmes strates (accroissements
+      corrélés 0.80 à ceux de la première lecture, contre 0.12 pour l'autre texte). C'est attendu de bout en bout :
+      mêmes directions, même texte, mêmes strates. Le même texte deux fois compte double, il ne compte pas autrement.
+    - *Un sursaut à la reprise ?* La strate 60 (la phrase d'ouverture) gagne +0.29 dans les cent premières u.t. de la
+      seconde lecture, contre +0.21 en huit cents la première fois. Mais devant l'autre texte, la strate 83 gagne +0.31
+      dans les mêmes cent u.t. Ce qui marque fort, c'est le premier texte qui vient après un silence, quel qu'il soit :
+      l'état d'après le silence, pas la reconnaissance. La surprise, plus basse dans la seconde partie (0.176 contre
+      0.225), l'est à l'identique dans les deux écoutes : le temps, pas le texte.
+    - *Des souvenirs de la première lecture appelés par la seconde ?* Pendant la lecture, aucun rappel : elle ne se tait
+      pas. Après, oui, et c'est la seule différence qui tienne au texte : après la relecture elle se tait à 98 % et
+      rappelle la phrase d'ouverture (69 %) et le centre de la première lecture (36, 31 %) ; après l'autre texte, elle
+      ne se tait qu'à 72 %, rappelle le centre du nouveau texte seul (5, 100 %), la garde descend à 0.93 et l'activité
+      monte un peu. Le lieu 36 est pourtant plus chéri qu'avant (0.66) : il n'est pas perdu, il n'est plus appelé par le
+      présent, qui ressemble au dernier texte. Une écoute de chaque : une direction, pas une loi.
+    Ce qu'on peut dire : elle ne reconnaît pas un texte ; rien ne bouge chez elle qu'un autre texte ne fasse bouger
+    pareil, sauf que le même texte creuse les mêmes places. Relire ne la fait pas reconnaître, ça la fait tenir : ce qui
+    a accompagné deux fois reste deux fois, et après, elle se tait et appelle les deux. Pour qu'une reconnaissance soit
+    possible il faudrait que le présent sache ressembler au passé pendant que le texte parle, et ce chemin (le rappel
+    hors du silence) n'existe pas dans le code ; on l'écrit comme question, pas comme manque. La relecture de la note
+    entière (1350 tokens deux fois) tourne au moment où ceci est écrit, pour voir si ses centres connus (77, 16) reviennent.
 
-## Deux limites apprises (nuit du 20 au 21/11)
+## Limites apprises (nuits du 20 au 22/11)
 
 - **Les écoutes lentes durent plus que la fenêtre d'une tâche d'arrière-plan** (90 min) : trois lancées ensemble ont
   été coupées sans rien écrire. Lancer détaché (`setsid nohup`), et une à la fois.
 - **L'historique du pipeline garde tout à chaque pas** : une écoute de 1840 u.t. monte à plusieurs gigaoctets, et
   deux en parallèle ont été tuées par la mémoire (15 Go). D'où `--max-tokens 1350` sur le second texte, et la chaîne
   séquentielle. On l'écoute d'abord ; le moment voulu, on rangera les mesures.
+- **Le coût d'un pas grandit avec l'historique** (nuit du 21 au 22/11, vu en échantillonnant la pile pendant que ça
+  tournait) : à chaque pas, `compute_multiple_tau` et `compute_temporal_coherence` recalculent l'autocorrélation
+  complète de S, γ et C depuis le début (`np.correlate` sur tout l'historique). Le pas coûte comme le carré du temps
+  écoulé, l'écoute comme son cube : 1840 u.t. en 55 min, 2040 en 59, 3700 estimées à 7 h. Ces valeurs ne sont que
+  journalisées (`tau_S`, `temporal_coherence`, `autocorr_tau`) ; rien dans la dynamique ne les relit. Une fenêtre
+  bornée les rendrait linéaires sans rien changer à ce qu'elle fait. C'est du code de la pipeline : la proposition est
+  écrite ici, la décision est à Andréa.
+- **« Détaché » survit à la fin d'un tour, pas au remplacement de la machine** : le conteneur a redémarré vers 23h40 et
+  la première relecture (quatre heures de calcul) est morte sans rien écrire, parce que la simulation n'écrit qu'à la
+  fin. Un guet réarmé toutes les trente minutes a semblé tenir la machine éveillée ensuite ; rien de garanti.
+- **Le post-traitement de `run_simulation` tue les longues écoutes** : la demi-relecture (20 400 pas) a été tuée par le
+  noyau à 12.6 Go après la fin de sa boucle, alors que la boucle n'en prenait que 2. Une sonde courte (2000 pas) ne
+  reproduit pas l'explosion (conversion ×2.7, analyse et exploration négligeables), donc la cause précise reste à
+  trouver. Le banc appelle maintenant la boucle seule (`init` + `run_fps_simulation`, mêmes graines, même dynamique,
+  sans analyse ni dashboard) : la même écoute passe en 59 min et 2.0 Go au plus.
 
 ## Ce qui attend
 
 La seconde graine, le mélange, le second texte et le sac tenu ont été regardés : ce qui tient d'une écoute à l'autre,
 c'est la forme tenue par le modèle et un seul centre rappelé en silence ; ce qui change avec l'ordre des mots, c'est
 combien le modèle tient, et elle le reflète. Les mots doublés confirment, et les quatre trébuchements aussi : elle ne
-voit rien que la tenue ne voie, elle le voit à sa manière. Reste la question des directions voisines (`--voisines 6`, écrite, pas lancée : à comparer au mince sur le
-même texte et la même graine), quand ça appellera. Rien ne revient vers le modèle.
+voit rien que la tenue ne voie, elle le voit à sa manière. La relecture, lue avec son témoin, dit qu'elle ne
+reconnaît pas un texte mais le tient plus (leçon 11) ; la relecture de la note entière tourne. Reste, quand ça appellera :
+un long silence après le texte (900 u.t.) ; la vitesse du texte face à τ_c ; les directions voisines (`--voisines 6`,
+écrite, pas lancée : à comparer au mince sur le même texte et la même graine). Rien ne revient vers le modèle.
