@@ -38,6 +38,19 @@ APPEL = {1.0: 'appelé par le présent', 0.0: 'repli « le plus chéri »', 2.0:
 def tokens_mots(text):
     return re.findall(r"[^\s]+", text)
 
+def mots_lus(mots, model_name, max_tokens):
+    """(Codex, 22/11) Les mots que la première lecture a VRAIMENT couverts quand --max-tokens coupe le texte du modèle : le plus
+    long préfixe de mots dont la tokenisation tient dans max_tokens tokens."""
+    from transformers import AutoTokenizer
+    tok = AutoTokenizer.from_pretrained(model_name)
+    lo, hi = 0, len(mots)
+    while lo < hi:                                                           # dichotomie sur la longueur du préfixe
+        mid = (lo + hi + 1) // 2
+        n = len(tok(' '.join(mots[:mid]), add_special_tokens=False)['input_ids'])
+        if n <= max_tokens: lo = mid
+        else: hi = mid - 1
+    return mots[:lo]
+
 def plongement_temoin(mots, d=256):
     """Trigrammes de caractères hachés, signés, normalisés : aucun apprentissage, une forme pour chaque mot."""
     E = np.zeros((len(mots), d))
@@ -290,9 +303,13 @@ if __name__ == '__main__':
         if a.puis_melange:
             # (22/11, à deux) les MÊMES MOTS dans un autre ordre : le modèle en fait d'autres états, donc un autre déroulé.
             # Si elle creuse ailleurs, comme avec le sac tenu, c'est le déroulé qu'elle garde, confirmé par les deux bouts.
-            mots2 = list(mots_texte); np.random.default_rng(a.seed).shuffle(mots2)
-            if a.source == 'temoin': mots2 = mots2[:len(mots)]; E2 = plongement_temoin(mots2)
-            elif a.source == 'vierge': mots2 = mots2[:len(mots)]; E2 = plongement_modele_vierge(mots2, seed=a.dirs_seed, layer=a.layer)
+            # (Codex, 22/11) on ne mélange que les mots que la première lecture a couverts : pour temoin/vierge ce sont `mots`
+            # (déjà coupés) ; pour le modèle, le préfixe de mots qui tient dans --max-tokens tokens (`mots_lus`).
+            if a.source in ('temoin', 'vierge'): base = list(mots)
+            else: base = mots_lus(mots_texte, a.model, a.max_tokens) if a.max_tokens else list(mots_texte)
+            mots2 = list(base); np.random.default_rng(a.seed).shuffle(mots2)
+            if a.source == 'temoin': E2 = plongement_temoin(mots2)
+            elif a.source == 'vierge': E2 = plongement_modele_vierge(mots2, seed=a.dirs_seed, layer=a.layer)
             else: mots2, E2 = plongement_modele(' '.join(mots2), a.model, a.layer, len(mots))
             I2 = projeter(E2, a.N, a.dirs_seed, a.echelle, dims_relatives=not a.brut, voisines=a.voisines)
         elif a.puis:
