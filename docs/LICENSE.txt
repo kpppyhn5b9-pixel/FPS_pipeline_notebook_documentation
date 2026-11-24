@@ -1,3 +1,7 @@
+In this repo: MIT
+
+On the official repo:
+
 Creative Commons Legal Code
 
 CC0 1.0 Universal
